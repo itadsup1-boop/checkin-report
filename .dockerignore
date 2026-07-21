@@ -1,0 +1,17 @@
+# Docker ignore — tránh copy file không cần thiết vào image
+node_modules
+*/node_modules
+**/.git
+**/.gitignore
+*.log
+*.zip
+*.deb
+*.exe
+.env
+cloudflared*
+ngrok*
+logs/
+dist/
+apps/web-admin/dist/
+*.md
+telegramReport_backup*
