@@ -4,18 +4,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Hệ Thống Đặt Lịch</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Đăng Ký Ca Làm Việc</title>
+    <!-- Google Font: Outfit (Very modern and premium) -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #f3f4f6;
-            --text-color: #1f2937;
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --danger: #ef4444;
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
             --success: #10b981;
-            --card-bg: #ffffff;
-            --border: #e5e7eb;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(255, 255, 255, 0.05);
+            --input-focus: #818cf8;
         }
 
         * {
@@ -25,84 +32,448 @@
         }
 
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            padding: 16px;
-            padding-bottom: 80px;
-        }
-
-        /* === CSS-ONLY TAB SYSTEM (works without JS) === */
-        .tab-radio {
-            display: none;
-        }
-
-        .tabs {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
             display: flex;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
             background: var(--card-bg);
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
         }
 
-        .tab-label {
-            flex: 1;
-            padding: 12px;
+        .header {
             text-align: center;
-            font-weight: 600;
-            font-size: 14px;
-            color: #6b7280;
-            background: transparent;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-bottom: 3px solid transparent;
-            -webkit-tap-highlight-color: transparent;
+            margin-bottom: 24px;
         }
 
-        .tab-label:active {
-            background: #dbeafe;
-        }
-
-        /* Active tab styles driven by CSS radio */
-        #radio-check:checked~.tabs .tab-label[for="radio-check"],
-        #radio-add:checked~.tabs .tab-label[for="radio-add"],
-        #radio-edit:checked~.tabs .tab-label[for="radio-edit"],
-        #radio-tasks:checked~.tabs .tab-label[for="radio-tasks"] {
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
             color: var(--primary);
-            border-bottom-color: var(--primary);
-            background: #eff6ff;
+            box-shadow: 0 8px 24px -4px var(--primary-glow);
         }
 
-        /* Tab content visibility driven by CSS radio */
-        .tab-content {
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #ffffff, #c7d2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Profile & Admin selectors */
+        .profile-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .profile-info {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .profile-info span {
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        .admin-select-wrapper {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .admin-select-wrapper label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--warning);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+        }
+
+        .select-control {
+            width: 100%;
+            background: #0f172a !important;
+            border: 1px solid rgba(245, 158, 11, 0.3) !important;
+            border-radius: 10px;
+            padding: 10px;
+            color: var(--text-primary) !important;
+            font-family: inherit;
+            outline: none;
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 12px center !important;
+            padding-right: 40px !important;
+        }
+
+        .select-control option {
+            background-color: #0f172a !important;
+            color: var(--text-primary) !important;
+        }
+
+        /* Tabs system */
+        .tabs-header {
+            display: flex;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px;
+            font-size: 14px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 10px var(--primary-glow);
+        }
+
+        /* Lock alert banner */
+        .lock-banner {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: #fde047;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
             display: none;
+            align-items: center;
+            gap: 8px;
         }
 
-        #radio-check:checked~#tab-check {
-            display: block;
+        /* Days list container */
+        .days-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .day-row {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            border-radius: 14px;
+            padding: 14px 16px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            transition: border-color 0.3s ease;
+        }
+
+        .day-row:hover {
+            border-color: rgba(255, 255, 255, 0.08);
+        }
+
+        .day-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .day-name {
+            font-weight: 600;
+            font-size: 15px;
+        }
+
+        .day-date {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        /* Selector options group */
+        .options-group {
+            display: flex;
+            gap: 8px;
+        }
+
+        .option-btn {
+            flex: 1;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            padding: 8px;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
+            text-align: center;
+        }
+
+        .option-btn:hover:not(:disabled) {
+            border-color: rgba(255, 255, 255, 0.15);
+            color: var(--text-primary);
+        }
+
+        .option-btn.selected[data-val="CA_SANG"] {
+            background: rgba(99, 102, 241, 0.2);
+            border-color: var(--primary);
+            color: #818cf8;
+            box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);
+        }
+
+        .option-btn.selected[data-val="CA_CHIEU"] {
+            background: rgba(16, 185, 129, 0.2);
+            border-color: var(--success);
+            color: #34d399;
+            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
+        }
+
+        .option-btn.selected[data-val="FULL_DAY"] {
+            background: rgba(245, 158, 11, 0.2);
+            border-color: var(--warning);
+            color: #fbbf24;
+            box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
+        }
+
+        .option-btn.selected[data-val="OFF"] {
+            background: rgba(244, 63, 94, 0.2);
+            border-color: var(--danger);
+            color: #fb7185;
+            box-shadow: 0 0 10px rgba(244, 63, 94, 0.15);
+        }
+
+        .option-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Warnings for overlapping schedule */
+        .overlap-warning {
+            display: none;
+            font-size: 12px;
+            color: #fda4af;
+            background: rgba(244, 63, 94, 0.08);
+            border: 1px solid rgba(244, 63, 94, 0.15);
+            padding: 6px 10px;
+            border-radius: 8px;
+            margin-top: 4px;
+            align-items: center;
+            gap: 6px;
+        }
+
+        /* Upload proof box */
+        .proof-box {
+            display: none;
+            background: rgba(99, 102, 241, 0.04);
+            border: 1px dashed rgba(99, 102, 241, 0.3);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 24px;
+            text-align: center;
             animation: fadeIn 0.3s ease;
         }
 
-        #radio-add:checked~#tab-add {
-            display: block;
-            animation: fadeIn 0.3s ease;
+        .proof-box-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #a5b4fc;
+            margin-bottom: 6px;
         }
 
-        #radio-edit:checked~#tab-edit {
-            display: block;
-            animation: fadeIn 0.3s ease;
+        .proof-box-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 12px;
         }
 
-        #radio-tasks:checked~#tab-tasks {
-            display: block;
-            animation: fadeIn 0.3s ease;
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .btn-upload {
+            background: rgba(99, 102, 241, 0.15);
+            border: 1px solid rgba(99, 102, 241, 0.3);
+            color: #c7d2fe;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .file-input {
+            position: absolute;
+            left: 0;
+            top: 0;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .preview-img {
+            max-width: 100%;
+            max-height: 120px;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: none;
+            object-fit: contain;
+        }
+
+        /* Submit Button */
+        .btn-submit {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px var(--primary-glow);
+            font-family: inherit;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Alerts & Screens */
+        .alert {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-error {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            color: #fda4af;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+        }
+
+        .success-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0b0f19;
+            border-radius: 24px;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 16px;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .success-screen h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .success-screen p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 20px;
         }
 
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(10px);
+                transform: translateY(-5px);
             }
 
             to {
@@ -110,738 +481,587 @@
                 transform: translateY(0);
             }
         }
-
-        .card {
-            background: var(--card-bg);
-            border-radius: 16px;
-            padding: 20px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-            margin-bottom: 16px;
-        }
-
-        .form-group {
-            margin-bottom: 16px;
-        }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 6px;
-            font-size: 13px;
-            font-weight: 600;
-            color: #4b5563;
-        }
-
-        .form-control {
-            width: 100%;
-            padding: 12px;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            font-size: 15px;
-            outline: none;
-            transition: border-color 0.2s;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .form-control:focus {
-            border-color: var(--primary);
-        }
-
-        .btn {
-            width: 100%;
-            padding: 14px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            color: white;
-            background: var(--primary);
-            cursor: pointer;
-            transition: background 0.2s;
-            font-family: 'Inter', sans-serif;
-        }
-
-        .btn:active {
-            transform: scale(0.98);
-        }
-
-        .btn-danger {
-            background: var(--danger);
-        }
-
-        .btn-sm {
-            padding: 8px 12px;
-            font-size: 13px;
-            width: auto;
-        }
-
-        .timeline-item {
-            display: flex;
-            padding: 12px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .timeline-item:last-child {
-            border-bottom: none;
-        }
-
-        .time {
-            font-weight: 700;
-            color: var(--primary);
-            width: 65px;
-            flex-shrink: 0;
-        }
-
-        .details {
-            flex: 1;
-        }
-
-        .details strong {
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        .details small {
-            color: #6b7280;
-            font-size: 12px;
-        }
-
-        .alert {
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 16px;
-            font-size: 14px;
-            display: none;
-        }
-
-        .alert-error {
-            background: #fee2e2;
-            color: #991b1b;
-        }
-
-        .alert-success {
-            background: #d1fae5;
-            color: #065f46;
-        }
-
-        .search-box {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-
-        .search-box .form-control {
-            margin-bottom: 0;
-        }
-
-        .loader {
-            text-align: center;
-            padding: 20px;
-            display: none;
-            color: #6b7280;
-        }
-
-        /* Modal overlay */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-overlay.show {
-            display: flex;
-        }
     </style>
 </head>
 
 <body>
-
-    <!-- CSS-only radio buttons for tabs (no JS needed!) -->
-    <input type="radio" name="tab" id="radio-check" class="tab-radio" checked>
-    <input type="radio" name="tab" id="radio-add" class="tab-radio">
-    <input type="radio" name="tab" id="radio-edit" class="tab-radio">
-    <input type="radio" name="tab" id="radio-tasks" class="tab-radio">
-
-    <div class="tabs">
-        <label class="tab-label" for="radio-check">Check Lịch</label>
-        <label class="tab-label" for="radio-add">Thêm Lịch</label>
-        <label class="tab-label" for="radio-edit">Sửa/Hủy</label>
-        <label class="tab-label" for="radio-tasks">Nhiệm Vụ</label>
-    </div>
-
-    <!-- TAB 1: CHECK LỊCH -->
-    <div id="tab-check" class="tab-content">
+    <div class="container">
         <div class="card">
-            <div class="form-group">
-                <label>Chọn ngày để xem lịch:</label>
-                <input type="date" id="checkDate" class="form-control">
+            <!-- Alerts -->
+            <div id="alertBox" class="alert"></div>
+
+            <!-- Success screen -->
+            <div id="successScreen" class="success-screen">
+                <div class="success-icon">✓</div>
+                <h2>Chốt Lịch Thành Công</h2>
+                <p>Lịch làm việc của bạn đã được ghi nhận trong cơ sở dữ liệu.</p>
+                <button class="btn-submit" onclick="closeWebApp()">Hoàn Thành</button>
             </div>
 
-            <div id="timelineLoader" class="loader">Đang tải...</div>
-            <div id="timelineContainer">
-                <p style="text-align: center; color: #6b7280; font-size: 14px; padding: 20px 0;">Vui lòng chọn ngày</p>
-            </div>
-        </div>
-    </div>
-
-    <!-- TAB 2: THÊM LỊCH -->
-    <div id="tab-add" class="tab-content">
-        <div class="card">
-            <div id="addAlert" class="alert"></div>
-
-            <div class="form-group">
-                <label>Tên Khách Hàng *</label>
-                <input type="text" id="addName" class="form-control" placeholder="Nhập tên khách">
-            </div>
-            <div class="form-group">
-                <label>Số Điện Thoại *</label>
-                <input type="tel" id="addPhone" class="form-control" placeholder="Nhập SĐT">
-            </div>
-            <div class="form-group">
-                <label>Dịch Vụ</label>
-                <input type="text" id="addService" class="form-control" placeholder="Tên dịch vụ">
-            </div>
-            <div class="form-group" style="display: flex; gap: 10px;">
-                <div style="flex: 1;">
-                    <label>Số Buổi Làm</label>
-                    <input type="text" id="addSessions" class="form-control" placeholder="VD: 2/10 hoặc 1/Tái khám">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                        <line x1="16" y1="2" x2="16" y2="6"></line>
+                        <line x1="8" y1="2" x2="8" y2="6"></line>
+                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                    </svg>
                 </div>
-                <div style="flex: 1;">
-                    <label>Thu Tiền</label>
-                    <input type="text" id="addRevenue" class="form-control" placeholder="VD: 500k">
+                <h1>ĐĂNG KÝ LỊCH TUẦN</h1>
+                <p>Lên lịch làm việc hàng tuần cho nhân sự</p>
+            </div>
+
+            <!-- Profile Info Banner -->
+            <div class="profile-section">
+                <div class="profile-info">
+                    <div>
+                        <div id="userName" style="font-weight:700; font-size:15px;">Đang tải...</div>
+                        <div id="userRole" style="font-size:12px; color:var(--text-secondary);">Vai trò: Đang tải...
+                        </div>
+                    </div>
+                    <span id="tgName">@...</span>
+                </div>
+
+                <!-- Admin selector (Hidden by default) -->
+                <div id="adminPanel" class="admin-select-wrapper" style="display: none;">
+                    <label>Quản lý nhân viên (Admin mode)</label>
+                    <select id="userDropdown" class="select-control" onchange="onAdminSelectUser()">
+                        <!-- Options filled by JS -->
+                    </select>
                 </div>
             </div>
-            <div class="form-group">
-                <label>Ngày Giờ Hẹn (Cách nhau >= 1 tiếng) *</label>
-                <input type="datetime-local" id="addTime" class="form-control">
-            </div>
-            <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 15px;">
-                <input type="checkbox" id="addIsUrgent" style="width: 20px; height: 20px; cursor: pointer;">
-                <label for="addIsUrgent"
-                    style="margin-bottom: 0; cursor: pointer; font-size: 14px; font-weight: 600; color: #ef4444;">🚨
-                    Khách đi luôn</label>
+
+            <!-- Tabs System -->
+            <div class="tabs-header">
+                <button class="tab-btn active" onclick="switchTab('current')">Tuần Này</button>
+                <button class="tab-btn" onclick="switchTab('next')">Tuần Sau</button>
             </div>
 
-            <button class="btn" id="btnAdd">ĐĂNG KÝ LỊCH</button>
+            <!-- Locked Schedule Alert banner -->
+            <div id="lockBanner" class="lock-banner">
+                <span>🔒 Lịch tuần sau đã chốt tự động (sau 20:00 Chủ Nhật).</span>
+            </div>
+
+            <!-- Days list -->
+            <div id="daysList" class="days-list">
+                <!-- Day rows dynamically injected by JS -->
+            </div>
+
+            <!-- Upload Proof Area -->
+            <div id="proofBox" class="proof-box">
+                <div class="proof-box-title">⚠️ Đăng Ký Nghỉ Từ 2 Ngày Trở Lên</div>
+                <div class="proof-box-desc">Bạn chọn tổng số ngày nghỉ từ 2 ngày trở lên trong tuần. Vui lòng gửi ảnh
+                    minh chứng đi kèm.</div>
+                <div class="file-input-wrapper">
+                    <button class="btn-upload">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2.5">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="17 8 12 3 7 8"></polyline>
+                            <line x1="12" y1="3" x2="12" y2="15"></line>
+                        </svg>
+                        Chọn ảnh minh chứng
+                    </button>
+                    <input type="file" id="fileProof" class="file-input" accept="image/*" onchange="previewFile()">
+                </div>
+                <img id="imgPreview" class="preview-img" alt="Ảnh minh chứng">
+            </div>
+
+            <!-- Save Button -->
+            <button id="btnSave" class="btn-submit" onclick="saveSchedule()">LƯU LỊCH TUẦN</button>
         </div>
     </div>
 
-    <!-- TAB 3: SỬA / HỦY -->
-    <div id="tab-edit" class="tab-content">
-        <div class="card">
-            <div id="editAlert" class="alert"></div>
-
-            <div class="search-box">
-                <input type="tel" id="searchPhone" class="form-control" placeholder="Nhập SĐT khách hàng...">
-                <button class="btn btn-sm" style="width: 80px;" id="btnSearch">Tìm</button>
-            </div>
-
-            <div id="searchResults"></div>
-        </div>
-    </div>
-
-    <!-- Modal Hủy Lịch -->
-    <div id="cancelModal" class="modal-overlay">
-        <div class="card" style="width: 90%; max-width: 400px;">
-            <h3 style="margin-bottom: 15px;">Xác nhận Hủy Lịch</h3>
-            <div class="form-group">
-                <label>Lý do hủy (bắt buộc):</label>
-                <select id="cancelReason" class="form-control" onchange="if(this.value==='Lý do khác (Gõ chi tiết)') { document.getElementById('cancelReasonOther').style.display = 'block'; } else { document.getElementById('cancelReasonOther').style.display = 'none'; }">
-                    <option value="">-- Chọn lý do --</option>
-                    <option value="Khách bom lịch (Không nghe, chặn số)">Khách bom lịch (Không nghe, chặn số)</option>
-                    <option value="Bận đột xuất / Xin dời ngày">Bận đột xuất / Xin dời ngày</option>
-                    <option value="Chưa đủ tài chính / Chê đắt">Chưa đủ tài chính / Chê đắt</option>
-                    <option value="Đã qua cơ sở khác làm">Đã qua cơ sở khác làm</option>
-                    <option value="Lý do khác (Gõ chi tiết)">Lý do khác (Gõ chi tiết)</option>
-                </select>
-                <input type="text" id="cancelReasonOther" class="form-control" placeholder="Gõ lý do khác vào đây..." style="display: none; margin-top: 10px;">
-            </div>
-            <input type="hidden" id="cancelId">
-            <div style="display: flex; gap: 10px;">
-                <button class="btn" style="background: #9ca3af;" id="btnCancelClose">Đóng</button>
-                <button class="btn btn-danger" id="btnCancelConfirm">Hủy Lịch</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Sửa Lịch -->
-    <div id="editModal" class="modal-overlay">
-        <div class="card" style="width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
-            <h3 style="margin-bottom: 15px;">Sửa Lịch Hẹn</h3>
-            <input type="hidden" id="editId">
-            <div class="form-group">
-                <label>Tên Khách Hàng</label>
-                <input type="text" id="editName" class="form-control">
-            </div>
-            <div class="form-group">
-                <label>Ngày Giờ (Cách nhau >= 1 tiếng)</label>
-                <input type="datetime-local" id="editTime" class="form-control">
-            </div>
-            <div style="display: flex; gap: 10px; margin-top: 20px;">
-                <button class="btn" style="background: #9ca3af;" id="btnEditClose">Đóng</button>
-                <button class="btn" id="btnEditConfirm">Lưu Thay Đổi</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- TAB 4: NHIỆM VỤ -->
-    <div id="tab-tasks" class="tab-content">
-        <div class="card">
-            <h3 style="margin-bottom: 15px; color: var(--text-color); border-bottom: 1px solid var(--border); padding-bottom: 8px;">Nhiệm Vụ Trong Ngày</h3>
-            <div id="taskAlert" class="alert"></div>
-            <div id="tasksLoader" class="loader">Đang tải...</div>
-            <div id="tasksContainer">
-                <p style="text-align: center; color: #6b7280; font-size: 14px; padding: 20px 0;">Vui lòng chọn ngày</p>
-            </div>
-            
-            <input type="file" id="taskPhotoUpload" accept="image/*" capture="environment" style="display: none;" onchange="handleTaskPhotoChange(event)">
-        </div>
-    </div>
-
-    <!-- Load Telegram SDK AFTER body content, non-blocking -->
+    <!-- Telegram SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
-        function getGroupId() {
-            var urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('chat_id') || '';
-        }
-
-        // ===== SAFE TELEGRAM INIT =====
-        var tg = null;
+        let tg = null;
         try {
             if (window.Telegram && window.Telegram.WebApp) {
                 tg = window.Telegram.WebApp;
                 tg.expand();
+                tg.ready();
             }
-        } catch (e) { /* ignore */ }
-
-        // ===== HELPER FUNCTIONS =====
-        function showAlert(id, msg, isError) {
-            var el = document.getElementById(id);
-            if (!el) return;
-            el.textContent = msg;
-            el.className = 'alert ' + (isError !== false ? 'alert-error' : 'alert-success');
-            el.style.display = 'block';
-            setTimeout(function () { el.style.display = 'none'; }, 5000);
+        } catch (e) {
+            console.error(e);
         }
 
-        function getTodayString() {
-            var d = new Date();
-            var year = d.getFullYear();
-            var month = String(d.getMonth() + 1).padStart(2, '0');
-            var day = String(d.getDate()).padStart(2, '0');
-            return year + '-' + month + '-' + day;
-        }
+        // State variables
+        let telegramId = "";
+        let telegramUsername = "";
+        let chatId = "";
+        let initData = "";
+        
+        let payloadAction = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        
+        let isUserAdmin = false;
+        let isSystemLocked = false;
+        let currentTab = "current"; // 'current' or 'next'
 
-        // ===== LOAD TIMELINE =====
-        function loadTimeline() {
-            var dateEl = document.getElementById('checkDate');
-            if (!dateEl) return;
-            var date = dateEl.value;
-            if (!date) return;
+        let allUsers = [];
+        let selectedUserId = ""; // Target user UUID to view/edit
+        let selectedUserRole = "";
+        let groupSchedules = []; // All schedules of all users next week
+        let mySchedules = []; // Schedules of selected user
 
-            var container = document.getElementById('timelineContainer');
-            var loader = document.getElementById('timelineLoader');
-            function loadSchedules(date) {
-              container.innerHTML = '';
-              loader.style.display = 'block';
-  
-              var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-              fetch('/api/schedules?date=' + date + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
-                  .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    loader.style.display = 'none';
-                    if (!data.data || data.data.length === 0) {
-                        container.innerHTML = '<p style="text-align:center; color:#6b7280; padding:20px;">Trống! Chưa có ai đặt lịch ngày này.</p>';
-                        return;
-                    }
-                    var html = '';
-                    data.data.forEach(function (item) {
-                        var time = new Date(item.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                        var isCancelled = item.status !== 'ACTIVE';
-                        var opacity = isCancelled ? '0.5' : '1';
-                        var cancelTag = isCancelled ? ' <span style="color:red; font-size:11px;">(ĐÃ HỦY)</span>' : '';
+        let currentWeekDays = [];
+        let nextWeekDays = [];
 
-                        html += '<div class="timeline-item" style="opacity: ' + opacity + '">' +
-                            '<div class="time">' + time + '</div>' +
-                            '<div class="details">' +
-                            '<strong style="' + (isCancelled ? 'text-decoration: line-through;' : '') + '">' + item.customer_name + cancelTag + '</strong>' +
-                            '<small>NV Phụ trách: <b>' + item.employee_name + '</b></small><br>' +
-                            '<small>SĐT: ' + item.phone + ' | Dịch vụ: ' + (item.service || '') + '</small>' +
-                            '</div></div>';
-                    });
-                    container.innerHTML = html;
-                })
-                .catch(function (err) {
-                    loader.style.display = 'none';
-                    container.innerHTML = '<p style="text-align:center; color:red;">Lỗi tải dữ liệu!</p>';
-                });
-            }
-            loadSchedules(date);
-        }
+        let currentSelections = {}; // mapping YYYY-MM-DD -> shift_type (e.g. CA_SANG, CA_CHIEU, OFF)
+        let originalSelections = {};
+        let base64Proof = null; // Stored base64 image data
+        let scheduleMetadata = {};
 
-        function validateSessions(val) {
-            if (!val) return true;
-            var cleanVal = val.trim().toLowerCase();
-            if (cleanVal === '0') return true;
-
-            if (cleanVal.indexOf('/') !== -1) {
-                var parts = cleanVal.split('/');
-                if (parts.length !== 2) return false;
-                var left = parts[0].trim();
-                var right = parts[1].trim();
-
-                if (!/^\d+$/.test(left)) return false;
-                if (/^\d+$/.test(right)) return true;
-                if (right === 'tái khám' || right === 'tai kham') return true;
-
-                return false;
-            }
-            return false;
-        }
-
-        // ===== ADD SCHEDULE =====
-        function addSchedule() {
-            var name = document.getElementById('addName').value;
-            var phone = document.getElementById('addPhone').value;
-            var service = document.getElementById('addService').value;
-            var sessions = document.getElementById('addSessions').value;
-            var revenue = document.getElementById('addRevenue').value;
-            var time = document.getElementById('addTime').value;
-            var isUrgent = document.getElementById('addIsUrgent').checked;
-
-            if (!name || !phone || !time) {
-                return showAlert('addAlert', 'Vui lòng điền đủ Tên, SĐT và Giờ hẹn!');
+        document.addEventListener('DOMContentLoaded', () => {
+            if (tg && tg.initData) {
+                initData = tg.initData;
             }
 
-            if (sessions && !validateSessions(sessions)) {
-                return showAlert('addAlert', 'Số Buổi Làm chưa đúng định dạng!<br>Ví dụ:<br>- Liệu trình: 2/10<br>- Tái khám: 1/Tái khám');
-            }
-
-            var btn = document.getElementById('btnAdd');
-            btn.disabled = true;
-            btn.textContent = 'Đang đăng ký...';
-
-            fetch('/api/schedules/add', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    initData: tg ? tg.initData : '',
-                    customer_name: name,
-                    phone: phone,
-                    service: service,
-                    sessions: sessions,
-                    revenue: revenue,
-                    appointment_time: time,
-                    is_urgent: isUrgent,
-                    groupId: getGroupId()
-                })
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.success) {
-                        showAlert('addAlert', 'Đã đăng ký lịch thành công!', false);
-                        document.getElementById('addName').value = '';
-                        document.getElementById('addPhone').value = '';
-                        document.getElementById('addService').value = '';
-                        document.getElementById('addSessions').value = '';
-                        document.getElementById('addRevenue').value = '';
-                        document.getElementById('addTime').value = '';
-                        document.getElementById('addIsUrgent').checked = false;
-                        var checkDate = document.getElementById('checkDate').value;
-                        if (checkDate === time.split('T')[0]) {
-                            loadTimeline();
-                        }
-                    } else {
-                        showAlert('addAlert', data.error || 'Có lỗi xảy ra');
-                    }
-                })
-                .catch(function (err) {
-                    showAlert('addAlert', 'Lỗi kết nối máy chủ!');
-                })
-                .finally(function () {
-                    btn.disabled = false;
-                    btn.textContent = 'ĐĂNG KÝ LỊCH';
-                });
-        }
-
-        // ===== SEARCH SCHEDULE =====
-        window.searchSchedule = function () {
-            var phone = document.getElementById('searchPhone').value;
-            if (!phone) {
-                alert('Vui lòng nhập số điện thoại');
+            if (!initData) {
+                document.getElementById('alertBox').textContent = '⚠️ Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram!';
+                document.getElementById('alertBox').style.display = 'block';
+                document.body.style.pointerEvents = 'none';
                 return;
             }
 
-            var container = document.getElementById('searchResults');
-            container.innerHTML = 'Đang tìm...';
+            // Get Telegram user info
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                telegramId = user.id;
+                telegramUsername = user.username || user.first_name;
+                document.getElementById('tgName').textContent = `@${telegramUsername}`;
 
-            var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (!data.data || data.data.length === 0) {
-                        container.innerHTML = '<p style="text-align:center; color:#6b7280; padding:20px;">Không tìm thấy lịch nào!</p>';
-                        return;
-                    }
-                    var html = '';
-                    data.data.forEach(function (item) {
-                        var dt = new Date(item.appointment_time);
-                        var now = new Date();
-                        var timeStr = dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + dt.toLocaleDateString('vi-VN');
-                        var buttons = '';
-                        if (item.status === 'ACTIVE') {
-                            if (dt < now) {
-                                buttons = '<span style="color: #6b7280; font-size: 12px; font-style: italic;">(Lịch đã qua - Không thể sửa/hủy)</span>';
-                            } else {
-                                buttons = '<div style="margin-top: 10px; display: flex; gap: 8px;">' +
-                                    '<button class="btn btn-sm" data-action="edit" data-id="' + item.id + '" data-name="' + item.customer_name + '" data-time="' + item.appointment_time + '">Sửa Giờ</button>' +
-                                    '<button class="btn btn-sm btn-danger" data-action="cancel" data-id="' + item.id + '">Hủy Lịch</button>' +
-                                    '</div>';
-                            }
-                        } else {
-                            buttons = '<span style="color: red; font-size: 12px; font-weight: bold;">ĐÃ HỦY: ' + (item.cancel_reason || '') + '</span>';
-                        }
-                        html += '<div class="timeline-item" style="flex-direction: column;">' +
-                            '<div class="details" style="width:100%">' +
-                            '<strong>' + item.customer_name + '</strong>' +
-                            '<small>Hẹn lúc: <b>' + timeStr + '</b></small><br>' +
-                            '<small>Phụ trách: ' + item.employee_name + '</small>' +
-                            '</div>' + buttons + '</div>';
-                    });
-                    container.innerHTML = html;
-
-                    // Attach event listeners to new buttons
-                    container.querySelectorAll('[data-action="edit"]').forEach(function (b) {
-                        b.addEventListener('click', function () {
-                            openEdit(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-time'));
-                        });
-                    });
-                    container.querySelectorAll('[data-action="cancel"]').forEach(function (b) {
-                        b.addEventListener('click', function () {
-                            openCancel(this.getAttribute('data-id'));
-                        });
-                    });
-                })
-                .catch(function (err) {
-                    container.innerHTML = '<p style="color:red;">Lỗi kết nối!</p>';
-                });
-        }
-
-        // ===== CANCEL =====
-        function openCancel(id) {
-            document.getElementById('cancelId').value = id;
-            document.getElementById('cancelReason').value = '';
-            document.getElementById('cancelReasonOther').value = '';
-            document.getElementById('cancelReasonOther').style.display = 'none';
-            document.getElementById('cancelModal').classList.add('show');
-        }
-
-        function confirmCancel() {
-            var id = document.getElementById('cancelId').value;
-            var reasonSelect = document.getElementById('cancelReason').value;
-            var reason = reasonSelect === 'Lý do khác (Gõ chi tiết)' ? document.getElementById('cancelReasonOther').value : reasonSelect;
-            if (!reason) {
-                alert('Vui lòng chọn hoặc nhập lý do hủy!');
-                return;
-            }
-            fetch('/api/schedules/cancel', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, cancel_reason: reason })
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.success) {
-                        document.getElementById('cancelModal').classList.remove('show');
-                        searchSchedule();
-                        showAlert('editAlert', 'Đã hủy lịch thành công!', false);
-                    }
-                })
-                .catch(function () { alert('Lỗi hệ thống'); });
-        }
-
-        // ===== EDIT =====
-        function openEdit(id, name, timeStr) {
-            document.getElementById('editId').value = id;
-            document.getElementById('editName').value = name;
-            var dt = new Date(timeStr);
-            var yyyy = dt.getFullYear();
-            var mm = String(dt.getMonth() + 1).padStart(2, '0');
-            var dd = String(dt.getDate()).padStart(2, '0');
-            var hh = String(dt.getHours()).padStart(2, '0');
-            var min = String(dt.getMinutes()).padStart(2, '0');
-            document.getElementById('editTime').value = yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + min;
-            document.getElementById('editModal').classList.add('show');
-        }
-
-        function confirmEdit() {
-            var id = document.getElementById('editId').value;
-            var name = document.getElementById('editName').value;
-            var time = document.getElementById('editTime').value;
-            fetch('/api/schedules/edit', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id: id,
-                    customer_name: name,
-                    appointment_time: time,
-                    phone: document.getElementById('searchPhone').value,
-                    service: '', sessions: ''
-                })
-            })
-                .then(function (res) { return res.json(); })
-                .then(function (data) {
-                    if (data.success) {
-                        document.getElementById('editModal').classList.remove('show');
-                        searchSchedule();
-                        showAlert('editAlert', 'Đã lưu thay đổi!', false);
-                        loadTimeline();
+                // Parse start_param or query parameter for Chat ID
+                let startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
                     } else {
-                        alert(data.error || 'Có lỗi xảy ra');
+                        chatId = startParam.replace(/^(sched_|reg_|leave_|checkin_|stats_)/, '');
                     }
-                })
-                .catch(function () { alert('Lỗi hệ thống'); });
-        }
-
-        // ===== LOAD TASKS =====
-        function loadTasks() {
-            var container = document.getElementById('tasksContainer');
-            var loader = document.getElementById('tasksLoader');
-            var d = document.getElementById('checkDate').value;
-            if (!container || !loader || !d) return;
-
-            container.innerHTML = '';
-            loader.style.display = 'block';
-
-            var tgId = '';
-            if (typeof tg !== 'undefined' && tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                tgId = tg.initDataUnsafe.user.id;
-            }
-
-            fetch('/api/photo-debts?date=' + d + '&telegram_id=' + tgId)
-                .then(function(res) { return res.json(); })
-                .then(function(data) {
-                    loader.style.display = 'none';
-                    if (!data.data || data.data.length === 0) {
-                        container.innerHTML = '<p style="text-align:center; color:#10b981; padding:20px;">🎉 Quá tuyệt! Bạn không còn nợ ảnh nào trong ngày này.</p>';
-                        return;
-                    }
-                    var html = '';
-                    data.data.forEach(function(item) {
-                        var timeStr = new Date(item.appointment_time).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'});
-                        html += '<div class="timeline-item" style="flex-direction: column; background: #fff5f5; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom: 10px;">' +
-                            '<div style="display:flex; justify-content:space-between; align-items:center;">' +
-                            '<div>' +
-                            '<strong style="color: #991b1b;">' + item.customer_name + '</strong>' +
-                            '<small style="display:block; color: #b91c1c;">Lúc: ' + timeStr + ' | NV: ' + item.employee_name + '</small>' +
-                            '</div>' +
-                            '<button class="btn btn-sm" style="background:#ef4444;" onclick="openCamera(' + item.id + ')">📸 Tải Ảnh</button>' +
-                            '</div>' +
-                            '</div>';
-                    });
-                    container.innerHTML = html;
-                })
-                .catch(function() {
-                    loader.style.display = 'none';
-                    container.innerHTML = '<p style="text-align:center; color:red;">Lỗi tải dữ liệu!</p>';
-                });
-        }
-
-        var currentTaskId = null;
-        function openCamera(id) {
-            currentTaskId = id;
-            document.getElementById('taskPhotoUpload').click();
-        }
-
-        function handleTaskPhotoChange(event) {
-            var file = event.target.files[0];
-            if (!file || !currentTaskId) return;
-
-            var reader = new FileReader();
-            reader.onload = function(e) {
-                var img = new Image();
-                img.onload = function() {
-                    var canvas = document.createElement('canvas');
-                    var MAX_WIDTH = 1200;
-                    var scaleSize = MAX_WIDTH / img.width;
-                    if (scaleSize > 1) scaleSize = 1;
-                    canvas.width = img.width * scaleSize;
-                    canvas.height = img.height * scaleSize;
-                    var ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-                    var base64Data = canvas.toDataURL('image/jpeg', 0.8);
-
-                    var alertBox = document.getElementById('taskAlert');
-                    alertBox.textContent = 'Đang tải ảnh lên... Vui lòng đợi!';
-                    alertBox.className = 'alert';
-                    alertBox.style.background = '#e0f2fe';
-                    alertBox.style.color = '#0369a1';
-                    alertBox.style.display = 'block';
-
-                    fetch('/api/upload-proof', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: currentTaskId,
-                            imageBase64: base64Data
-                        })
-                    })
-                    .then(function(res) { return res.json(); })
-                    .then(function(resData) {
-                        if (resData.success) {
-                            showAlert('taskAlert', '✅ Tải ảnh thành công!', false);
-                            loadTasks();
-                        } else {
-                            showAlert('taskAlert', 'Lỗi: ' + resData.error);
-                        }
-                    })
-                    .catch(function(err) {
-                        showAlert('taskAlert', 'Lỗi mạng khi tải ảnh!');
-                    });
                 }
-                img.src = e.target.result;
+
+                if (!chatId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    chatId = urlParams.get('chat_id') || "";
+                    payloadTs = urlParams.get('ts') || "";
+                    payloadSig = urlParams.get('sig') || "";
+                    payloadAction = urlParams.get('action') || "schedule";
+                }
+            }
+
+            loadData();
+        });
+
+        // Load data from Backend
+        function loadData() {
+            const url = `/api/timekeep/schedule/data?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`;
+
+            fetch(url, {
+                headers: {
+                    'x-telegram-init-data': initData
+                }
+            })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        isUserAdmin = res.is_admin;
+                        isSystemLocked = res.is_locked;
+                        currentWeekDays = res.currentWeekDays;
+                        nextWeekDays = res.nextWeekDays;
+                        groupSchedules = res.groupSchedules;
+                        mySchedules = res.mySchedules;
+                        allUsers = res.groupUsers;
+
+                        // Set selected user details (initial is current user)
+                        selectedUserId = res.user.id;
+                        selectedUserRole = res.user.role;
+
+                        document.getElementById('userName').textContent = res.user.full_name;
+                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role}`;
+
+                        // Setup Admin Selector Panel if Admin
+                        if (isUserAdmin && allUsers.length > 0) {
+                            const adminPanel = document.getElementById('adminPanel');
+                            const userDropdown = document.getElementById('userDropdown');
+
+                            adminPanel.style.display = 'block';
+                            userDropdown.innerHTML = '';
+
+                            allUsers.forEach(u => {
+                                const opt = document.createElement('option');
+                                opt.value = u.id;
+                                opt.textContent = `${u.full_name} (${u.role})`;
+                                if (u.id === selectedUserId) {
+                                    opt.selected = true;
+                                }
+                                userDropdown.appendChild(opt);
+                            });
+                        }
+
+                        // Initialize selections map
+                        currentSelections = {};
+                        scheduleMetadata = {};
+                        mySchedules.forEach(s => {
+                            currentSelections[s.date] = s.shift_type;
+                            if (s.updated_by) {
+                                scheduleMetadata[s.date] = {
+                                    updated_by: s.updated_by,
+                                    updated_at: s.updated_at
+                                };
+                            }
+                        });
+                        originalSelections = JSON.parse(JSON.stringify(currentSelections));
+
+                        // Render layout
+                        switchTab(currentTab);
+                    } else {
+                        showAlert(res.message || 'Lỗi tải dữ liệu. Vui lòng đăng ký tài khoản trước!', true);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    showAlert('Không thể kết nối máy chủ!', true);
+                });
+        }
+
+        // Triggered when admin selects another user in dropdown
+        function onAdminSelectUser() {
+            const userDropdown = document.getElementById('userDropdown');
+            selectedUserId = userDropdown.value;
+
+            const selectedUser = allUsers.find(u => u.id === selectedUserId);
+            if (selectedUser) {
+                selectedUserRole = selectedUser.role;
+                document.getElementById('userName').textContent = selectedUser.full_name;
+                document.getElementById('userRole').textContent = `Vị trí: ${selectedUser.role}`;
+
+                // Fetch this specific user's schedules
+                // For simplicity, we filter from groupSchedules or reload
+                // Better approach: reload data for that specific target_user_id
+                const url = `/api/timekeep/schedule/data?chat_id=${chatId}&target_user_id=${selectedUser.id}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`;
+                fetch(url, { headers: { 'x-telegram-init-data': initData } })
+                    .then(res => res.json())
+                    .then(res => {
+                        if (res.success) {
+                            // Fetch user's individual schedules
+                            fetch(`/api/timekeep/schedule/data?target_user_id=${selectedUser.id}&chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`, {
+                                headers: { 'x-telegram-init-data': initData }
+                            })
+                                .then(r => r.json())
+                                .then(myRes => {
+                                    if (myRes.success) {
+                                        mySchedules = myRes.mySchedules;
+                                        currentSelections = {};
+                                        scheduleMetadata = {};
+                                        mySchedules.forEach(s => {
+                                            currentSelections[s.date] = s.shift_type;
+                                            if (s.updated_by) {
+                                                scheduleMetadata[s.date] = {
+                                                    updated_by: s.updated_by,
+                                                    updated_at: s.updated_at
+                                                };
+                                            }
+                                        });
+                                        originalSelections = JSON.parse(JSON.stringify(currentSelections));
+                                        switchTab(currentTab);
+                                    }
+                                });
+                        }
+                    });
+            }
+        }
+
+        // Switch between tabs
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+
+            if (tab === 'current') {
+                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+                document.getElementById('lockBanner').style.display = 'none';
+                document.getElementById('proofBox').style.display = 'none';
+
+                if (isUserAdmin) {
+                    document.getElementById('btnSave').style.display = 'block';
+                    renderDays(currentWeekDays, false); // Admin can edit current week
+                } else {
+                    document.getElementById('btnSave').style.display = 'none';
+                    renderDays(currentWeekDays, true); // Regular staff is locked
+                }
+            } else {
+                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+
+                // Lock next week if deadline passed AND current user is not admin
+                const isNextWeekLocked = isSystemLocked && !isUserAdmin;
+
+                if (isNextWeekLocked) {
+                    document.getElementById('lockBanner').style.display = 'flex';
+                    document.getElementById('btnSave').style.display = 'none';
+                } else {
+                    document.getElementById('lockBanner').style.display = 'none';
+                    document.getElementById('btnSave').style.display = 'block';
+                }
+
+                renderDays(nextWeekDays, isNextWeekLocked);
+                checkConsecutiveOff();
+            }
+        }
+
+        // Render days in table
+        function renderDays(daysArray, forceLocked) {
+            const container = document.getElementById('daysList');
+            container.innerHTML = '';
+
+            const vnDays = ['Chủ Nhật', 'Thứ Hai', 'Thứ Ba', 'Thứ Tư', 'Thứ Năm', 'Thứ Sáu', 'Thứ Bảy'];
+
+            daysArray.forEach(dateStr => {
+                const dateObj = new Date(dateStr);
+                const dayName = vnDays[dateObj.getDay()];
+                const displayDate = formatDateString(dateStr);
+
+                const selectedVal = currentSelections[dateStr] || ''; // Default: empty (needs choice)
+
+                // Check overlap warning (Only for OFF choice in edit mode)
+                const isOverlapping = checkRoleOverlap(dateStr, selectedVal);
+
+                const row = document.createElement('div');
+                row.className = 'day-row';
+                row.id = `row-${dateStr}`;
+
+                const meta = scheduleMetadata[dateStr];
+                let metaHtml = '';
+                if (meta && meta.updated_by) {
+                    const d = new Date(meta.updated_at);
+                    const pad = (n) => String(n).padStart(2, '0');
+                    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
+                    metaHtml = `<div class="admin-edit-badge" style="font-size: 11px; color: #f59e0b; margin-top: 4px; font-weight: 500; display: flex; align-items: center; gap: 4px;">
+                                    ✏️ Đổi bởi ${meta.updated_by} lúc ${timeStr}
+                                </div>`;
+                }
+
+                row.innerHTML = `
+                    <div class="day-info">
+                        <div>
+                            <span class="day-name">${dayName}</span>
+                            <span class="day-date">${displayDate}</span>
+                        </div>
+                        <div class="overlap-warning" id="warning-${dateStr}" style="display: ${isOverlapping ? 'flex' : 'none'};">
+                            ⚠️ Trùng lịch nghỉ với nhân sự khác
+                        </div>
+                        ${metaHtml}
+                    </div>
+                    <div class="options-group">
+                        <button class="option-btn ${selectedVal === 'CA_SANG' ? 'selected' : ''}" 
+                                data-val="CA_SANG" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca sáng</button>
+                        <button class="option-btn ${selectedVal === 'CA_CHIEU' ? 'selected' : ''}" 
+                                data-val="CA_CHIEU" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca chiều</button>
+                        <button class="option-btn ${selectedVal === 'FULL_DAY' ? 'selected' : ''}" 
+                                data-val="FULL_DAY" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'FULL_DAY')">Full</button>
+                        <button class="option-btn ${selectedVal === 'OFF' ? 'selected' : ''}" 
+                                data-val="OFF" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'OFF')">Nghỉ (OFF)</button>
+                    </div>
+                `;
+                container.appendChild(row);
+            });
+        }
+
+        // Option click handler
+        function selectOption(dateStr, val) {
+            currentSelections[dateStr] = val;
+
+            // Re-render choices for this row
+            const row = document.getElementById(`row-${dateStr}`);
+            const buttons = row.querySelectorAll('.option-btn');
+            buttons.forEach(btn => {
+                if (btn.getAttribute('data-val') === val) {
+                    btn.classList.add('selected');
+                } else {
+                    btn.classList.remove('selected');
+                }
+            });
+
+            // Perform overlap check
+            const warningEl = document.getElementById(`warning-${dateStr}`);
+            if (val === 'OFF' && checkRoleOverlap(dateStr, val)) {
+                warningEl.style.display = 'flex';
+            } else {
+                warningEl.style.display = 'none';
+            }
+
+            // Perform consecutive OFF check
+            if (currentTab === 'next') {
+                checkConsecutiveOff();
+            }
+
+            updateSaveButtonState();
+        }
+
+        // Check if there is already another employee with same role off on this day
+        function checkRoleOverlap(dateStr, selectedVal) {
+            if (selectedVal !== 'OFF') return false;
+
+            // Search through groupSchedules
+            const overlap = groupSchedules.find(s =>
+                s.date === dateStr &&
+                s.shift_type === 'OFF' &&
+                s.role === selectedUserRole &&
+                s.user_id !== selectedUserId
+            );
+            return !!overlap;
+        }
+
+        // Check if user has chosen >= 2 days OFF in next week (consecutive or not)
+        function checkConsecutiveOff() {
+            if (currentTab !== 'next') return;
+
+            // Count total OFF days
+            let offDaysCount = 0;
+            nextWeekDays.forEach(d => {
+                if (currentSelections[d] === 'OFF') {
+                    offDaysCount++;
+                }
+            });
+
+            const proofBox = document.getElementById('proofBox');
+            if (offDaysCount >= 2) {
+                proofBox.style.display = 'block';
+            } else {
+                proofBox.style.display = 'none';
+                // Reset preview
+                base64Proof = null;
+                document.getElementById('imgPreview').style.display = 'none';
+                document.getElementById('fileProof').value = '';
+            }
+
+            updateSaveButtonState();
+        }
+
+        // Update button active state
+        function updateSaveButtonState() {
+            const btnSave = document.getElementById('btnSave');
+
+            // Check if all 7 days of next week have a selection
+            let allFilled = true;
+            nextWeekDays.forEach(d => {
+                if (!currentSelections[d]) {
+                    allFilled = false;
+                }
+            });
+
+            // Check if any overlap warning exists
+            let hasOverlap = false;
+            nextWeekDays.forEach(d => {
+                if (currentSelections[d] === 'OFF' && checkRoleOverlap(d, 'OFF')) {
+                    hasOverlap = true;
+                }
+            });
+
+            // Check if consecutive OFF has file upload
+            const isConsecutiveOff = document.getElementById('proofBox').style.display === 'block';
+            const missingProof = isConsecutiveOff && !base64Proof;
+
+            // Disable save button if not filled, overlaps, or missing consecutive proof
+            // Note: Admin overrides the overlap blocks and file constraints
+            if (isUserAdmin) {
+                btnSave.disabled = !allFilled;
+            } else {
+                btnSave.disabled = !allFilled || hasOverlap || missingProof;
+            }
+        }
+
+        // Handle Image preview and conversion to base64
+        function previewFile() {
+            const file = document.getElementById('fileProof').files[0];
+            const preview = document.getElementById('imgPreview');
+
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onloadend = function () {
+                base64Proof = reader.result;
+                preview.src = reader.result;
+                preview.style.display = 'block';
+                updateSaveButtonState();
             }
             reader.readAsDataURL(file);
-            event.target.value = '';
         }
 
-        // ===== INIT ON DOM READY =====
-        document.addEventListener('DOMContentLoaded', function () {
-            // Set default date
-            try {
-                document.getElementById('checkDate').value = getTodayString();
-                loadTimeline();
-                loadTasks();
-            } catch (e) { /* ignore */ }
+        // Save schedule to database
+        function saveSchedule() {
+            const btnSave = document.getElementById('btnSave');
 
-            // Bind events
-            document.getElementById('radio-tasks').addEventListener('change', function() {
-                if(this.checked) loadTasks();
-            });
-            document.getElementById('checkDate').addEventListener('change', function() {
-                loadTimeline();
-                if (document.getElementById('radio-tasks').checked) {
-                    loadTasks();
-                }
-            });
-            document.getElementById('btnAdd').addEventListener('click', addSchedule);
-            document.getElementById('btnSearch').addEventListener('click', searchSchedule);
-            document.getElementById('btnCancelClose').addEventListener('click', function () {
-                document.getElementById('cancelModal').classList.remove('show');
-            });
-            document.getElementById('btnCancelConfirm').addEventListener('click', confirmCancel);
-            document.getElementById('btnEditClose').addEventListener('click', function () {
-                document.getElementById('editModal').classList.remove('show');
-            });
-            document.getElementById('btnEditConfirm').addEventListener('click', confirmEdit);
-        });
+            // Construct payload
+            const targetDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
+            const daysPayload = targetDays.map(d => ({
+                date: d,
+                shift_type: currentSelections[d]
+            }));
+
+            btnSave.disabled = true;
+            btnSave.textContent = 'Đang lưu lịch biểu...';
+            document.getElementById('alertBox').style.display = 'none';
+
+            fetch('/api/timekeep/schedule/save', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-telegram-init-data': initData
+                },
+                body: JSON.stringify({
+                    telegram_id: telegramId,
+                    chat_id: chatId,
+                    action: payloadAction,
+                    ts: payloadTs,
+                    sig: payloadSig,
+                    target_user_id: selectedUserId,
+                    days: daysPayload,
+                    proof_image: base64Proof
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('successScreen').style.display = 'flex';
+                    } else {
+                        showAlert(data.message || 'Lỗi khi lưu lịch làm việc!', true);
+                        btnSave.disabled = false;
+                        btnSave.textContent = 'LƯU LỊCH TUẦN';
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    showAlert('Lỗi kết nối máy chủ!', true);
+                    btnSave.disabled = false;
+                    btnSave.textContent = 'LƯU LỊCH TUẦN';
+                });
+        }
+
+        function showAlert(msg, isError) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.innerHTML = msg;
+            alertBox.className = 'alert ' + (isError ? 'alert-error' : 'alert-success');
+            alertBox.style.display = 'flex';
+        }
+
+        function formatDateString(str) {
+            const d = str.split('-');
+            return `${d[2]}/${d[1]}/${d[0]}`;
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            }
+        }
     </script>
 </body>
 

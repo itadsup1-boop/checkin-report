@@ -16,8 +16,6 @@ CREATE TABLE IF NOT EXISTS telegram_groups (
     telegram_group_id VARCHAR UNIQUE NOT NULL,
     group_name VARCHAR NOT NULL,
     report_keyword VARCHAR DEFAULT '#baocao',
-    kpi_sheet_id VARCHAR,
-    customer_sheet_id VARCHAR,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

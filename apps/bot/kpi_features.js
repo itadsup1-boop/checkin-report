@@ -1,3 +1,5 @@
+import express from 'express';
+import cors from 'cors';
 import { Telegraf } from 'telegraf';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
@@ -63,15 +65,11 @@ if (CUSTOMER_SPREADSHEET_ID) {
 }
 let customerSheetQueue = Promise.resolve();
 
-const bot = new Telegraf(process.env.TELEGRAM_BOT_TOKEN);
 
-import { session, Scenes } from 'telegraf';
-import { reportWizard } from './reportWizard.js';
-import { setupWizard } from './setupWizard.js';
-const stage = new Scenes.Stage([reportWizard, setupWizard]);
-bot.use(session());
-bot.use(stage.middleware());
 let sheetQueue = Promise.resolve();
+
+export function setupKpiBot(bot, botApp) {
+
 
 async function logPenaltyToSheet(user_full_name, employee_code, telegram_id, penalty_type, amount, details) {
     if (SPREADSHEET_ID === 'SPREADSHEET_ID_CHUA_CAI_DAT' || amount <= 0) return;
@@ -1462,7 +1460,7 @@ cron.schedule('* * * * *', async () => {
     }
 });
 
-if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'YOUR_BOT_TOKEN_HERE') {
+// Auto-update Global Menu Button when bot starts
     bot.catch((err, ctx) => {
         console.error(`Lỗi Telegraf cho update ${ctx?.updateType}:`, err);
         process.exit(1); // Ép PM2 khởi động lại để khôi phục polling
@@ -1476,30 +1474,15 @@ if (process.env.TELEGRAM_BOT_TOKEN && process.env.TELEGRAM_BOT_TOKEN !== 'YOUR_B
             web_app: { url: process.env.MINI_APP_URL + "/mini-app/form.html" }
         }
     }).then(() => {
-        console.log('[LOG] Đã tự động cập nhật nút Menu Button với URL mới!');
     }).catch(err => {
         console.error('[ERROR] Không thể cập nhật Menu Button:', err.message);
     });
 
-    // Chạy bot
-    bot.launch().then(() => {
-        console.log("Bot is running and Cron jobs are scheduled.");
-    }).catch(err => {
-        console.error("Lỗi khi khởi động bot:", err);
-        process.exit(1); // Ép PM2 khởi động lại nếu mạng bị kẹt lúc start
-    });
-
-} else {
-    console.log('TELEGRAM_BOT_TOKEN is missing or invalid.');
-}
-
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
 
-import express from 'express';
-import cors from 'cors';
 
-const botApp = express();
+
 botApp.use(cors());
 botApp.use(express.json({ limit: '50mb' }));
 botApp.use(express.urlencoded({ limit: '50mb', extended: true }));
@@ -2689,4 +2672,5 @@ bot.on('photo', async (ctx) => {
     }
 });
 
-botApp.listen(3002, () => console.log('Bot Mini-App Server is running on port 3002'));
+
+}

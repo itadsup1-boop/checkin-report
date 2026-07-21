@@ -1,24 +1,24 @@
 #!/bin/bash
 
 # Di chuyển đến thư mục dự án
-cd /home/giang-adsup/Documents/telegramReport
+cd "/home/giang-adsup/Downloads/Telegram Desktop/telegramReport/telegramReport"
 
-export NODE_OPTIONS=--dns-result-order=ipv4first
+export NODE_OPTIONS="--dns-result-order=ipv4first --no-network-family-autoselection"
 
 echo "🚀 Đang dọn dẹp các tiến trình cũ..."
 pm2 delete kpi-api 2>/dev/null || true
 pm2 delete kpi-bot 2>/dev/null || true
-pkill -f "cloudflared tunnel --url http://localhost:3001" || true
+pm2 delete timekeep-bot 2>/dev/null || true
+pkill -f "cloudflared tunnel --url http://localhost:3002" || true
 
 echo "📦 Đang khởi động API & Web Server (Chạy ngầm)..."
 pm2 start apps/api/index.js --name "kpi-api"
 
-
-echo "🤖 Đang khởi động Telegram Bot (Chạy ngầm)..."
-pm2 start apps/bot/index.js --name "kpi-bot"
+echo "🤖 Đang khởi động Telegram Bot Chấm Công (Chạy ngầm)..."
+pm2 start apps/bot/timekeep_bot.js --name "timekeep-bot"
 
 echo "🌐 Đang khởi động đường hầm mạng Cloudflare..."
-nohup cloudflared tunnel --url http://localhost:3001 > cloudflare.log 2>&1 &
+nohup cloudflared tunnel --url http://localhost:3009 > cloudflare.log 2>&1 &
 
 echo "⏳ Đang cấu hình kết nối mạng (vui lòng đợi 10 giây)..."
 sleep 10
@@ -45,6 +45,6 @@ echo "👉 http://localhost:3001"
 echo "=========================================================="
 echo "💡 Ghi chú:"
 echo "- Để xem trực tiếp tiến trình, gõ: pm2 monit"
-echo "- Để xem lỗi của Bot nếu có, gõ: pm2 logs kpi-bot"
+echo "- Để xem lỗi của Bot nếu có, gõ: pm2 logs timekeep-bot"
 echo "- Để tắt toàn bộ hệ thống, gõ: pm2 stop all"
 echo "=========================================================="

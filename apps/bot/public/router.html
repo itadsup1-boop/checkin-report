@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đang chuyển hướng...</title>
+    <!-- Thêm script của Telegram Web App -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            flex-direction: column;
+        }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid var(--tg-theme-hint-color, #cccccc);
+            border-top: 4px solid var(--tg-theme-button-color, #2481cc);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="spinner"></div>
+    <div id="statusText">Đang tải ứng dụng...</div>
+
+    <script>
+        document.addEventListener("DOMContentLoaded", () => {
+            const tg = window.Telegram.WebApp;
+            tg.ready();
+            tg.expand();
+
+            // Lấy payload từ Telegram start_param
+            let startParam = tg.initDataUnsafe?.start_param;
+
+            if (!startParam) {
+                // Thử lấy từ URL search query nếu đang test ngoài trình duyệt
+                const urlParams = new URLSearchParams(window.location.search);
+                startParam = urlParams.get('startapp') || urlParams.get('tgWebAppStartParam');
+            }
+
+            if (!startParam) {
+                document.getElementById('statusText').innerText = "Lỗi: Không tìm thấy Payload để định tuyến.";
+                return;
+            }
+
+            // Phân tích payload để biết cần chuyển hướng đến trang nào
+            // Payload có dạng action_... 
+            // Ví dụ: register_..., schedule_..., leave_..., checkin_..., stats_..., baocao_...
+            let targetPage = '';
+            
+            if (startParam.startsWith('register')) {
+                targetPage = 'register.html';
+            } else if (startParam.startsWith('schedule')) {
+                targetPage = 'schedule.html';
+            } else if (startParam.startsWith('leave')) {
+                targetPage = 'urgent_leave.html';
+            } else if (startParam.startsWith('checkin')) {
+                targetPage = 'checkin.html';
+            } else if (startParam.startsWith('stats')) {
+                targetPage = 'stats.html';
+            } else if (startParam.startsWith('baocao')) {
+                targetPage = 'form.html';
+            } else {
+                document.getElementById('statusText').innerText = "Lỗi: Payload không hợp lệ hoặc không xác định.";
+                return;
+            }
+
+            // Chuyển hướng sang trang đích và truyền lại payload qua query string
+            window.location.href = `${targetPage}?payload=${startParam}`;
+        });
+    </script>
+</body>
+</html>

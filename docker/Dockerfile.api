@@ -1,0 +1,40 @@
+# ─── Stage 1: Build web-admin ───────────────────────────────
+FROM node:20-alpine AS web-builder
+
+WORKDIR /build/web-admin
+
+# Copy web-admin dependencies
+COPY apps/web-admin/package*.json ./
+RUN npm ci
+
+# Copy web-admin source (sau khi npm ci để không ghi đè node_modules)
+COPY apps/web-admin/src ./src
+COPY apps/web-admin/public ./public
+COPY apps/web-admin/index.html ./
+COPY apps/web-admin/vite.config.js ./
+
+# Build production bundle — dùng node gọi trực tiếp để tránh lỗi permission
+RUN node node_modules/vite/bin/vite.js build
+
+# ─── Stage 2: API Runtime ───────────────────────────────────
+FROM node:20-alpine AS runtime
+
+WORKDIR /app
+
+# Copy root package.json (chứa dependencies cho api & bot)
+COPY package*.json ./
+RUN npm ci --omit=dev
+
+# Copy source code
+COPY apps/api/ ./apps/api/
+COPY packages/ ./packages/
+
+# Copy built web-admin từ stage 1
+COPY --from=web-builder /build/web-admin/dist ./apps/web-admin/dist
+
+# Copy bot public folder (mini-app)
+COPY apps/bot/public/ ./apps/bot/public/
+
+EXPOSE 3000
+
+CMD ["node", "apps/api/index.js"]

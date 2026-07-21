@@ -1,5 +1,71 @@
-/node_modules
+# ============================================================
+# .gitignore — Hệ Thống KPI Telegram Report
+# ============================================================
+
+# --- Môi trường & Bí Mật ---
 .env
-*.json
-hybrid-flame-499905-r2-ccd6aff86787.json
+*.env.local
+*.env.production
+
+# --- Node.js ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Web Admin Build Output ---
+apps/web-admin/dist/
+apps/web-admin/dist-ssr/
+apps/web-admin/tmp/
+
+# --- Logs ---
+*.log
+logs/
+startup.log
+cloudflare.log
+cf_tunnel.log
+cf_err.log
+ngrok.log
+
+# --- Cloudflare Binary (tự download qua install.sh) ---
+cloudflared
 cloudflared.exe
+*.deb
+
+# --- Google Service Account Key (nhạy cảm) ---
+*.json
+!package.json
+!package-lock.json
+
+# --- Backup & Tạm ---
+*.zip
+*.tar.gz
+scratch_*.js
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Editor ---
+.vscode/
+.idea/
+*.suo
+*.sw?
+
+# --- Windows Specific ---
+# Shortcuts (tạo bởi install.bat)
+*.lnk
+# Windows crash dumps
+*.dmp
+# Windows temp files
+~$*
+# npm cache Windows
+.npm/
+# PostgreSQL Windows data dir (nếu cài portable)
+pgsql/data/
+pgsql/
+# cloudflared Windows binary (tự download qua install.bat)
+scripts/windows/cloudflared.exe
+/logs

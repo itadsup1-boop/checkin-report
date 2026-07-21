@@ -1,17 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X } from 'lucide-react';
+import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard } from 'lucide-react';
+import LoginScreen from './LoginScreen.jsx';
+import StaffManagement from './StaffManagement.jsx';
+import CheckinManagement from './CheckinManagement.jsx';
+import ScheduleManagement from './ScheduleManagement.jsx';
+import LeaveManagement from './LeaveManagement.jsx';
+import DashboardTab from './DashboardTab.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('admin_token'));
+
+  const handleLogout = () => {
+    localStorage.removeItem('admin_token');
+    setIsLoggedIn(false);
+  };
+
+  if (!isLoggedIn) {
+    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+  }
+
+  return <Dashboard onLogout={handleLogout} />;
+}
+
+function Dashboard({ onLogout }) {
   const [employees, setEmployees] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
-  
+  const [activeTab, setActiveTab] = useState('dashboard');
+
   // Modal state
   const [showModal, setShowModal] = useState(false);
   const [formData, setFormData] = useState({
@@ -100,17 +121,33 @@ function App() {
     }
   };
 
-  const handleUpdateGroupSettings = async (telegram_group_id, remind_time_1, penalty_kpi, penalty_report, kpi_sheet_id, customer_sheet_id) => {
+  const handleExport = async () => {
     try {
-      await axios.put(`${API_URL}/groups/${telegram_group_id}/settings`, {
-        remind_time_1,
-        penalty_missing_kpi: penalty_kpi,
-        penalty_missing_report: penalty_report,
-        kpi_sheet_id,
-        customer_sheet_id,
+      const res = await axios.get('http://localhost:3002/api/export/today', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err) {
+      console.error('[Export Error]', err);
+      alert('Xuất dữ liệu thất bại');
+    }
+  };
+
+  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time) => {
+    try {
+      await axios.put(`${API_URL}/tk_group_settings/${telegram_group_id}`, {
+        penalty_under_15,
+        penalty_under_90,
+        penalty_over_90,
+        shift_1_time,
+        shift_2_time,
         auto_reminder_enabled: true
       });
-      setToast('🔔 Đã cập nhật cài đặt thành công!');
+      setToast('✅ Đã cập nhật cài đặt thành công!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
@@ -118,8 +155,8 @@ function App() {
     }
   };
 
-  const filteredEmployees = employees.filter(emp => 
-    emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredEmployees = employees.filter(emp =>
+    emp.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     emp.employee_code?.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
@@ -143,14 +180,20 @@ function App() {
           </div>
         </div>
         <nav className="flex-1 px-4 py-6 space-y-2">
-          <NavItem icon={<BarChart3 />} label="Tổng quan" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
+
+          <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
+          <NavItem icon={<UserCheck />} label="Nhân sự (Chấm công)" active={activeTab === 'staff'} onClick={() => setActiveTab('staff')} />
+          <NavItem icon={<ClipboardCheck />} label="Điểm danh" active={activeTab === 'checkins'} onClick={() => setActiveTab('checkins')} />
+          <NavItem icon={<CalendarDays />} label="Lịch làm việc" active={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')} />
+          <NavItem icon={<CalendarX />} label="Nghỉ phép & Quỹ phép" active={activeTab === 'leave'} onClick={() => setActiveTab('leave')} />
           <NavItem icon={<Settings />} label="Cấu hình hệ thống" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
         </nav>
-        <div className="p-6 m-4 bg-gradient-to-br from-blue-600/20 to-cyan-600/20 rounded-2xl border border-cyan-500/20">
-          <h4 className="text-sm font-semibold text-cyan-400 mb-2">Pro Version</h4>
-          <p className="text-xs text-slate-400 mb-4">Mở khóa tính năng AI phân tích hiệu suất nhân sự.</p>
-          <button className="w-full py-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg text-sm font-medium transition-colors border border-cyan-500/30">
-            Nâng cấp ngay
+        <div className="p-4 m-4">
+          <button
+            onClick={onLogout}
+            className="w-full py-2.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-xl text-sm font-medium transition-colors border border-rose-500/20 flex items-center justify-center gap-2"
+          >
+            <LogOut className="w-4 h-4" /> Đăng xuất
           </button>
         </div>
       </aside>
@@ -165,9 +208,9 @@ function App() {
           </div>
           <div className="hidden md:flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-96 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
             <Search className="w-5 h-5 text-slate-500" />
-            <input 
-              type="text" 
-              placeholder="Tìm kiếm nhân viên..." 
+            <input
+              type="text"
+              placeholder="Tìm kiếm nhân viên..."
               className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -190,193 +233,212 @@ function App() {
             <>
               <div className="flex justify-between items-end mb-8">
                 <div>
-              <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Hiệu suất hôm nay</h2>
-              <p className="text-slate-400 text-sm">Cập nhật lúc: {new Date().toLocaleTimeString()}</p>
-            </div>
-            <div className="flex gap-3">
-              <button 
-                onClick={() => setShowModal(true)}
-                className="hidden md:flex items-center gap-2 px-6 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-medium rounded-xl transition-all"
-              >
-                <Plus className="w-4 h-4" />
-                Thêm nhân viên
-              </button>
-              <button 
-                onClick={handleRemindAll}
-                className="hidden md:flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
-              >
-                <Bell className="w-4 h-4" />
-                Nhắc nhở tự động
-              </button>
-            </div>
-          </div>
-
-          {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
-            <StatCard 
-              title="Tổng nhân sự" 
-              value={totalEmp} 
-              icon={<Users className="w-6 h-6 text-blue-400" />} 
-              trend="Tổng cộng" 
-              trendUp={true}
-              bg="from-blue-500/10 to-blue-600/5"
-              borderColor="border-blue-500/20"
-            />
-            <StatCard 
-              title="Hoàn thành KPI" 
-              value={passedKPI} 
-              icon={<CheckCircle className="w-6 h-6 text-emerald-400" />} 
-              trend="Tỷ lệ: " 
-              suffix={`${completionRate}%`}
-              trendUp={completionRate >= 50}
-              bg="from-emerald-500/10 to-emerald-600/5"
-              borderColor="border-emerald-500/20"
-            />
-            <StatCard 
-              title="Chưa đạt KPI" 
-              value={failedKPI} 
-              icon={<AlertCircle className="w-6 h-6 text-rose-400" />} 
-              trend="Cần đốc thúc"
-              trendUp={false}
-              bg="from-rose-500/10 to-rose-600/5"
-              borderColor="border-rose-500/20"
-            />
-            <StatCard 
-              title="Điểm hiệu suất" 
-              value="8.4" 
-              icon={<Activity className="w-6 h-6 text-purple-400" />} 
-              trend="+0.3 điểm"
-              trendUp={true}
-              bg="from-purple-500/10 to-purple-600/5"
-              borderColor="border-purple-500/20"
-            />
-          </div>
-
-          {/* Table Section */}
-          <div className="bg-[#111827]/60 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl">
-            <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <h3 className="text-xl font-bold text-white">Danh sách nhân sự ({totalEmp})</h3>
-              <div className="flex gap-2">
-                <button className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5">
-                  Xuất Excel
-                </button>
+                  <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Hiệu suất hôm nay</h2>
+                  <p className="text-slate-400 text-sm">Cập nhật lúc: {new Date().toLocaleTimeString()}</p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowModal(true)}
+                    className="hidden md:flex items-center gap-2 px-6 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 font-medium rounded-xl transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Thêm nhân viên
+                  </button>
+                  <button
+                    onClick={handleRemindAll}
+                    className="hidden md:flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    <Bell className="w-4 h-4" />
+                    Nhắc nhở tự động
+                  </button>
+                </div>
               </div>
-            </div>
-            
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-white/[0.02] text-slate-400 text-xs uppercase tracking-wider">
-                    <th className="py-4 px-6 font-medium">Mã NV</th>
-                    <th className="py-4 px-6 font-medium">Nhân viên</th>
-                    <th className="py-4 px-6 font-medium">Vai trò</th>
-                    <th className="py-4 px-6 font-medium">Nhóm chat</th>
-                    <th className="py-4 px-6 font-medium text-center">Nộp báo cáo</th>
-                    <th className="py-4 px-6 font-medium text-center">KPI nhân viên</th>
-                    <th className="py-4 px-6 font-medium text-center">Tiến độ (Thực tế)</th>
-                    <th className="py-4 px-6 font-medium text-right">Hành động</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-sm">
-                  {loading ? (
-                    <tr>
-                      <td colSpan="8" className="py-12 text-center">
-                        <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-                      </td>
-                    </tr>
-                  ) : filteredEmployees.length === 0 ? (
-                    <tr>
-                      <td colSpan="8" className="py-12 text-center text-slate-500">
-                        Chưa có nhân viên nào. Hãy bấm "Thêm nhân viên".
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredEmployees.map((emp, idx) => {
-                      const reqKpi = emp.kpi_required || 0;
-                      const actKpi = emp.kpi_actual || 0;
-                      const isPassed = reqKpi > 0 && actKpi >= reqKpi;
-                      const progress = reqKpi > 0 ? Math.min(100, Math.round((actKpi / reqKpi) * 100)) : 0;
-                      
-                      return (
-                        <tr key={emp.id || idx} className="hover:bg-white/[0.02] transition-colors group">
-                          <td className="py-4 px-6 font-medium text-slate-300">
-                            #{emp.employee_code}
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs">
-                                {emp.full_name?.charAt(0) || 'U'}
-                              </div>
-                              <p className="font-semibold text-white">{emp.full_name}</p>
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-slate-300">
-                            <span className="px-2.5 py-1 bg-white/5 rounded-md text-xs border border-white/5">{emp.position || 'Sale'}</span>
-                          </td>
-                          <td className="py-4 px-6 text-slate-300">
-                            {emp.group_name ? (
-                              <span className="px-2.5 py-1 bg-cyan-500/10 text-cyan-400 rounded-md text-xs border border-cyan-500/20">{emp.group_name}</span>
-                            ) : (
-                              <span className="text-slate-500 text-xs italic">Chưa vào nhóm</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 text-center">
-                            <button
-                              onClick={() => handleToggleReportRequirement(emp.id, emp.need_report !== false)}
-                              className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${
-                                emp.need_report !== false
-                                  ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25'
-                                  : 'bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/25'
-                              }`}
-                            >
-                              {emp.need_report !== false ? 'Bắt buộc' : 'Miễn báo cáo'}
-                            </button>
-                          </td>
-                          <td className="py-4 px-6 text-center">
-                            <input 
-                              type="number" 
-                              className="w-20 bg-[#0B0F19] border border-white/10 rounded-lg px-2 py-1 text-center text-white focus:outline-none focus:border-cyan-500/50"
-                              defaultValue={reqKpi}
-                              onBlur={(e) => handleUpdateKpi(emp.id, e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                  handleUpdateKpi(emp.id, e.target.value);
-                                  e.target.blur();
-                                }
-                              }}
-                            />
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex flex-col items-center gap-1.5 w-32 mx-auto">
-                              <div className="flex justify-between w-full text-xs">
-                                <span className="font-medium text-white">{actKpi}</span>
-                                <span className="text-slate-500">/ {reqKpi}</span>
-                              </div>
-                              <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
-                                <div 
-                                  className={`h-full rounded-full ${isPassed ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`}
-                                  style={{ width: `${progress}%` }}
-                                ></div>
-                              </div>
-                            </div>
-                          </td>
-                          <td className="py-4 px-6 text-right">
-                            <button 
-                              onClick={() => handleDeleteEmployee(emp.id)}
-                              className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-medium transition-all border border-rose-500/20 flex items-center gap-1 ml-auto"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" /> Xóa
-                            </button>
+
+              {/* Stats Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
+                <StatCard
+                  title="Tổng nhân sự"
+                  value={totalEmp}
+                  icon={<Users className="w-6 h-6 text-blue-400" />}
+                  trend="Tổng cộng"
+                  trendUp={true}
+                  bg="from-blue-500/10 to-blue-600/5"
+                  borderColor="border-blue-500/20"
+                />
+                <StatCard
+                  title="Hoàn thành KPI"
+                  value={passedKPI}
+                  icon={<CheckCircle className="w-6 h-6 text-emerald-400" />}
+                  trend="Tỷ lệ: "
+                  suffix={`${completionRate}%`}
+                  trendUp={completionRate >= 50}
+                  bg="from-emerald-500/10 to-emerald-600/5"
+                  borderColor="border-emerald-500/20"
+                />
+                <StatCard
+                  title="Chưa đạt KPI"
+                  value={failedKPI}
+                  icon={<AlertCircle className="w-6 h-6 text-rose-400" />}
+                  trend="Cần đốc thúc"
+                  trendUp={false}
+                  bg="from-rose-500/10 to-rose-600/5"
+                  borderColor="border-rose-500/20"
+                />
+                <StatCard
+                  title="Điểm hiệu suất"
+                  value="8.4"
+                  icon={<Activity className="w-6 h-6 text-purple-400" />}
+                  trend="+0.3 điểm"
+                  trendUp={true}
+                  bg="from-purple-500/10 to-purple-600/5"
+                  borderColor="border-purple-500/20"
+                />
+              </div>
+
+              {/* Table Section */}
+              <div className="bg-[#111827]/60 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl">
+                <div className="p-6 border-b border-white/5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                  <h3 className="text-xl font-bold text-white">Danh sách nhân sự ({totalEmp})</h3>
+                  <div className="flex gap-2">
+                    <button onClick={handleExport} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg text-sm font-medium transition-colors border border-white/5">
+                      Xuất Excel
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-white/[0.02] text-slate-400 text-xs uppercase tracking-wider">
+                        <th className="py-4 px-6 font-medium">Mã NV</th>
+                        <th className="py-4 px-6 font-medium">Nhân viên</th>
+                        <th className="py-4 px-6 font-medium">Vai trò</th>
+                        <th className="py-4 px-6 font-medium">Nhóm chat</th>
+                        <th className="py-4 px-6 font-medium text-center">Nộp báo cáo</th>
+                        <th className="py-4 px-6 font-medium text-center">KPI nhân viên</th>
+                        <th className="py-4 px-6 font-medium text-center">Tiến độ (Thực tế)</th>
+                        <th className="py-4 px-6 font-medium text-right">Hành động</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5 text-sm">
+                      {loading ? (
+                        <tr>
+                          <td colSpan="8" className="py-12 text-center">
+                            <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
                           </td>
                         </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          </>
+                      ) : filteredEmployees.length === 0 ? (
+                        <tr>
+                          <td colSpan="8" className="py-12 text-center text-slate-500">
+                            Chưa có nhân viên nào. Hãy bấm "Thêm nhân viên".
+                          </td>
+                        </tr>
+                      ) : (
+                        filteredEmployees.map((emp, idx) => {
+                          const reqKpi = emp.kpi_required || 0;
+                          const actKpi = emp.kpi_actual || 0;
+                          const isPassed = reqKpi > 0 && actKpi >= reqKpi;
+                          const progress = reqKpi > 0 ? Math.min(100, Math.round((actKpi / reqKpi) * 100)) : 0;
+
+                          return (
+                            <tr key={emp.id || idx} className="hover:bg-white/[0.02] transition-colors group">
+                              <td className="py-4 px-6 font-medium text-slate-300">
+                                #{emp.employee_code}
+                              </td>
+                              <td className="py-4 px-6">
+                                <div className="flex items-center gap-3">
+                                  <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 flex items-center justify-center text-white font-bold text-xs">
+                                    {emp.full_name?.charAt(0) || 'U'}
+                                  </div>
+                                  <p className="font-semibold text-white">{emp.full_name}</p>
+                                </div>
+                              </td>
+                              <td className="py-4 px-6 text-slate-300">
+                                <span className="px-2.5 py-1 bg-white/5 rounded-md text-xs border border-white/5">{emp.position || 'Sale'}</span>
+                              </td>
+                              <td className="py-4 px-6 text-slate-300">
+                                {emp.group_name ? (
+                                  <span className="px-2.5 py-1 bg-cyan-500/10 text-cyan-400 rounded-md text-xs border border-cyan-500/20">{emp.group_name}</span>
+                                ) : (
+                                  <span className="text-slate-500 text-xs italic">Chưa vào nhóm</span>
+                                )}
+                              </td>
+                              <td className="py-4 px-6 text-center">
+                                <button
+                                  onClick={() => handleToggleReportRequirement(emp.id, emp.need_report !== false)}
+                                  className={`px-2.5 py-1 rounded-md text-xs font-semibold border transition-all ${emp.need_report !== false
+                                    ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/25'
+                                    : 'bg-slate-500/10 text-slate-400 border-slate-500/20 hover:bg-slate-500/25'
+                                    }`}
+                                >
+                                  {emp.need_report !== false ? 'Bắt buộc' : 'Miễn báo cáo'}
+                                </button>
+                              </td>
+                              <td className="py-4 px-6 text-center">
+                                <input
+                                  type="number"
+                                  className="w-20 bg-[#0B0F19] border border-white/10 rounded-lg px-2 py-1 text-center text-white focus:outline-none focus:border-cyan-500/50"
+                                  defaultValue={reqKpi}
+                                  onBlur={(e) => handleUpdateKpi(emp.id, e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      handleUpdateKpi(emp.id, e.target.value);
+                                      e.target.blur();
+                                    }
+                                  }}
+                                />
+                              </td>
+                              <td className="py-4 px-6">
+                                <div className="flex flex-col items-center gap-1.5 w-32 mx-auto">
+                                  <div className="flex justify-between w-full text-xs">
+                                    <span className="font-medium text-white">{actKpi}</span>
+                                    <span className="text-slate-500">/ {reqKpi}</span>
+                                  </div>
+                                  <div className="h-1.5 w-full bg-slate-800 rounded-full overflow-hidden">
+                                    <div
+                                      className={`h-full rounded-full ${isPassed ? 'bg-gradient-to-r from-emerald-400 to-green-500' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`}
+                                      style={{ width: `${progress}%` }}
+                                    ></div>
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="py-4 px-6 text-right">
+                                <button
+                                  onClick={() => handleDeleteEmployee(emp.id)}
+                                  className="px-3 py-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 rounded-lg text-xs font-medium transition-all border border-rose-500/20 flex items-center gap-1 ml-auto"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Xóa
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'dashboard' && (
+            <DashboardTab />
+          )}
+
+          {activeTab === 'staff' && (
+            <StaffManagement />
+          )}
+
+          {activeTab === 'checkins' && (
+            <CheckinManagement />
+          )}
+
+          {activeTab === 'schedules' && (
+            <ScheduleManagement />
+          )}
+
+          {activeTab === 'leave' && (
+            <LeaveManagement />
           )}
 
           {activeTab === 'settings' && (
@@ -398,45 +460,45 @@ function App() {
             <form onSubmit={handleAddEmployee} className="p-6 space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-400 mb-1">Họ và tên</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   required
                   className="w-full bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
                   value={formData.full_name}
-                  onChange={e => setFormData({...formData, full_name: e.target.value})}
+                  onChange={e => setFormData({ ...formData, full_name: e.target.value })}
                   placeholder="VD: Nguyễn Văn A"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Mã nhân viên</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     className="w-full bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
                     value={formData.employee_code}
-                    onChange={e => setFormData({...formData, employee_code: e.target.value})}
+                    onChange={e => setFormData({ ...formData, employee_code: e.target.value })}
                     placeholder="VD: NV001"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Chỉ tiêu KPI mặc định</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
                     className="w-full bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50"
                     value={formData.current_kpi_target}
-                    onChange={e => setFormData({...formData, current_kpi_target: e.target.value})}
+                    onChange={e => setFormData({ ...formData, current_kpi_target: e.target.value })}
                   />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Phòng ban</label>
-                  <select 
+                  <select
                     className="w-full bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50"
                     value={formData.department}
-                    onChange={e => setFormData({...formData, department: e.target.value})}
+                    onChange={e => setFormData({ ...formData, department: e.target.value })}
                   >
                     <option>Sales</option>
                     <option>CSKH</option>
@@ -445,10 +507,10 @@ function App() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-slate-400 mb-1">Vị trí</label>
-                  <select 
+                  <select
                     className="w-full bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50"
                     value={formData.position}
-                    onChange={e => setFormData({...formData, position: e.target.value})}
+                    onChange={e => setFormData({ ...formData, position: e.target.value })}
                   >
                     <option>Telesale</option>
                     <option>Team Lead</option>
@@ -457,14 +519,14 @@ function App() {
                 </div>
               </div>
               <div className="mt-6 flex justify-end gap-3">
-                <button 
-                  type="button" 
+                <button
+                  type="button"
                   onClick={() => setShowModal(false)}
                   className="px-4 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg text-sm font-medium transition-colors"
                 >
                   Hủy bỏ
                 </button>
-                <button 
+                <button
                   type="submit"
                   className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-colors shadow-lg shadow-cyan-500/25"
                 >
@@ -489,49 +551,55 @@ function App() {
 
 function SettingsTab({ groups, handleUpdateGroupSettings }) {
   const [times, setTimes] = useState({});
-  const [penalties, setPenalties] = useState({});
-  const [penaltiesReport, setPenaltiesReport] = useState({});
-  const [kpiSheets, setKpiSheets] = useState({});
-  const [customerSheets, setCustomerSheets] = useState({});
+  const [shift1Times, setShift1Times] = useState({});
+  const [shift2Times, setShift2Times] = useState({});
+  // New late penalties (under 15, under 90, over 90 mins)
+  const [latePenalties, setLatePenalties] = useState({});
 
   useEffect(() => {
     const initialTimes = {};
-    const initialPenalties = {};
-    const initialReport = {};
-    const initialKpiSheets = {};
-    const initialCustomerSheets = {};
-    
+    const initialShift1 = {};
+    const initialShift2 = {};
+    const initialLatePenalties = {};
+
     groups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
-      initialPenalties[g.telegram_group_id] = g.penalty_missing_kpi != null ? g.penalty_missing_kpi : 100000;
-      initialReport[g.telegram_group_id] = g.penalty_missing_report != null ? g.penalty_missing_report : 100000;
-      initialKpiSheets[g.telegram_group_id] = g.kpi_sheet_id || '';
-      initialCustomerSheets[g.telegram_group_id] = g.customer_sheet_id || '';
+      // Default late penalties (can be customized later)
+      initialLatePenalties[g.telegram_group_id] = {
+        under15: g.penalty_under_15 != null ? g.penalty_under_15 : 20000,
+        under90: g.penalty_under_90 != null ? g.penalty_under_90 : 2000,
+        over90: g.penalty_over_90 != null ? g.penalty_over_90 : 200000
+      };
+      initialShift1[g.telegram_group_id] = (g.shift_1_time || '08:00:00').substring(0, 5);
+      initialShift2[g.telegram_group_id] = (g.shift_2_time || '13:30:00').substring(0, 5);
     });
-    
+
     setTimes(initialTimes);
-    setPenalties(initialPenalties);
-    setPenaltiesReport(initialReport);
-    setKpiSheets(initialKpiSheets);
-    setCustomerSheets(initialCustomerSheets);
+    setLatePenalties(initialLatePenalties);
+    setShift1Times(initialShift1);
+    setShift2Times(initialShift2);
   }, [groups]);
 
-  const handleTimeChange = (groupId, value) => setTimes(prev => ({...prev, [groupId]: value}));
-  const handlePenaltyChange = (groupId, value) => setPenalties(prev => ({...prev, [groupId]: value}));
-  const handlePenaltyReportChange = (groupId, value) => setPenaltiesReport(prev => ({...prev, [groupId]: value}));
-  const handleKpiSheetChange = (groupId, value) => setKpiSheets(prev => ({...prev, [groupId]: value}));
-  const handleCustomerSheetChange = (groupId, value) => setCustomerSheets(prev => ({...prev, [groupId]: value}));
+  const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
+  const handleShift1Change = (groupId, value) => setShift1Times(prev => ({ ...prev, [groupId]: value }));
+  const handleShift2Change = (groupId, value) => setShift2Times(prev => ({ ...prev, [groupId]: value }));
+  const handleLatePenaltyChange = (groupId, field, value) => {
+    setLatePenalties(prev => ({
+      ...prev,
+      [groupId]: { ...(prev[groupId] || {}), [field]: value }
+    }));
+  };
 
   const handleSave = (groupId) => {
-    const timeValue = times[groupId];
-    const penaltyValue = parseInt(penalties[groupId]) || 0;
-    const reportValue = parseInt(penaltiesReport[groupId]) || 0;
-    const kpiSheetValue = kpiSheets[groupId];
-    const customerSheetValue = customerSheets[groupId];
-    
-    if (timeValue) {
-      handleUpdateGroupSettings(groupId, timeValue + ':00', penaltyValue, reportValue, kpiSheetValue, customerSheetValue);
-    }
+    const shift1Value = shift1Times[groupId] || '08:00';
+    const shift2Value = shift2Times[groupId] || '13:30';
+    const penalties = latePenalties[groupId] || {};
+    const under15 = parseInt(penalties.under15) || 0;
+    const under90 = parseInt(penalties.under90) || 0;
+    const over90 = parseInt(penalties.over90) || 0;
+
+    // No reminder time field any more
+    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00');
   };
 
   return (
@@ -539,11 +607,11 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
       <div className="mb-6">
         <h3 className="text-xl font-bold text-white flex items-center gap-2"><Settings className="w-6 h-6 text-cyan-400" /> Cấu hình nhắc nhở các nhóm</h3>
         <p className="text-slate-400 text-sm mt-2 flex items-center gap-2">
-          <Activity className="w-4 h-4 text-emerald-400" /> 
+          <Activity className="w-4 h-4 text-emerald-400" />
           Hệ thống quét tự động: Bot sẽ kiểm tra thời gian <b>đúng 1 phút / lần</b> để gửi nhắc nhở cực kỳ chuẩn xác.
         </p>
       </div>
-      
+
       {groups.length === 0 ? (
         <p className="text-slate-400">Chưa có nhóm nào kết nối. Vui lòng thêm bot vào nhóm và gõ lệnh /setup.</p>
       ) : (
@@ -555,54 +623,53 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
                 <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
               </div>
               <div className="flex items-end gap-3 flex-wrap">
-                <div className="flex flex-col w-full md:w-auto">
-                  <label className="text-xs text-slate-400 mb-1">ID Sheet Lịch Khách</label>
-                  <input 
-                    type="text" 
-                    placeholder="Để trống = Mặc định"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full md:w-48"
-                    value={customerSheets[group.telegram_group_id] || ''}
-                    onChange={(e) => handleCustomerSheetChange(group.telegram_group_id, e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col w-full md:w-auto">
-                  <label className="text-xs text-slate-400 mb-1">ID Sheet KPI</label>
-                  <input 
-                    type="text" 
-                    placeholder="Để trống = Mặc định"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full md:w-48"
-                    value={kpiSheets[group.telegram_group_id] || ''}
-                    onChange={(e) => handleKpiSheetChange(group.telegram_group_id, e.target.value)}
-                  />
-                </div>
+
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Giờ nhắc báo cáo</label>
-                  <input 
-                    type="time" 
+                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
+                  <input
+                    type="time"
                     className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
-                    value={times[group.telegram_group_id] || ''}
-                    onChange={(e) => handleTimeChange(group.telegram_group_id, e.target.value)}
+                    value={shift1Times[group.telegram_group_id] || ''}
+                    onChange={(e) => handleShift1Change(group.telegram_group_id, e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt vi phạm (Thiếu KPI/Ảnh)</label>
-                  <input 
+                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
+                  <input
+                    type="time"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
+                    value={shift2Times[group.telegram_group_id] || ''}
+                    onChange={(e) => handleShift2Change(group.telegram_group_id, e.target.value)}
+                  />
+                </div>
+                <div className="flex flex-col">
+                  <label className="text-xs text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
+                  <input
                     type="number" min="0" step="1000"
                     className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={penalties[group.telegram_group_id] || 0}
-                    onChange={(e) => handlePenaltyChange(group.telegram_group_id, e.target.value)}
+                    value={latePenalties[group.telegram_group_id]?.under15 || ''}
+                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt Trốn Báo Cáo (VNĐ)</label>
-                  <input 
+                  <label className="text-xs text-slate-400 mb-1">Phạt muộn đến dưới 90 phút</label>
+                  <input
                     type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-40 text-red-400 font-bold"
-                    value={penaltiesReport[group.telegram_group_id] || 0}
-                    onChange={(e) => handlePenaltyReportChange(group.telegram_group_id, e.target.value)}
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
+                    value={latePenalties[group.telegram_group_id]?.under90 || ''}
+                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
                   />
                 </div>
-                <button 
+                <div className="flex flex-col">
+                  <label className="text-xs text-slate-400 mb-1">Phạt muộn 90 phút trở lên</label>
+                  <input
+                    type="number" min="0" step="1000"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
+                    value={latePenalties[group.telegram_group_id]?.over90 || ''}
+                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
+                  />
+                </div>
+                <button
                   onClick={() => handleSave(group.telegram_group_id)}
                   className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 ml-2"
                 >
@@ -619,11 +686,10 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
 
 function NavItem({ icon, label, active, onClick }) {
   return (
-    <a href="#" onClick={(e) => { e.preventDefault(); onClick && onClick(); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${
-      active 
-        ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/5 text-cyan-400 border border-cyan-500/20 shadow-inner' 
-        : 'text-slate-400 hover:bg-white/5 hover:text-white'
-    }`}>
+    <a href="#" onClick={(e) => { e.preventDefault(); onClick && onClick(); }} className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all duration-200 ${active
+      ? 'bg-gradient-to-r from-cyan-500/10 to-blue-500/5 text-cyan-400 border border-cyan-500/20 shadow-inner'
+      : 'text-slate-400 hover:bg-white/5 hover:text-white'
+      }`}>
       {React.cloneElement(icon, { className: `w-5 h-5 ${active ? 'text-cyan-400' : 'text-slate-500'}` })}
       {label}
     </a>
