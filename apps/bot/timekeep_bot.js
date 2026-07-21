@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, session, Scenes } from 'telegraf';
 import crypto from 'crypto';
 import express from 'express';
 import cors from 'cors';
@@ -14,7 +14,8 @@ import { google } from 'googleapis';
 import ExcelJS from 'exceljs';
 import { initLogger, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import { setupKpiBot } from './kpi_features.js';
-
+import { reportWizard } from './reportWizard.js';
+import { setupWizard } from './setupWizard.js';
 // Load environment variables
 dotenv.config({ override: true });
 
@@ -33,6 +34,9 @@ if (!botToken) {
 }
 
 const bot = new Telegraf(botToken);
+const stage = new Scenes.Stage([reportWizard, setupWizard]);
+bot.use(session());
+bot.use(stage.middleware());
 const botApp = express();
 botApp.disable('etag');
 
@@ -882,7 +886,7 @@ botApp.post('/api/timekeep/checkin/save', async (req, res) => {
 
 
 // API endpoint to update group_settings (used by Admin UI)
-botApp.put('/api/group_settings/:telegram_group_id', async (req, res) => {
+botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
     try {
         const { telegram_group_id } = req.params;
         const {
@@ -891,14 +895,20 @@ botApp.put('/api/group_settings/:telegram_group_id', async (req, res) => {
             penalty_over_90,
             shift_1_time,
             shift_2_time,
-            auto_reminder_enabled = true
+            auto_reminder_enabled = true,
+            bot_role,
+            remind_time_1 = '17:00:00',
+            photo_deadline_minutes = 60,
+            penalty_missing_kpi = 100000,
+            penalty_per_photo = 20000,
+            penalty_missing_report = 100000
         } = req.body;
 
-        // Đảm bảo tồn tại nhóm trong telegram_groups (FK)
+        // Cập nhật hoặc tạo mới nhóm và gán bot_role
         await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2)
-       ON CONFLICT (telegram_group_id) DO NOTHING`,
-            [telegram_group_id, `Group ${telegram_group_id}`]
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role) VALUES ($1, $2, $3)
+             ON CONFLICT (telegram_group_id) DO UPDATE SET bot_role = EXCLUDED.bot_role`,
+            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null]
         );
 
         const checkRes = await pool.query(
@@ -968,16 +978,18 @@ async function startHandler(ctx) {
             const groupId = ctx.chat.id.toString();
 
             // Auto-update/insert group details
-            await pool.query(
-                'INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2) ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = EXCLUDED.group_name',
+            const groupRes = await pool.query(
+                'INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2) ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = EXCLUDED.group_name RETURNING bot_role',
                 [groupId, groupName]
             );
+            const botRole = groupRes.rows[0]?.bot_role;
 
             // Sinh Signed Payload và link t.me/?startapp= để mở WebApp
             const botUsername = ctx.botInfo?.username || process.env.BOT_USERNAME || 'bot';
             const appShortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
 
             const regPayload = createSignedPayload('register', groupId);
+            const schedclientPayload = createSignedPayload('scheduleclient', groupId);
             const schedPayload = createSignedPayload('schedule', groupId);
             const leavePayload = createSignedPayload('leave', groupId);
             const checkinPayload = createSignedPayload('checkin', groupId);
@@ -985,37 +997,76 @@ async function startHandler(ctx) {
             const baocaoPayload = createSignedPayload('baocao', groupId);
 
             const registerUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${regPayload}`;
+            const scheduleclientUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${schedclientPayload}`;
             const scheduleUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${schedPayload}`;
             const leaveUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${leavePayload}`;
             const checkinUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${checkinPayload}`;
             const statsUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${statsPayload}`;
             const baocaoUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${baocaoPayload}`;
 
-            await ctx.reply(
-                `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
-                `Vui lòng chọn chức năng chấm công:`,
-                {
-                    parse_mode: 'HTML',
-                    reply_markup: {
-                        inline_keyboard: [
-                            [
-                                { text: '👤 Đăng ký tài khoản', url: registerUrl },
-                                { text: '📝 Điền Báo Cáo KPI', url: baocaoUrl }
-                            ],
-                            [
-                                { text: '📸 Check-in (Video)', url: checkinUrl },
-                                { text: '📅 Đặt Lịch / Check Lịch', url: scheduleUrl }
-                            ],
-                            [
-                                { text: '🚨 Xin nghỉ đột xuất / Đi muộn', url: leaveUrl }
-                            ],
-                            [
-                                { text: '📊 Lịch & Đi muộn tháng này', url: statsUrl }
+            // For report bot 'Điền form báo cáo' and 'Cập nhật báo cáo' URLs, we use dmUrl from kpi_features (which is a standard t.me short link)
+            const token = process.env.TELEGRAM_BOT_TOKEN || '';
+            const ts = Date.now();
+            const schedDataString = `schedule:${ctx.chat.id}:${ts}`;
+            const schedSig = crypto.createHmac('sha256', token).update(schedDataString).digest('hex');
+            const schedclientSig = crypto.createHmac('sha256', token).update(`scheduleclient:${ctx.chat.id}:${ts}`).digest('hex');
+            const scheduleclientUrl2 = `https://t.me/${botUsername}/${appShortName}?startapp=scheduleclient_${ctx.chat.id}_${ts}_${schedclientSig}`;
+            
+            // Generate dmUrl (Direct Message URL) for Report Form
+            const dmUrl = `https://t.me/${botUsername}`; // Used for 'Điền Form Báo Cáo' which typically opens PM
+
+            if (!botRole) {
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `⚠️ Nhóm chưa được phân quyền. Vui lòng liên hệ Admin để set quyền cho Bot trong nhóm này.`,
+                    { parse_mode: 'HTML' }
+                );
+            } else if (botRole === 'timekeep') {
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `Vui lòng chọn chức năng chấm công:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👤 Đăng ký tài khoản', url: registerUrl },
+                                    { text: '📸 Check-in (Video)', url: checkinUrl }
+                                ],
+                                [
+                                    { text: '📅 Đăng ký lịch tuần', url: scheduleUrl },
+                                    { text: '🚨 Xin nghỉ đột xuất / Đi muộn', url: leaveUrl }
+                                ],
+                                [
+                                    { text: '📊 Lịch & Đi muộn tháng này', url: statsUrl }
+                                ]
                             ]
-                        ]
+                        }
                     }
-                }
-            );
+                );
+            } else if (botRole === 'report') {
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `Vui lòng chọn chức năng báo cáo:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' }
+                                ],
+                                [
+                                    { text: '📝 Điền Báo Cáo KPI (Form)', url: dmUrl }
+                                ],
+                                [
+                                    { text: '🔄 Cập Nhật Báo Cáo', callback_data: 'CHECK_UPDATE_REPORT' },
+                                    { text: '📅 Đặt Lịch / Check Lịch', url: scheduleclientUrl2 }
+                                ]
+                            ]
+                        }
+                    }
+                );
+            }
         } else {
             // Private Chat Flow
             const startPayload = ctx.startPayload;
@@ -1137,7 +1188,7 @@ async function startHandler(ctx) {
 }
 
 bot.start(startHandler);
-bot.command(['app', 'menu', 'setup', 'chamcong'], startHandler);
+bot.command(['app', 'menu', 'setup', 'chamcong', 'form', 'lamviec', 'tienich'], startHandler);
 // bot.command('schedule', startHandler);
 // bot.command('calendar', startHandler);
 

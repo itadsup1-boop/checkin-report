@@ -1,66 +1,48 @@
-2026-07-21T03:08:51Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
-2026-07-21T03:08:51Z INF Requesting new quick Tunnel on trycloudflare.com...
-2026-07-21T03:08:54Z INF +--------------------------------------------------------------------------------------------+
-2026-07-21T03:08:54Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
-2026-07-21T03:08:54Z INF |  https://casa-lover-realize-bee.trycloudflare.com                                          |
-2026-07-21T03:08:54Z INF +--------------------------------------------------------------------------------------------+
-2026-07-21T03:08:54Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
-2026-07-21T03:08:54Z INF Version 2026.5.0 (Checksum 0095e46fdc88855d801c4d304cb1f5dd4bd656116c47ab94c2ad0ae7cda1c7ec)
-2026-07-21T03:08:54Z INF GOOS: linux, GOVersion: go1.26.2, GoArch: amd64
-2026-07-21T03:08:54Z INF Settings: map[ha-connections:1 protocol:quic url:http://localhost:3009]
-2026-07-21T03:08:54Z INF cloudflared will not automatically update if installed by a package manager.
-2026-07-21T03:08:54Z INF Generated Connector ID: f47a21ba-94c6-4a78-8706-9aec95fa0e6f
-2026-07-21T03:08:54Z INF Initial protocol quic
-2026-07-21T03:08:54Z INF ICMP proxy will use 192.168.88.142 as source for IPv4
-2026-07-21T03:08:54Z INF ICMP proxy will use fe80::b772:b4e:d54b:8d16 in zone enp4s0 as source for IPv6
-2026-07-21T03:08:54Z WRN The user running cloudflared process has a GID (group ID) that is not within ping_group_range. You might need to add that user to a group within that range, or instead update the range to encompass a group the user is already in by modifying /proc/sys/net/ipv4/ping_group_range. Otherwise cloudflared will not be able to ping this network error="Group ID 1000 is not between ping group 1 to 0"
-2026-07-21T03:08:54Z WRN ICMP proxy feature is disabled error="cannot create ICMPv4 proxy: Group ID 1000 is not between ping group 1 to 0 nor ICMPv6 proxy: socket: permission denied"
-2026-07-21T03:08:54Z INF ICMP proxy will use 192.168.88.142 as source for IPv4
-2026-07-21T03:08:54Z INF ICMP proxy will use fe80::b772:b4e:d54b:8d16 in zone enp4s0 as source for IPv6
-2026-07-21T03:08:54Z INF Starting metrics server on 127.0.0.1:20243/metrics
-2026-07-21T03:08:54Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.23
-2026/07/21 10:08:54 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
-2026-07-21T03:08:55Z INF Registered tunnel connection connIndex=0 connection=924cfc5c-3934-4b79-94e3-2763137bae69 event=0 ip=198.41.200.23 location=hkg08 protocol=quic
-2026-07-21T03:14:56Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:56Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:56Z ERR failed to serve tunnel connection error="datagram manager encountered a failure while serving" connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:56Z ERR Serve tunnel error error="datagram manager encountered a failure while serving" connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:56Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:57Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:57Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:37774->198.41.200.23:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:14:57Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T03:15:00Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.193
-2026-07-21T03:15:00Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:37774->198.41.200.193:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.193
-2026-07-21T03:15:00Z INF Retrying connection in up to 8s connIndex=0 event=0 ip=198.41.200.20262026-07-21T03:15:07Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.73
-2026-07-21T03:15:07Z INF Registered tunnel connection connIndex=0 connection=fa0e2d37-4511-43e2-ac09-56cbcfb12dff event=0 ip=198.41.200.73 location=hkg08 protocol=quic
-2026-07-21T04:17:21Z ERR  error="Incoming request ended abruptly: context canceled" connIndex=0 event=1 ingressRule=0 originService=http://localhost:3009
-2026-07-21T04:17:21Z ERR Request failed error="Incoming request ended abruptly: context canceled" connIndex=0 dest=https://casa-lover-realize-bee.trycloudflare.com/api/timekeep/schedule/data?chat_id=-1003971934152&action=leave&ts=1784607410154&sig=75b7c90d6fac34d8556fd57d6471457eb7f95752026-07-21T05:47:20Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:20Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:20Z WRN failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:20Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:20Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:20Z INF Tunnel connection curve preferences: [X252026-07-21T05:47:21Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.73
-2026-07-21T05:47:21Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:37774->198.41.200.73:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.73
-2026-07-21T05:47:21Z INF2026-07-21T05:47:21Z INF Tunnel connection curve preferences: [X25519M2026-07-21T05:47:24Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.13
-2026-07-21T05:47:24Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:37774->198.41.200.13:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.13
-2026-07-21T05:47:24Z INF2026-07-21T05:47:29Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T05:47:29Z INF Registered tunnel connection connIndex=0 connection=803474c9-42c0-417f-916c-a82aafecf96f event=0 ip=198.41.192.7 location=hkg01 protocol=quic
-2026-07-21T06:13:31Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z ERR failed to serve tunnel connection error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z ERR Serve tunnel error error="accept stream listener encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:53363->198.41.192.7:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:31Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.192.7
-2026-07-21T06:13:33Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.77
-2026-07-21T06:13:33Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:53363->198.41.192.77:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.77
-2026-07-21T06:13:33Z INF Retrying connection in up to 8s connIndex=0 event=0 ip=198.41.192.77
-2026-07-21T06:13:34Z INF Tunnel connection curve preference2026-07-21T06:13:34Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.37
-2026-07-21T06:13:34Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:37774->198.41.192.37:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.37
-2026-07-21T06:13:34Z INF Retrying connec2026-07-21T06:13:40Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.107
-2026-07-21T06:13:40Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:53363->198.41.192.107:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.107
-2026-07-21T06:13:40Z INF Retrying connection in up to 32s connIndex=0 event=0 ip=198.41.192.107
-2026-07-21T06:14:08Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.23
-2026-07-21T06:14:08Z INF Registered tunnel connection connIndex=0 connection=13f2d009-2f42-49ea-a486-bb036eb7c711 event=0 ip=198.41.200.23 location=hkg11 protocol=quic
-event=0 ip=198.41.192.57 location=hkg01 protocol=quic
+2026-07-21T09:02:50Z INF Thank you for trying Cloudflare Tunnel. Doing so, without a Cloudflare account, is a quick way to experiment and try it out. However, be aware that these account-less Tunnels have no uptime guarantee, are subject to the Cloudflare Online Services Terms of Use (https://www.cloudflare.com/website-terms/), and Cloudflare reserves the right to investigate your use of Tunnels for violations of such terms. If you intend to use Tunnels in production you should use a pre-created named tunnel by following: https://developers.cloudflare.com/cloudflare-one/connections/connect-apps
+2026-07-21T09:02:50Z INF Requesting new quick Tunnel on trycloudflare.com...
+2026-07-21T09:02:55Z INF +--------------------------------------------------------------------------------------------+
+2026-07-21T09:02:55Z INF |  Your quick Tunnel has been created! Visit it at (it may take some time to be reachable):  |
+2026-07-21T09:02:55Z INF |  https://celebrity-sheer-goes-columns.trycloudflare.com                                    |
+2026-07-21T09:02:55Z INF +--------------------------------------------------------------------------------------------+
+2026-07-21T09:02:55Z INF Cannot determine default configuration path. No file [config.yml config.yaml] in [~/.cloudflared ~/.cloudflare-warp ~/cloudflare-warp /etc/cloudflared /usr/local/etc/cloudflared]
+2026-07-21T09:02:55Z INF Version 2026.5.0 (Checksum 0095e46fdc88855d801c4d304cb1f5dd4bd656116c47ab94c2ad0ae7cda1c7ec)
+2026-07-21T09:02:55Z INF GOOS: linux, GOVersion: go1.26.2, GoArch: amd64
+2026-07-21T09:02:55Z INF Settings: map[ha-connections:1 protocol:quic url:http://localhost:3009]
+2026-07-21T09:02:55Z INF cloudflared will not automatically update if installed by a package manager.
+2026-07-21T09:02:55Z INF Generated Connector ID: c716af49-8e32-4374-b06d-586eecd2d274
+2026-07-21T09:02:55Z INF Initial protocol quic
+2026-07-21T09:02:55Z INF ICMP proxy will use 192.168.88.142 as source for IPv4
+2026-07-21T09:02:55Z INF ICMP proxy will use fe80::b772:b4e:d54b:8d16 in zone enp4s0 as source for IPv6
+2026-07-21T09:02:55Z WRN The user running cloudflared process has a GID (group ID) that is not within ping_group_range. You might need to add that user to a group within that range, or instead update the range to encompass a group the user is already in by modifying /proc/sys/net/ipv4/ping_group_range. Otherwise cloudflared will not be able to ping this network error="Group ID 1000 is not between ping group 1 to 0"
+2026-07-21T09:02:55Z WRN ICMP proxy feature is disabled error="cannot create ICMPv4 proxy: Group ID 1000 is not between ping group 1 to 0 nor ICMPv6 proxy: socket: permission denied"
+2026-07-21T09:02:55Z INF ICMP proxy will use 192.168.88.142 as source for IPv4
+2026-07-21T09:02:55Z INF ICMP proxy will use fe80::b772:b4e:d54b:8d16 in zone enp4s0 as source for IPv6
+2026-07-21T09:02:55Z INF Starting metrics server on 127.0.0.1:20244/metrics
+2026-07-21T09:02:55Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.37
+2026/07/21 16:02:55 failed to sufficiently increase receive buffer size (was: 208 kiB, wanted: 7168 kiB, got: 416 kiB). See https://github.com/quic-go/quic-go/wiki/UDP-Buffer-Sizes for details.
+2026-07-21T09:02:55Z INF Registered tunnel connection connIndex=0 connection=8dddf218-fdc1-4adf-85d1-06d56974733d event=0 ip=198.41.192.37 location=hkg09 protocol=quic
+2026-07-21T09:26:19Z ERR failed to run the datagram handler error="timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:19Z ERR failed to accept incoming stream requests error="failed to accept QUIC stream: timeout: no recent network activity" connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:19Z ERR failed to serve tunnel connection error="datagram manager encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:19Z ERR Serve tunnel error error="datagram manager encountered a failure while serving" connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:19Z INF Retrying connection in up to 1s connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:19Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:20Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.192.37:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:20Z INF Retrying connection in up to 4s connIndex=0 event=0 ip=198.41.192.37
+2026-07-21T09:26:24Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.47
+2026-07-21T09:26:24Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.192.47:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.47
+2026-07-21T09:26:24Z INF Retrying connection in up to 8s connIndex=0 event=0 ip=198.41.192.47
+2026-07-21T09:26:25Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.43
+2026-07-21T09:26:25Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.200.43:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.43
+2026-07-21T09:26:25Z INF Retrying connection in up to 16s connIndex=0 event=0 ip=198.41.200.43
+2026-07-21T09:26:31Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.192.107
+2026-07-21T09:26:31Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.192.107:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.192.107
+2026-07-21T09:26:31Z INF Retrying connection in up to 32s connIndex=0 event=0 ip=198.41.192.107
+2026-07-21T09:26:41Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.23
+2026-07-21T09:26:41Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.200.23:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.23
+2026-07-21T09:26:41Z INF Retrying connection in up to 1m4s connIndex=0 event=0 ip=198.41.200.23
+2026-07-21T09:27:06Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.63
+2026-07-21T09:27:06Z ERR Failed to dial a quic connection error="failed to dial to edge with quic: write udp [::]:34249->198.41.200.63:7844: sendmsg: network is unreachable" connIndex=0 event=0 ip=198.41.200.63
+2026-07-21T09:27:06Z INF Retrying connection in up to 1m4s connIndex=0 event=0 ip=198.41.200.63
+2026-07-21T09:27:29Z INF Tunnel connection curve preferences: [X25519MLKEM768 CurveID(65074) CurveP256] connIndex=0 event=0 ip=198.41.200.53
+2026-07-21T09:27:29Z INF Registered tunnel connection connIndex=0 connection=6c8b062d-2274-4b18-bbf1-0ad3cc8d4f32 event=0 ip=198.41.200.53 location=hkg11 protocol=quic

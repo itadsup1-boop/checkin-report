@@ -22,3 +22,7 @@ Web App URL: Paste đường link của bạn vào, vd: 👉 https://casa-lover-
 Short name: (Bước này quan trọng nhất), bạn gõ: 👉 app
 Sau khi bạn hoàn thành 8 bước này, Telegram sẽ cấp cho bạn đường link có dạng t.me/timekeep_test_bot/app. Lúc này tất cả các nút trong group của bạn sẽ hoạt động hoàn hảo!
 
+
+node scripts/migrate_groups.js
+
+

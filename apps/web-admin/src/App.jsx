@@ -137,7 +137,7 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time) => {
+  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time, bot_role) => {
     try {
       await axios.put(`${API_URL}/tk_group_settings/${telegram_group_id}`, {
         penalty_under_15,
@@ -145,6 +145,7 @@ function Dashboard({ onLogout }) {
         penalty_over_90,
         shift_1_time,
         shift_2_time,
+        bot_role,
         auto_reminder_enabled: true
       });
       setToast('✅ Đã cập nhật cài đặt thành công!');
@@ -152,6 +153,18 @@ function Dashboard({ onLogout }) {
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
       alert("Lỗi khi cập nhật cài đặt: " + err.message);
+    }
+  };
+
+  const handleDeleteGroup = async (telegram_group_id) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa nhóm này khỏi hệ thống (soft delete)?")) return;
+    try {
+      await axios.delete(`${API_URL}/groups/${telegram_group_id}`);
+      setToast('✅ Đã xóa nhóm thành công!');
+      fetchData();
+      setTimeout(() => setToast(null), 3000);
+    } catch (err) {
+      alert("Lỗi khi xóa nhóm: " + err.message);
     }
   };
 
@@ -441,9 +454,7 @@ function Dashboard({ onLogout }) {
             <LeaveManagement />
           )}
 
-          {activeTab === 'settings' && (
-            <SettingsTab groups={groups} handleUpdateGroupSettings={handleUpdateGroupSettings} />
-          )}
+          {activeTab === 'settings' && <SettingsTab groups={groups} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}
         </div>
       </main>
 
@@ -549,18 +560,20 @@ function Dashboard({ onLogout }) {
   );
 }
 
-function SettingsTab({ groups, handleUpdateGroupSettings }) {
+function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
   const [times, setTimes] = useState({});
   const [shift1Times, setShift1Times] = useState({});
   const [shift2Times, setShift2Times] = useState({});
   // New late penalties (under 15, under 90, over 90 mins)
   const [latePenalties, setLatePenalties] = useState({});
+  const [botRoles, setBotRoles] = useState({});
 
   useEffect(() => {
     const initialTimes = {};
     const initialShift1 = {};
     const initialShift2 = {};
     const initialLatePenalties = {};
+    const initialBotRoles = {};
 
     groups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
@@ -572,12 +585,14 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
       };
       initialShift1[g.telegram_group_id] = (g.shift_1_time || '08:00:00').substring(0, 5);
       initialShift2[g.telegram_group_id] = (g.shift_2_time || '13:30:00').substring(0, 5);
+      initialBotRoles[g.telegram_group_id] = g.bot_role || '';
     });
 
     setTimes(initialTimes);
     setLatePenalties(initialLatePenalties);
     setShift1Times(initialShift1);
     setShift2Times(initialShift2);
+    setBotRoles(initialBotRoles);
   }, [groups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
@@ -590,6 +605,8 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
     }));
   };
 
+  const handleBotRoleChange = (groupId, value) => setBotRoles(prev => ({ ...prev, [groupId]: value }));
+
   const handleSave = (groupId) => {
     const shift1Value = shift1Times[groupId] || '08:00';
     const shift2Value = shift2Times[groupId] || '13:30';
@@ -597,9 +614,10 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
     const under15 = parseInt(penalties.under15) || 0;
     const under90 = parseInt(penalties.under90) || 0;
     const over90 = parseInt(penalties.over90) || 0;
+    const roleValue = botRoles[groupId] || null;
 
     // No reminder time field any more
-    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00');
+    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00', roleValue);
   };
 
   return (
@@ -669,12 +687,32 @@ function SettingsTab({ groups, handleUpdateGroupSettings }) {
                     onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
                   />
                 </div>
-                <button
-                  onClick={() => handleSave(group.telegram_group_id)}
-                  className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 ml-2"
-                >
-                  Lưu thiết lập
-                </button>
+                <div className="flex flex-col">
+                  <label className="text-xs text-slate-400 mb-1">Vai trò của Bot</label>
+                  <select
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-44"
+                    value={botRoles[group.telegram_group_id] || ''}
+                    onChange={(e) => handleBotRoleChange(group.telegram_group_id, e.target.value)}
+                  >
+                    <option value="">(Không xác định)</option>
+                    <option value="timekeep">Bot chấm công</option>
+                    <option value="report">Bot báo cáo</option>
+                  </select>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleSave(group.telegram_group_id)}
+                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+                  >
+                    Lưu
+                  </button>
+                  <button
+                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
+                    className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
+                  >
+                    Xóa nhóm
+                  </button>
+                </div>
               </div>
             </div>
           ))}

@@ -467,15 +467,25 @@ app.delete('/api/employees/:id', async (req, res) => {
 app.get('/api/groups', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT tkg.telegram_group_id, tkg.group_name,
+            SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role,
                    gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
                    gs.penalty_missing_kpi, gs.penalty_per_photo, gs.penalty_missing_report,
                    gs.shift_1_time, gs.shift_2_time
             FROM telegram_groups tkg
             LEFT JOIN group_settings gs ON tkg.telegram_group_id = gs.telegram_group_id
+            WHERE tkg.is_deleted = false OR tkg.is_deleted IS NULL
             ORDER BY tkg.created_at DESC
         `);
         res.json(result.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/groups/:telegram_group_id', async (req, res) => {
+    try {
+        await pool.query('UPDATE telegram_groups SET is_deleted = true WHERE telegram_group_id = $1', [req.params.telegram_group_id]);
+        res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

@@ -1104,7 +1104,7 @@ bot.command('taocaulenh', async (ctx) => {
 });
 
 // Lệnh hiển thị danh sách các lệnh hướng dẫn
-bot.command('menu', (ctx) => {
+bot.command(['help', 'huongdan'], (ctx) => {
     const menuMsg = `
 🤖 <b>HƯỚNG DẪN SỬ DỤNG BOT KPI</b> 🤖
 
@@ -1128,43 +1128,6 @@ bot.command('menu', (ctx) => {
     return ctx.replyWithHTML(menuMsg);
 });
 
-// Lệnh mở bảng tiện ích cho nhân viên
-bot.command(['app', 'form', 'lamviec', 'tienich', 'start'], (ctx) => {
-    const botUsername = ctx.botInfo.username;
-    const shortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
-    const ts = Date.now();
-    const token = process.env.TELEGRAM_BOT_TOKEN || '';
-    
-    // Create sig for baocao
-    const bcDataString = `baocao:${ctx.chat.id}:${ts}`;
-    const bcSig = crypto.createHmac('sha256', token).update(bcDataString).digest('hex');
-    const dmUrl = `https://t.me/${botUsername}/${shortName}?startapp=baocao_${ctx.chat.id}_${ts}_${bcSig}`;
-    
-    // Create sig for schedule
-    const schedDataString = `schedule:${ctx.chat.id}:${ts}`;
-    const schedSig = crypto.createHmac('sha256', token).update(schedDataString).digest('hex');
-    const scheduleUrl = `https://t.me/${botUsername}/${shortName}?startapp=schedule_${ctx.chat.id}_${ts}_${schedSig}`;
-
-    const msg = `🚀 <b>BẢNG TIỆN ÍCH NHÂN VIÊN</b> 🚀\n\nVui lòng chọn chức năng bên dưới:`;
-
-    return ctx.replyWithHTML(msg, {
-        reply_markup: {
-            inline_keyboard: [
-                [
-                    { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' },
-                    { text: '🛌 Đăng Ký Nghỉ Phép', callback_data: 'REQUEST_LEAVE' }
-                ],
-                [
-                    { text: '📝 Điền Form Báo Cáo', url: dmUrl }
-                ],
-                [
-                    { text: '🔄 Cập Nhật Báo Cáo', callback_data: 'CHECK_UPDATE_REPORT' },
-                    { text: '📅 Đặt / Check Lịch', url: scheduleUrl }
-                ]
-            ]
-        }
-    });
-});
 
 bot.action('START_SETUP_WIZARD', (ctx) => {
     ctx.answerCbQuery();
@@ -1462,8 +1425,7 @@ cron.schedule('* * * * *', async () => {
 
 // Auto-update Global Menu Button when bot starts
     bot.catch((err, ctx) => {
-        console.error(`Lỗi Telegraf cho update ${ctx?.updateType}:`, err);
-        process.exit(1); // Ép PM2 khởi động lại để khôi phục polling
+        console.error(`Lỗi Telegraf cho update ${ctx?.updateType}:`, err.stack || err);
     });
 
     // Auto-update Global Menu Button when bot starts
