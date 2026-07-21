@@ -1666,10 +1666,11 @@ botApp.get('/api/admin/dashboard', async (req, res) => {
                     ELSE 'ON_TIME'
                 END AS status
             FROM employees u
+            JOIN telegram_groups tg ON u.telegram_group_id = tg.telegram_group_id
             LEFT JOIN tk_schedules s ON s.user_id = u.id AND s.date = $2
             LEFT JOIN tk_check_ins ci ON ci.user_id = u.id AND ci.date = $2
             LEFT JOIN tk_penalties p ON p.user_id = u.id AND p.date = $2 AND p.violation_type = 'LATE'
-            WHERE u.group_id = $1
+            WHERE tg.id = $1
             ORDER BY u.full_name ASC
         `, [targetGroup.id, today]);
 
@@ -2074,7 +2075,13 @@ botApp.post('/api/admin/schedules', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
         }
         // Lấy group_id của user
-        const userRes = await pool.query('SELECT group_id FROM employees WHERE id = $1', [user_id]);
+        const userRes = await pool.query(
+            `SELECT tg.id AS group_id 
+             FROM employees u 
+             JOIN telegram_groups tg ON u.telegram_group_id = tg.telegram_group_id 
+             WHERE u.id = $1`,
+            [user_id]
+        );
         const group_id = userRes.rows[0]?.group_id || null;
 
         const result = await pool.query(

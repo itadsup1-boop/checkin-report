@@ -48,7 +48,7 @@ app.get('/api/admin/tk-users', async (req, res) => {
         const result = await pool.query(`
             SELECT u.*, g.group_name 
             FROM employees u
-            LEFT JOIN telegram_groups g ON u.group_id = g.id
+            LEFT JOIN telegram_groups g ON u.telegram_group_id = g.telegram_group_id
             ORDER BY u.created_at DESC
         `);
         res.json(result.rows);
@@ -371,7 +371,7 @@ app.get('/api/admin/leave-balances', async (req, res) => {
                     END
                 ), 0) as used_days
             FROM employees u
-            LEFT JOIN telegram_groups g ON u.group_id = g.id
+            LEFT JOIN telegram_groups g ON u.telegram_group_id = g.telegram_group_id
             LEFT JOIN tk_leave_requests r ON u.id = r.user_id 
                 AND r.status = 'APPROVED' 
                 AND EXTRACT(YEAR FROM r.date) = $1

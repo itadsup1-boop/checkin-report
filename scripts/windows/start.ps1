@@ -263,9 +263,9 @@ if ($pm2Status) {
 }
 
 # ---- STEP 4: Khoi dong Cloudflare Tunnel ----
-Write-Step '4/6' 'Khoi dong Cloudflare Tunnel (tro vao port 3002)...'
+Write-Step '4/6' 'Khoi dong Cloudflare Tunnel (tro vao port 3009)...'
 
-$cfArgs = @('tunnel', '--url', 'http://localhost:3002')
+$cfArgs = @('tunnel', '--url', 'http://localhost:3009')
 $cfProc = Start-Process `
     -FilePath $CF_EXE `
     -ArgumentList $cfArgs `
