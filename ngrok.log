@@ -1,0 +1,35 @@
+t=2026-06-25T02:52:03+0700 lvl=info msg="no configuration paths supplied"
+t=2026-06-25T02:52:03+0700 lvl=info msg="using configuration at default config path" path=/home/giang-adsup/.config/ngrok/ngrok.yml
+t=2026-06-25T02:52:03+0700 lvl=info msg="open config file" path=/home/giang-adsup/.config/ngrok/ngrok.yml err=nil
+t=2026-06-25T02:52:03+0700 lvl=info msg="FIPS 140 mode" enabled=false
+t=2026-06-25T02:52:03+0700 lvl=info msg="starting web service" obj=web addr=127.0.0.1:4040 allow_hosts=[]
+t=2026-06-25T02:52:04+0700 lvl=info msg="update available" obj=updater
+t=2026-06-25T02:52:07+0700 lvl=info msg="client session established" obj=tunnels.session
+t=2026-06-25T02:52:07+0700 lvl=info msg="tunnel session started" obj=tunnels.session
+t=2026-06-25T02:52:08+0700 lvl=info msg="started tunnel" obj=tunnels name=command_line addr=http://localhost:3001 url=https://charita-clingier-fran.ngrok-free.dev
+t=2026-06-25T02:53:00+0700 lvl=info msg="join connections" obj=join id=e0d702380ab0 l=127.0.0.1:3001 r=113.190.7.66:54546
+t=2026-06-25T02:54:08+0700 lvl=info msg="join connections" obj=join id=297383127b95 l=127.0.0.1:3001 r=113.190.7.66:38460
+t=2026-06-25T02:55:31+0700 lvl=info msg="join connections" obj=join id=a7f5f9b054da l=127.0.0.1:3001 r=42.116.199.142:4001
+t=2026-06-25T02:55:32+0700 lvl=info msg="join connections" obj=join id=9a3ef435f1c0 l=127.0.0.1:3001 r=42.116.199.142:4001
+t=2026-06-25T02:55:37+0700 lvl=info msg="join connections" obj=join id=c5ec42326627 l=127.0.0.1:3001 r=42.116.199.142:15527
+t=2026-06-25T02:55:37+0700 lvl=info msg="join connections" obj=join id=4c8f793aeebb l=127.0.0.1:3001 r=42.116.199.142:15527
+t=2026-06-25T08:52:05+0700 lvl=info msg="update available" obj=updater
+t=2026-06-25T09:32:27+0700 lvl=info msg="join connections" obj=join id=783ca63f4fae l=127.0.0.1:3001 r=113.190.7.66:65500
+t=2026-06-25T09:32:32+0700 lvl=info msg="join connections" obj=join id=9979810ae000 l=127.0.0.1:3001 r=113.190.7.66:65503
+t=2026-06-25T09:34:41+0700 lvl=info msg="join connections" obj=join id=c4a992756d71 l=127.0.0.1:3001 r=113.190.7.66:65504
+t=2026-06-25T09:47:34+0700 lvl=info msg="join connections" obj=join id=0ac3325f6744 l=127.0.0.1:3001 r=113.190.7.66:39502
+t=2026-06-25T09:47:34+0700 lvl=info msg="join connections" obj=join id=737a1e0e5520 l=127.0.0.1:3001 r=113.190.7.66:39502
+t=2026-06-25T09:47:34+0700 lvl=info msg="join connections" obj=join id=74e565c34c8f l=127.0.0.1:3001 r=113.190.7.66:39502
+t=2026-06-25T09:49:20+0700 lvl=info msg="join connections" obj=join id=0c669af56d96 l=127.0.0.1:3001 r=113.190.7.66:39502
+t=2026-06-25T09:49:20+0700 lvl=info msg="join connections" obj=join id=2b5101c0dfb3 l=127.0.0.1:3001 r=113.190.7.66:39502
+t=2026-06-25T13:51:57+0700 lvl=info msg="join connections" obj=join id=e183acc305d6 l=127.0.0.1:3001 r=113.190.7.66:58643
+t=2026-06-25T14:52:06+0700 lvl=info msg="update available" obj=updater
+t=2026-06-25T16:06:14+0700 lvl=info msg="join connections" obj=join id=a52a25d75699 l=127.0.0.1:3001 r=[2401:d800:22e8:8e27:5d30:8a97:115:33ba]:60284
+t=2026-06-25T16:06:23+0700 lvl=info msg="join connections" obj=join id=f64412d85f91 l=127.0.0.1:3001 r=[2401:d800:22e8:8e27:5d30:8a97:115:33ba]:60287
+t=2026-06-25T16:07:05+0700 lvl=info msg="join connections" obj=join id=df45ed52e8c0 l=127.0.0.1:3001 r=[2401:d800:22e8:8e27:5d30:8a97:115:33ba]:60288
+t=2026-06-25T16:10:00+0700 lvl=info msg="join connections" obj=join id=a95f56980ef4 l=127.0.0.1:3001 r=[2401:d800:22e8:8e27:5d30:8a97:115:33ba]:60292
+t=2026-06-25T16:13:40+0700 lvl=info msg="received stop request" obj=app stopReq="{err:<nil> restart:false}"
+t=2026-06-25T16:13:40+0700 lvl=info msg="session closing" obj=tunnels.session err=nil
+t=2026-06-25T16:13:40+0700 lvl=info msg="accept failed" obj=tunnels.session obj=csess id=b3f1799f2d0f err="reconnecting session closed"
+t=2026-06-25T16:13:40+0700 lvl=info msg="failed to accept connection: Listener closed" obj=tunnels.session clientid=a75c23341e3ffd9d86d8d3e8552a6d22
+t=2026-06-25T16:13:40+0700 lvl=warn msg="Stopping forwarder" name=command_line acceptErr="failed to accept connection: Listener closed"

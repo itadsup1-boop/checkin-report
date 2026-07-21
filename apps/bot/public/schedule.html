@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Hệ Thống Đặt Lịch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #f3f4f6;
+            --text-color: #1f2937;
+            --primary: #3b82f6;
+            --primary-hover: #2563eb;
+            --danger: #ef4444;
+            --success: #10b981;
+            --card-bg: #ffffff;
+            --border: #e5e7eb;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            padding: 16px;
+            padding-bottom: 80px;
+        }
+
+        /* === CSS-ONLY TAB SYSTEM (works without JS) === */
+        .tab-radio {
+            display: none;
+        }
+
+        .tabs {
+            display: flex;
+            background: var(--card-bg);
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .tab-label {
+            flex: 1;
+            padding: 12px;
+            text-align: center;
+            font-weight: 600;
+            font-size: 14px;
+            color: #6b7280;
+            background: transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+            border-bottom: 3px solid transparent;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .tab-label:active {
+            background: #dbeafe;
+        }
+
+        /* Active tab styles driven by CSS radio */
+        #radio-check:checked~.tabs .tab-label[for="radio-check"],
+        #radio-add:checked~.tabs .tab-label[for="radio-add"],
+        #radio-edit:checked~.tabs .tab-label[for="radio-edit"],
+        #radio-tasks:checked~.tabs .tab-label[for="radio-tasks"] {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+            background: #eff6ff;
+        }
+
+        /* Tab content visibility driven by CSS radio */
+        .tab-content {
+            display: none;
+        }
+
+        #radio-check:checked~#tab-check {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        #radio-add:checked~#tab-add {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        #radio-edit:checked~#tab-edit {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        #radio-tasks:checked~#tab-tasks {
+            display: block;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+            margin-bottom: 16px;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #4b5563;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .form-control:focus {
+            border-color: var(--primary);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            color: white;
+            background: var(--primary);
+            cursor: pointer;
+            transition: background 0.2s;
+            font-family: 'Inter', sans-serif;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-danger {
+            background: var(--danger);
+        }
+
+        .btn-sm {
+            padding: 8px 12px;
+            font-size: 13px;
+            width: auto;
+        }
+
+        .timeline-item {
+            display: flex;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .timeline-item:last-child {
+            border-bottom: none;
+        }
+
+        .time {
+            font-weight: 700;
+            color: var(--primary);
+            width: 65px;
+            flex-shrink: 0;
+        }
+
+        .details {
+            flex: 1;
+        }
+
+        .details strong {
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        .details small {
+            color: #6b7280;
+            font-size: 12px;
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            display: none;
+        }
+
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .search-box {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .search-box .form-control {
+            margin-bottom: 0;
+        }
+
+        .loader {
+            text-align: center;
+            padding: 20px;
+            display: none;
+            color: #6b7280;
+        }
+
+        /* Modal overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- CSS-only radio buttons for tabs (no JS needed!) -->
+    <input type="radio" name="tab" id="radio-check" class="tab-radio" checked>
+    <input type="radio" name="tab" id="radio-add" class="tab-radio">
+    <input type="radio" name="tab" id="radio-edit" class="tab-radio">
+    <input type="radio" name="tab" id="radio-tasks" class="tab-radio">
+
+    <div class="tabs">
+        <label class="tab-label" for="radio-check">Check Lịch</label>
+        <label class="tab-label" for="radio-add">Thêm Lịch</label>
+        <label class="tab-label" for="radio-edit">Sửa/Hủy</label>
+        <label class="tab-label" for="radio-tasks">Nhiệm Vụ</label>
+    </div>
+
+    <!-- TAB 1: CHECK LỊCH -->
+    <div id="tab-check" class="tab-content">
+        <div class="card">
+            <div class="form-group">
+                <label>Chọn ngày để xem lịch:</label>
+                <input type="date" id="checkDate" class="form-control">
+            </div>
+
+            <div id="timelineLoader" class="loader">Đang tải...</div>
+            <div id="timelineContainer">
+                <p style="text-align: center; color: #6b7280; font-size: 14px; padding: 20px 0;">Vui lòng chọn ngày</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: THÊM LỊCH -->
+    <div id="tab-add" class="tab-content">
+        <div class="card">
+            <div id="addAlert" class="alert"></div>
+
+            <div class="form-group">
+                <label>Tên Khách Hàng *</label>
+                <input type="text" id="addName" class="form-control" placeholder="Nhập tên khách">
+            </div>
+            <div class="form-group">
+                <label>Số Điện Thoại *</label>
+                <input type="tel" id="addPhone" class="form-control" placeholder="Nhập SĐT">
+            </div>
+            <div class="form-group">
+                <label>Dịch Vụ</label>
+                <input type="text" id="addService" class="form-control" placeholder="Tên dịch vụ">
+            </div>
+            <div class="form-group" style="display: flex; gap: 10px;">
+                <div style="flex: 1;">
+                    <label>Số Buổi Làm</label>
+                    <input type="text" id="addSessions" class="form-control" placeholder="VD: 2/10 hoặc 1/Tái khám">
+                </div>
+                <div style="flex: 1;">
+                    <label>Thu Tiền</label>
+                    <input type="text" id="addRevenue" class="form-control" placeholder="VD: 500k">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Ngày Giờ Hẹn (Cách nhau >= 1 tiếng) *</label>
+                <input type="datetime-local" id="addTime" class="form-control">
+            </div>
+            <div class="form-group" style="display: flex; align-items: center; gap: 8px; margin-top: 15px;">
+                <input type="checkbox" id="addIsUrgent" style="width: 20px; height: 20px; cursor: pointer;">
+                <label for="addIsUrgent"
+                    style="margin-bottom: 0; cursor: pointer; font-size: 14px; font-weight: 600; color: #ef4444;">🚨
+                    Khách đi luôn</label>
+            </div>
+
+            <button class="btn" id="btnAdd">ĐĂNG KÝ LỊCH</button>
+        </div>
+    </div>
+
+    <!-- TAB 3: SỬA / HỦY -->
+    <div id="tab-edit" class="tab-content">
+        <div class="card">
+            <div id="editAlert" class="alert"></div>
+
+            <div class="search-box">
+                <input type="tel" id="searchPhone" class="form-control" placeholder="Nhập SĐT khách hàng...">
+                <button class="btn btn-sm" style="width: 80px;" id="btnSearch">Tìm</button>
+            </div>
+
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <!-- Modal Hủy Lịch -->
+    <div id="cancelModal" class="modal-overlay">
+        <div class="card" style="width: 90%; max-width: 400px;">
+            <h3 style="margin-bottom: 15px;">Xác nhận Hủy Lịch</h3>
+            <div class="form-group">
+                <label>Lý do hủy (bắt buộc):</label>
+                <select id="cancelReason" class="form-control" onchange="if(this.value==='Lý do khác (Gõ chi tiết)') { document.getElementById('cancelReasonOther').style.display = 'block'; } else { document.getElementById('cancelReasonOther').style.display = 'none'; }">
+                    <option value="">-- Chọn lý do --</option>
+                    <option value="Khách bom lịch (Không nghe, chặn số)">Khách bom lịch (Không nghe, chặn số)</option>
+                    <option value="Bận đột xuất / Xin dời ngày">Bận đột xuất / Xin dời ngày</option>
+                    <option value="Chưa đủ tài chính / Chê đắt">Chưa đủ tài chính / Chê đắt</option>
+                    <option value="Đã qua cơ sở khác làm">Đã qua cơ sở khác làm</option>
+                    <option value="Lý do khác (Gõ chi tiết)">Lý do khác (Gõ chi tiết)</option>
+                </select>
+                <input type="text" id="cancelReasonOther" class="form-control" placeholder="Gõ lý do khác vào đây..." style="display: none; margin-top: 10px;">
+            </div>
+            <input type="hidden" id="cancelId">
+            <div style="display: flex; gap: 10px;">
+                <button class="btn" style="background: #9ca3af;" id="btnCancelClose">Đóng</button>
+                <button class="btn btn-danger" id="btnCancelConfirm">Hủy Lịch</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Sửa Lịch -->
+    <div id="editModal" class="modal-overlay">
+        <div class="card" style="width: 90%; max-width: 400px; max-height: 90vh; overflow-y: auto;">
+            <h3 style="margin-bottom: 15px;">Sửa Lịch Hẹn</h3>
+            <input type="hidden" id="editId">
+            <div class="form-group">
+                <label>Tên Khách Hàng</label>
+                <input type="text" id="editName" class="form-control">
+            </div>
+            <div class="form-group">
+                <label>Ngày Giờ (Cách nhau >= 1 tiếng)</label>
+                <input type="datetime-local" id="editTime" class="form-control">
+            </div>
+            <div style="display: flex; gap: 10px; margin-top: 20px;">
+                <button class="btn" style="background: #9ca3af;" id="btnEditClose">Đóng</button>
+                <button class="btn" id="btnEditConfirm">Lưu Thay Đổi</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 4: NHIỆM VỤ -->
+    <div id="tab-tasks" class="tab-content">
+        <div class="card">
+            <h3 style="margin-bottom: 15px; color: var(--text-color); border-bottom: 1px solid var(--border); padding-bottom: 8px;">Nhiệm Vụ Trong Ngày</h3>
+            <div id="taskAlert" class="alert"></div>
+            <div id="tasksLoader" class="loader">Đang tải...</div>
+            <div id="tasksContainer">
+                <p style="text-align: center; color: #6b7280; font-size: 14px; padding: 20px 0;">Vui lòng chọn ngày</p>
+            </div>
+            
+            <input type="file" id="taskPhotoUpload" accept="image/*" capture="environment" style="display: none;" onchange="handleTaskPhotoChange(event)">
+        </div>
+    </div>
+
+    <!-- Load Telegram SDK AFTER body content, non-blocking -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        function getGroupId() {
+            var urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('chat_id') || '';
+        }
+
+        // ===== SAFE TELEGRAM INIT =====
+        var tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand();
+            }
+        } catch (e) { /* ignore */ }
+
+        // ===== HELPER FUNCTIONS =====
+        function showAlert(id, msg, isError) {
+            var el = document.getElementById(id);
+            if (!el) return;
+            el.textContent = msg;
+            el.className = 'alert ' + (isError !== false ? 'alert-error' : 'alert-success');
+            el.style.display = 'block';
+            setTimeout(function () { el.style.display = 'none'; }, 5000);
+        }
+
+        function getTodayString() {
+            var d = new Date();
+            var year = d.getFullYear();
+            var month = String(d.getMonth() + 1).padStart(2, '0');
+            var day = String(d.getDate()).padStart(2, '0');
+            return year + '-' + month + '-' + day;
+        }
+
+        // ===== LOAD TIMELINE =====
+        function loadTimeline() {
+            var dateEl = document.getElementById('checkDate');
+            if (!dateEl) return;
+            var date = dateEl.value;
+            if (!date) return;
+
+            var container = document.getElementById('timelineContainer');
+            var loader = document.getElementById('timelineLoader');
+            function loadSchedules(date) {
+              container.innerHTML = '';
+              loader.style.display = 'block';
+  
+              var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
+              fetch('/api/schedules?date=' + date + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+                  .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    loader.style.display = 'none';
+                    if (!data.data || data.data.length === 0) {
+                        container.innerHTML = '<p style="text-align:center; color:#6b7280; padding:20px;">Trống! Chưa có ai đặt lịch ngày này.</p>';
+                        return;
+                    }
+                    var html = '';
+                    data.data.forEach(function (item) {
+                        var time = new Date(item.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        var isCancelled = item.status !== 'ACTIVE';
+                        var opacity = isCancelled ? '0.5' : '1';
+                        var cancelTag = isCancelled ? ' <span style="color:red; font-size:11px;">(ĐÃ HỦY)</span>' : '';
+
+                        html += '<div class="timeline-item" style="opacity: ' + opacity + '">' +
+                            '<div class="time">' + time + '</div>' +
+                            '<div class="details">' +
+                            '<strong style="' + (isCancelled ? 'text-decoration: line-through;' : '') + '">' + item.customer_name + cancelTag + '</strong>' +
+                            '<small>NV Phụ trách: <b>' + item.employee_name + '</b></small><br>' +
+                            '<small>SĐT: ' + item.phone + ' | Dịch vụ: ' + (item.service || '') + '</small>' +
+                            '</div></div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(function (err) {
+                    loader.style.display = 'none';
+                    container.innerHTML = '<p style="text-align:center; color:red;">Lỗi tải dữ liệu!</p>';
+                });
+            }
+            loadSchedules(date);
+        }
+
+        function validateSessions(val) {
+            if (!val) return true;
+            var cleanVal = val.trim().toLowerCase();
+            if (cleanVal === '0') return true;
+
+            if (cleanVal.indexOf('/') !== -1) {
+                var parts = cleanVal.split('/');
+                if (parts.length !== 2) return false;
+                var left = parts[0].trim();
+                var right = parts[1].trim();
+
+                if (!/^\d+$/.test(left)) return false;
+                if (/^\d+$/.test(right)) return true;
+                if (right === 'tái khám' || right === 'tai kham') return true;
+
+                return false;
+            }
+            return false;
+        }
+
+        // ===== ADD SCHEDULE =====
+        function addSchedule() {
+            var name = document.getElementById('addName').value;
+            var phone = document.getElementById('addPhone').value;
+            var service = document.getElementById('addService').value;
+            var sessions = document.getElementById('addSessions').value;
+            var revenue = document.getElementById('addRevenue').value;
+            var time = document.getElementById('addTime').value;
+            var isUrgent = document.getElementById('addIsUrgent').checked;
+
+            if (!name || !phone || !time) {
+                return showAlert('addAlert', 'Vui lòng điền đủ Tên, SĐT và Giờ hẹn!');
+            }
+
+            if (sessions && !validateSessions(sessions)) {
+                return showAlert('addAlert', 'Số Buổi Làm chưa đúng định dạng!<br>Ví dụ:<br>- Liệu trình: 2/10<br>- Tái khám: 1/Tái khám');
+            }
+
+            var btn = document.getElementById('btnAdd');
+            btn.disabled = true;
+            btn.textContent = 'Đang đăng ký...';
+
+            fetch('/api/schedules/add', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    initData: tg ? tg.initData : '',
+                    customer_name: name,
+                    phone: phone,
+                    service: service,
+                    sessions: sessions,
+                    revenue: revenue,
+                    appointment_time: time,
+                    is_urgent: isUrgent,
+                    groupId: getGroupId()
+                })
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        showAlert('addAlert', 'Đã đăng ký lịch thành công!', false);
+                        document.getElementById('addName').value = '';
+                        document.getElementById('addPhone').value = '';
+                        document.getElementById('addService').value = '';
+                        document.getElementById('addSessions').value = '';
+                        document.getElementById('addRevenue').value = '';
+                        document.getElementById('addTime').value = '';
+                        document.getElementById('addIsUrgent').checked = false;
+                        var checkDate = document.getElementById('checkDate').value;
+                        if (checkDate === time.split('T')[0]) {
+                            loadTimeline();
+                        }
+                    } else {
+                        showAlert('addAlert', data.error || 'Có lỗi xảy ra');
+                    }
+                })
+                .catch(function (err) {
+                    showAlert('addAlert', 'Lỗi kết nối máy chủ!');
+                })
+                .finally(function () {
+                    btn.disabled = false;
+                    btn.textContent = 'ĐĂNG KÝ LỊCH';
+                });
+        }
+
+        // ===== SEARCH SCHEDULE =====
+        window.searchSchedule = function () {
+            var phone = document.getElementById('searchPhone').value;
+            if (!phone) {
+                alert('Vui lòng nhập số điện thoại');
+                return;
+            }
+
+            var container = document.getElementById('searchResults');
+            container.innerHTML = 'Đang tìm...';
+
+            var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
+            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (!data.data || data.data.length === 0) {
+                        container.innerHTML = '<p style="text-align:center; color:#6b7280; padding:20px;">Không tìm thấy lịch nào!</p>';
+                        return;
+                    }
+                    var html = '';
+                    data.data.forEach(function (item) {
+                        var dt = new Date(item.appointment_time);
+                        var now = new Date();
+                        var timeStr = dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) + ' ' + dt.toLocaleDateString('vi-VN');
+                        var buttons = '';
+                        if (item.status === 'ACTIVE') {
+                            if (dt < now) {
+                                buttons = '<span style="color: #6b7280; font-size: 12px; font-style: italic;">(Lịch đã qua - Không thể sửa/hủy)</span>';
+                            } else {
+                                buttons = '<div style="margin-top: 10px; display: flex; gap: 8px;">' +
+                                    '<button class="btn btn-sm" data-action="edit" data-id="' + item.id + '" data-name="' + item.customer_name + '" data-time="' + item.appointment_time + '">Sửa Giờ</button>' +
+                                    '<button class="btn btn-sm btn-danger" data-action="cancel" data-id="' + item.id + '">Hủy Lịch</button>' +
+                                    '</div>';
+                            }
+                        } else {
+                            buttons = '<span style="color: red; font-size: 12px; font-weight: bold;">ĐÃ HỦY: ' + (item.cancel_reason || '') + '</span>';
+                        }
+                        html += '<div class="timeline-item" style="flex-direction: column;">' +
+                            '<div class="details" style="width:100%">' +
+                            '<strong>' + item.customer_name + '</strong>' +
+                            '<small>Hẹn lúc: <b>' + timeStr + '</b></small><br>' +
+                            '<small>Phụ trách: ' + item.employee_name + '</small>' +
+                            '</div>' + buttons + '</div>';
+                    });
+                    container.innerHTML = html;
+
+                    // Attach event listeners to new buttons
+                    container.querySelectorAll('[data-action="edit"]').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            openEdit(this.getAttribute('data-id'), this.getAttribute('data-name'), this.getAttribute('data-time'));
+                        });
+                    });
+                    container.querySelectorAll('[data-action="cancel"]').forEach(function (b) {
+                        b.addEventListener('click', function () {
+                            openCancel(this.getAttribute('data-id'));
+                        });
+                    });
+                })
+                .catch(function (err) {
+                    container.innerHTML = '<p style="color:red;">Lỗi kết nối!</p>';
+                });
+        }
+
+        // ===== CANCEL =====
+        function openCancel(id) {
+            document.getElementById('cancelId').value = id;
+            document.getElementById('cancelReason').value = '';
+            document.getElementById('cancelReasonOther').value = '';
+            document.getElementById('cancelReasonOther').style.display = 'none';
+            document.getElementById('cancelModal').classList.add('show');
+        }
+
+        function confirmCancel() {
+            var id = document.getElementById('cancelId').value;
+            var reasonSelect = document.getElementById('cancelReason').value;
+            var reason = reasonSelect === 'Lý do khác (Gõ chi tiết)' ? document.getElementById('cancelReasonOther').value : reasonSelect;
+            if (!reason) {
+                alert('Vui lòng chọn hoặc nhập lý do hủy!');
+                return;
+            }
+            fetch('/api/schedules/cancel', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: id, cancel_reason: reason })
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        document.getElementById('cancelModal').classList.remove('show');
+                        searchSchedule();
+                        showAlert('editAlert', 'Đã hủy lịch thành công!', false);
+                    }
+                })
+                .catch(function () { alert('Lỗi hệ thống'); });
+        }
+
+        // ===== EDIT =====
+        function openEdit(id, name, timeStr) {
+            document.getElementById('editId').value = id;
+            document.getElementById('editName').value = name;
+            var dt = new Date(timeStr);
+            var yyyy = dt.getFullYear();
+            var mm = String(dt.getMonth() + 1).padStart(2, '0');
+            var dd = String(dt.getDate()).padStart(2, '0');
+            var hh = String(dt.getHours()).padStart(2, '0');
+            var min = String(dt.getMinutes()).padStart(2, '0');
+            document.getElementById('editTime').value = yyyy + '-' + mm + '-' + dd + 'T' + hh + ':' + min;
+            document.getElementById('editModal').classList.add('show');
+        }
+
+        function confirmEdit() {
+            var id = document.getElementById('editId').value;
+            var name = document.getElementById('editName').value;
+            var time = document.getElementById('editTime').value;
+            fetch('/api/schedules/edit', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id: id,
+                    customer_name: name,
+                    appointment_time: time,
+                    phone: document.getElementById('searchPhone').value,
+                    service: '', sessions: ''
+                })
+            })
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data.success) {
+                        document.getElementById('editModal').classList.remove('show');
+                        searchSchedule();
+                        showAlert('editAlert', 'Đã lưu thay đổi!', false);
+                        loadTimeline();
+                    } else {
+                        alert(data.error || 'Có lỗi xảy ra');
+                    }
+                })
+                .catch(function () { alert('Lỗi hệ thống'); });
+        }
+
+        // ===== LOAD TASKS =====
+        function loadTasks() {
+            var container = document.getElementById('tasksContainer');
+            var loader = document.getElementById('tasksLoader');
+            var d = document.getElementById('checkDate').value;
+            if (!container || !loader || !d) return;
+
+            container.innerHTML = '';
+            loader.style.display = 'block';
+
+            var tgId = '';
+            if (typeof tg !== 'undefined' && tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                tgId = tg.initDataUnsafe.user.id;
+            }
+
+            fetch('/api/photo-debts?date=' + d + '&telegram_id=' + tgId)
+                .then(function(res) { return res.json(); })
+                .then(function(data) {
+                    loader.style.display = 'none';
+                    if (!data.data || data.data.length === 0) {
+                        container.innerHTML = '<p style="text-align:center; color:#10b981; padding:20px;">🎉 Quá tuyệt! Bạn không còn nợ ảnh nào trong ngày này.</p>';
+                        return;
+                    }
+                    var html = '';
+                    data.data.forEach(function(item) {
+                        var timeStr = new Date(item.appointment_time).toLocaleTimeString('vi-VN', {hour:'2-digit', minute:'2-digit'});
+                        html += '<div class="timeline-item" style="flex-direction: column; background: #fff5f5; border: 1px solid #fecaca; border-radius: 8px; padding: 12px; margin-bottom: 10px;">' +
+                            '<div style="display:flex; justify-content:space-between; align-items:center;">' +
+                            '<div>' +
+                            '<strong style="color: #991b1b;">' + item.customer_name + '</strong>' +
+                            '<small style="display:block; color: #b91c1c;">Lúc: ' + timeStr + ' | NV: ' + item.employee_name + '</small>' +
+                            '</div>' +
+                            '<button class="btn btn-sm" style="background:#ef4444;" onclick="openCamera(' + item.id + ')">📸 Tải Ảnh</button>' +
+                            '</div>' +
+                            '</div>';
+                    });
+                    container.innerHTML = html;
+                })
+                .catch(function() {
+                    loader.style.display = 'none';
+                    container.innerHTML = '<p style="text-align:center; color:red;">Lỗi tải dữ liệu!</p>';
+                });
+        }
+
+        var currentTaskId = null;
+        function openCamera(id) {
+            currentTaskId = id;
+            document.getElementById('taskPhotoUpload').click();
+        }
+
+        function handleTaskPhotoChange(event) {
+            var file = event.target.files[0];
+            if (!file || !currentTaskId) return;
+
+            var reader = new FileReader();
+            reader.onload = function(e) {
+                var img = new Image();
+                img.onload = function() {
+                    var canvas = document.createElement('canvas');
+                    var MAX_WIDTH = 1200;
+                    var scaleSize = MAX_WIDTH / img.width;
+                    if (scaleSize > 1) scaleSize = 1;
+                    canvas.width = img.width * scaleSize;
+                    canvas.height = img.height * scaleSize;
+                    var ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                    var base64Data = canvas.toDataURL('image/jpeg', 0.8);
+
+                    var alertBox = document.getElementById('taskAlert');
+                    alertBox.textContent = 'Đang tải ảnh lên... Vui lòng đợi!';
+                    alertBox.className = 'alert';
+                    alertBox.style.background = '#e0f2fe';
+                    alertBox.style.color = '#0369a1';
+                    alertBox.style.display = 'block';
+
+                    fetch('/api/upload-proof', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            id: currentTaskId,
+                            imageBase64: base64Data
+                        })
+                    })
+                    .then(function(res) { return res.json(); })
+                    .then(function(resData) {
+                        if (resData.success) {
+                            showAlert('taskAlert', '✅ Tải ảnh thành công!', false);
+                            loadTasks();
+                        } else {
+                            showAlert('taskAlert', 'Lỗi: ' + resData.error);
+                        }
+                    })
+                    .catch(function(err) {
+                        showAlert('taskAlert', 'Lỗi mạng khi tải ảnh!');
+                    });
+                }
+                img.src = e.target.result;
+            }
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        // ===== INIT ON DOM READY =====
+        document.addEventListener('DOMContentLoaded', function () {
+            // Set default date
+            try {
+                document.getElementById('checkDate').value = getTodayString();
+                loadTimeline();
+                loadTasks();
+            } catch (e) { /* ignore */ }
+
+            // Bind events
+            document.getElementById('radio-tasks').addEventListener('change', function() {
+                if(this.checked) loadTasks();
+            });
+            document.getElementById('checkDate').addEventListener('change', function() {
+                loadTimeline();
+                if (document.getElementById('radio-tasks').checked) {
+                    loadTasks();
+                }
+            });
+            document.getElementById('btnAdd').addEventListener('click', addSchedule);
+            document.getElementById('btnSearch').addEventListener('click', searchSchedule);
+            document.getElementById('btnCancelClose').addEventListener('click', function () {
+                document.getElementById('cancelModal').classList.remove('show');
+            });
+            document.getElementById('btnCancelConfirm').addEventListener('click', confirmCancel);
+            document.getElementById('btnEditClose').addEventListener('click', function () {
+                document.getElementById('editModal').classList.remove('show');
+            });
+            document.getElementById('btnEditConfirm').addEventListener('click', confirmEdit);
+        });
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,6 @@
+=== KPI System Manager dang khoi dong ===
+[2026-06-26T04:25:19.608Z] kpi-api started - PID: 8096
+=== Manager dang chay - giu cua so nay mo ===
+[2026-06-26T04:25:22.617Z] kpi-bot started - PID: 11692
+[2026-06-26T05:00:09.798Z] kpi-bot exited (code=1, signal=null) - Restarting in 3s...
+[2026-06-26T05:00:12.811Z] kpi-bot started - PID: 11472

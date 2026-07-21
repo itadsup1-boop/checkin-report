@@ -1,0 +1,18 @@
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from .env // tip: ⌘ override existing { override: true }
+API & Web Server is running on port 3001
+◇ injected env (7) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+API & Web Server is running on port 3001
+◇ injected env (7) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+◇ injected env (0) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+API & Web Server is running on port 3001
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+API & Web Server is running on port 3001
+◇ injected env (7) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+◇ injected env (0) from .env // tip: ⌘ suppress logs { quiet: true }
+API & Web Server is running on port 3001
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (0) from .env // tip: ⌘ suppress logs { quiet: true }
+API & Web Server is running on port 3001

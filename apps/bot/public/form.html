@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Gửi Báo Cáo KPI</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: var(--tg-theme-font-family, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif);
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        h2 {
+            text-align: center;
+            margin-top: 0;
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: var(--tg-theme-hint-color, #999999);
+        }
+        input[type="number"], input[type="text"], textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid var(--tg-theme-hint-color, #ccc);
+            border-radius: 8px;
+            background-color: var(--tg-theme-secondary-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000000);
+            box-sizing: border-box;
+            font-size: 16px; /* Chống zoom trên iOS */
+        }
+        textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--tg-theme-button-color, #3390ec);
+        }
+        .btn-submit {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background-color: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+        .btn-submit:active {
+            opacity: 0.8;
+        }
+        .customer-card {
+            background-color: #ffffff;
+            border: 1px solid var(--tg-theme-button-color, #3390ec);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        .customer-card input {
+            margin-bottom: 8px;
+            padding: 8px;
+            font-size: 14px;
+        }
+        .btn-add {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            background-color: transparent;
+            color: var(--tg-theme-button-color, #3390ec);
+            border: 2px dashed var(--tg-theme-button-color, #3390ec);
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 5px;
+        }
+        .btn-remove {
+            background-color: #ff4d4f;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            float: right;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>📝 BÁO CÁO HÀNG NGÀY</h2>
+
+    <div class="form-group">
+        <label for="tinNhan">💬 Số tin nhắn gửi:</label>
+        <input type="number" id="tinNhan" placeholder="Ví dụ: 50" inputmode="numeric">
+    </div>
+
+    <div class="form-group">
+        <label for="doanhThu">💰 Doanh thu (VND):</label>
+        <input type="text" id="doanhThu" placeholder="Ví dụ: 12tr, 500k, hoặc 0">
+    </div>
+
+    <div class="form-group">
+        <label>📅 Danh sách khách hàng (nếu có):</label>
+        <div id="customers-container"></div>
+        <button type="button" class="btn-add" id="btnAddCustomer">+ THÊM KHÁCH HÀNG</button>
+    </div>
+
+    <div class="form-group">
+        <label for="images">📸 Ảnh minh chứng (Nếu là Video, nộp xong báo cáo rồi gửi thẳng Video vào nhóm):</label>
+        <input type="file" id="images" accept="image/*" multiple>
+        <div id="image-preview" style="display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap;"></div>
+    </div>
+
+    <button class="btn-submit" id="btnSubmit">GỬI BÁO CÁO</button>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Mở full màn hình popup
+
+        // Nếu Web App được mở ra, có thể lấy thông tin user
+        const user = tg.initDataUnsafe?.user;
+        let selectedImagesBase64 = []; // Mảng chứa ảnh Base64 đã nén
+
+        window.addEventListener('DOMContentLoaded', async () => {
+            if (user) {
+                const urlParams = new URLSearchParams(window.location.search);
+                let chatId = urlParams.get('chat_id');
+                const startParam = tg.initDataUnsafe?.start_param || '';
+                
+                if (startParam.startsWith('schedule_')) {
+                    window.location.href = `/mini-app/schedule.html?v=${Date.now()}`;
+                    return;
+                }
+
+                if (!chatId && startParam.startsWith('baocao_')) {
+                    chatId = startParam.replace('baocao_', '');
+                }
+
+                if (chatId) {
+                    try {
+                        const res = await fetch(`/api/bot/get-report-today?telegramId=${user.id}&chatId=${chatId}`);
+                        const data = await res.json();
+                        if (data.success) {
+                            document.getElementById('tinNhan').value = data.data.tinNhan !== '0' ? data.data.tinNhan : '';
+                            document.getElementById('doanhThu').value = data.data.doanhThu !== '0' ? data.data.doanhThu : '';
+                            
+                            // Thay đổi tiêu đề nút để nhân viên biết là đang Cập nhật
+                            document.getElementById('btnSubmit').innerText = 'CẬP NHẬT BÁO CÁO';
+                        }
+                    } catch (e) {
+                        console.error('Không thể tự động tải báo cáo cũ', e);
+                    }
+                }
+            }
+        });
+
+        document.getElementById('btnAddCustomer').addEventListener('click', () => {
+            const container = document.getElementById('customers-container');
+            const card = document.createElement('div');
+            card.className = 'customer-card';
+            card.innerHTML = `
+                <button type="button" class="btn-remove" onclick="this.parentElement.remove()">Xóa</button>
+                <label>Tên khách hàng:</label>
+                <input type="text" class="c-ten" placeholder="Nguyễn Văn A">
+                <label>SĐT Khách:</label>
+                <input type="tel" class="c-sdt" placeholder="0987654321">
+                <label>Dịch vụ:</label>
+                <input type="text" class="c-dv" placeholder="tên dịch vụ">
+                <label>Số buổi (Đã làm / Đã thanh toán):</label>
+                <input type="text" class="c-soBuoi" placeholder="Ví dụ: 2 / 10">
+                <label>Ngày Giờ:</label>
+                <input type="datetime-local" class="c-thoiGian">
+            `;
+            container.appendChild(card);
+        });
+
+        // Xử lý nén ảnh
+        document.getElementById('images').addEventListener('change', async (e) => {
+            const files = e.target.files;
+            const previewContainer = document.getElementById('image-preview');
+            previewContainer.innerHTML = ''; // Clear preview
+            selectedImagesBase64 = []; // Clear array
+
+            if (files.length === 0) return;
+
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                if (!file.type.startsWith('image/')) continue;
+
+                // Tạo preview UI
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = (event) => {
+                    const imgElement = document.createElement('img');
+                    imgElement.src = event.target.result;
+                    imgElement.style.width = '60px';
+                    imgElement.style.height = '60px';
+                    imgElement.style.objectFit = 'cover';
+                    imgElement.style.borderRadius = '8px';
+                    previewContainer.appendChild(imgElement);
+
+                    // Nén ảnh bằng Canvas
+                    const img = new Image();
+                    img.src = event.target.result;
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 1200;
+                        const MAX_HEIGHT = 1200;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        // Lấy base64 (chất lượng 0.7 để giảm dung lượng)
+                        const compressedBase64 = canvas.toDataURL('image/jpeg', 0.7);
+                        selectedImagesBase64.push(compressedBase64);
+                    };
+                };
+            }
+        });
+
+        document.getElementById('btnSubmit').addEventListener('click', async () => {
+            const tinNhan = document.getElementById('tinNhan').value.trim();
+            const doanhThu = document.getElementById('doanhThu').value.trim() || '0';
+            
+            const customers = [];
+            document.querySelectorAll('.customer-card').forEach(card => {
+                const ten = card.querySelector('.c-ten').value.trim();
+                const sdt = card.querySelector('.c-sdt').value.trim();
+                const dv = card.querySelector('.c-dv').value.trim();
+                const soBuoi = card.querySelector('.c-soBuoi').value.trim();
+                const thoiGianRaw = card.querySelector('.c-thoiGian').value;
+                
+                let thoiGian = thoiGianRaw;
+                if (thoiGianRaw) {
+                    const d = new Date(thoiGianRaw);
+                    thoiGian = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')} ${d.getDate().toString().padStart(2, '0')}/${(d.getMonth()+1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+                }
+
+                if (ten) {
+                    customers.push({ ten, sdt, dv, soBuoi, thoiGian, thoiGianRaw });
+                }
+            });
+
+            let lichKhach = 'Không có';
+            if (customers.length > 0) {
+                lichKhach = customers.map(c => `${c.ten} - SĐT: ${c.sdt} - ${c.dv} - ${c.soBuoi} - Lúc: ${c.thoiGian}`).join('\n');
+            }
+
+            if (!tinNhan) {
+                tg.showAlert('Vui lòng nhập số tin nhắn!');
+                return;
+            }
+
+            const urlParams = new URLSearchParams(window.location.search);
+            let chatId = urlParams.get('chat_id');
+            
+            // Hỗ trợ Direct Link Mini App (lấy chatId từ startapp parameter)
+            if (!chatId && tg.initDataUnsafe?.start_param?.startsWith('baocao_')) {
+                chatId = tg.initDataUnsafe.start_param.replace('baocao_', '');
+            }
+
+            // Chuẩn bị dữ liệu gửi về API
+            const payload = {
+                initData: tg.initData, // String chứa mã hóa để server xác thực
+                telegramId: tg.initDataUnsafe?.user?.id,
+                chatId: chatId,
+                tinNhan,
+                doanhThu,
+                lichKhach,
+                customersData: customers, // Mảng dữ liệu khách hàng độc lập
+                images: selectedImagesBase64 // Thêm mảng ảnh đã nén
+            };
+
+            // Vô hiệu hóa nút để tránh bấm nhiều lần
+            document.getElementById('btnSubmit').disabled = true;
+            document.getElementById('btnSubmit').innerText = 'ĐANG GỬI... VUI LÒNG ĐỢI...';
+
+            try {
+                // Gọi về API backend của chúng ta
+                const response = await fetch('/api/bot/submit-report', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const result = await response.json();
+                if (result.success) {
+                    tg.close(); // Đóng popup ngay lập tức
+                } else {
+                    tg.showAlert('Lỗi: ' + result.message);
+                    document.getElementById('btnSubmit').disabled = false;
+                    document.getElementById('btnSubmit').innerText = 'GỬI BÁO CÁO';
+                }
+            } catch (err) {
+                tg.showAlert('Không kết nối được server. Vui lòng thử lại!');
+                document.getElementById('btnSubmit').disabled = false;
+                document.getElementById('btnSubmit').innerText = 'GỬI BÁO CÁO';
+            }
+        });
+    </script>
+</body>
+</html>

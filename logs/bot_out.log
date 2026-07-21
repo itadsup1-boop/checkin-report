@@ -1,0 +1,458 @@
+◇ injected env (7) from .env // tip: ⌘ override existing { override: true }
+◇ injected env (8) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+◇ injected env (7) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (8) from .env // tip: ⌘ custom filepath { path: '/custom/path/.env' }
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+◇ injected env (7) from .env // tip: ⌘ multiple files { path: ['.env.local', '.env'] }
+◇ injected env (8) from .env // tip: ⌁ auth for agents [www.vestauth.com]
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+◇ injected env (7) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (8) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+◇ injected env (7) from .env // tip: ⌘ suppress logs { quiet: true }
+◇ injected env (8) from .env // tip: ⌘ suppress logs { quiet: true }
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+◇ injected env (7) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+◇ injected env (8) from .env // tip: ◈ secrets for agents [www.dotenvx.com]
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+[DEBUG] Nhận được tin nhắn từ ID 6461312022: /start
+[DEBUG] Nhận được tin nhắn từ ID 6461312022: /baocao
+[DEBUG] Nhận được tin nhắn từ ID 8492139644: /start
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '8492139644',
+  chatId: '-1004430861004_1782448471396'
+}
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '8634311806',
+  chatId: '-4807311025_1781953271714'
+}
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Boss bạn ơi hệ thống sửa xong chưa đó?
+[DEBUG] Nhận được tin nhắn từ ID 1801644744: /app
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: Vâng hiện tại hệ thống đã sửa xong rùi ạk
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: các chị thử vào lại giúp e với ạ
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: /app
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Lịch đặt trước đó bị reset hết rồi ạ?
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Mình vào check thấy không còn lịch nào
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: vâng chị để e check ạ
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: 1. Kiểu Nga 18998 chạy RF B2/5 14h30
+2. Quỳnh Trang 55154 tái khám + chạy RF B1/5 15h
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Boss mình không đặt được lịch
+◇ injected env (7) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+◇ injected env (8) from .env // tip: ⌘ override existing { override: true }
+Bot Mini-App Server is running on port 3002
+[LOG] Đã tự động cập nhật nút Menu Button với URL mới!
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: hệ thống đang tải dữ liệu lên chị ạ 
+nào xong e báo cáo lên nhóm luôn để các chị nhắm bắt ạ
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Oki e
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: dạ chị ạ
+[DEBUG] Nhận được tin nhắn từ ID 1801644744: /app
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: các chị vào check giúp e với ạ
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Oki c đặt được lịch r nhé
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: vânh ạ
+⏰ Đến giờ nhắc nhở cho nhóm: adassadass
+⏰ Đến giờ nhắc nhở cho nhóm: abcabc
+⏰ Đến giờ nhắc nhở cho nhóm: 2. UK - BÁO HẸN KHÁCH CŨ🍀
+⏰ Đến giờ nhắc nhở cho nhóm: test
+[LOG] Đã lưu báo cáo của Mỹ Linh vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho Mỹ Linh.
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '6953198391',
+  chatId: '-4807311025_1782055558364'
+}
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '5374182359',
+  chatId: '-4807311025_1782476425967'
+}
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '5374182359',
+  chatId: '-4807311025_1782476425967'
+}
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[LOG] Đã lưu báo cáo của Nhung ktv vào DB và đưa vào hàng đợi Sheet.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[LOG] Đã ghi Sheet xong cho Nhung ktv.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: Ảnh này là 2 hôm nhắn cho khách ạ
+Hôm qua nhắn - hnay cũng nhắn
+Tin nhắn khác nhau mà tr
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: Còn mấy ảnh này có phải em gửi lên đâu
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '8126971416',
+  chatId: '-4807311025_1782477401760'
+}
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: (Không phải text)
+[LOG] Đã lưu báo cáo của My ktv vào DB và đưa vào hàng đợi Sheet.
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: Ủa toàn ảnh mới mà
+[LOG] Đã ghi Sheet xong cho My ktv.
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[LOG] Đã lưu báo cáo của linh ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho linh ktv.
+[LOG] Đã CỘNG DỒN phạt KHÔNG NỘP BÁO CÁO cho Phạm Hùng.
+[DEBUG] Nhận được tin nhắn từ ID 5491701007: Mỹ  mai e k có lịch à
+[DEBUG] Nhận được tin nhắn từ ID 5491701007: sài lại ảnh là auto đánh phạt nhé @baocao_kpi_adsup_bot  Boss
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: vâng a ạ
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: Dạ nay em sốt quá nên ko care khách dc ạ. Mai đi làm em sẽ chủ động liên hệ với khách và cố gắng lấp lịch ạ
+[DEBUG] Nhận được tin nhắn từ ID 5491701007: OK em
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: dạ vâng ạ
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: /app
+⏰ Đến giờ nhắc nhở cho nhóm: adassadass
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '6394871607',
+  chatId: '-4807311025_1782534904366'
+}
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: (Không phải text)
+[LOG] Đã lưu báo cáo của Mỹ Linh vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho Mỹ Linh.
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: Boss bạn ơi fix lại cái phát hiện này dc k bạn , chứ ảnh có giống nhau đâu mà nó báo hoài thế
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: dạ để em nghiên cứu lại ạ
+⏰ Đến giờ nhắc nhở cho nhóm: abcabc
+⏰ Đến giờ nhắc nhở cho nhóm: 2. UK - BÁO HẸN KHÁCH CŨ🍀
+⏰ Đến giờ nhắc nhở cho nhóm: test
+[DEBUG] Nhận được tin nhắn từ ID 8126971416: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '8126971416',
+  chatId: '-4807311025_1782559622921'
+}
+[Rate Limit] Bị chặn gửi ảnh, tự động chờ 30 giây...
+[Rate Limit] Bị chặn gửi ảnh, tự động chờ 26 giây...
+[LOG] Đã lưu báo cáo của My ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho My ktv.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '5374182359',
+  chatId: '-4807311025_1782559885637'
+}
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[LOG] Đã lưu báo cáo của Nhung ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho Nhung ktv.
+[LOG] Đã CỘNG DỒN phạt KHÔNG NỘP BÁO CÁO cho Phạm Hùng.
+[LOG] Đã CỘNG DỒN phạt KHÔNG NỘP BÁO CÁO cho linh ktv.
+[DEBUG] Nhận được tin nhắn từ ID 6394871607: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '6394871607',
+  chatId: '-4807311025_1782611411987'
+}
+[LOG] Đã lưu báo cáo của linh ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho linh ktv.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: C Linh hnay đi làm đấy
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: dạ vâng ạ
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: đến giờ c vẫn báo cáo như bình thường là đc ạ
+[DEBUG] Nhận được tin nhắn từ ID 1801644744: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '6953198391',
+  chatId: '-4807311025_1781953271714'
+}
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '6953198391',
+  chatId: '-4807311025_1781953271714'
+}
+⏰ Đến giờ nhắc nhở cho nhóm: adassadass
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 6953198391: (Không phải text)
+[LOG] Đã lưu báo cáo của linh ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho linh ktv.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: /app
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '5374182359',
+  chatId: '-4807311025_1782641294926'
+}
+GET REPORT TODAY CALLED: [Object: null prototype] {
+  telegramId: '5374182359',
+  chatId: '-4807311025_1782641294926'
+}
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: (Không phải text)
+[LOG] Đã lưu báo cáo của Nhung ktv vào DB và đưa vào hàng đợi Sheet.
+[LOG] Đã ghi Sheet xong cho Nhung ktv.
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: Boss check giúp mình mấy ảnh mình gửi là các khách khác nhau và tin nhắn không giống nhau nhé
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: .
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: .
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: .
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: .
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: .
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: 5 báo cáo này là sai
+[DEBUG] Nhận được tin nhắn từ ID 5374182359: Htro check lại giúp mình
+[DEBUG] Nhận được tin nhắn từ ID 8634311806: dạ hệ thống ghi nhận r c nhé

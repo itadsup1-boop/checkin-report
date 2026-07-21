@@ -1,0 +1,5 @@
+/node_modules
+.env
+*.json
+hybrid-flame-499905-r2-ccd6aff86787.json
+cloudflared.exe

@@ -1,0 +1,44 @@
+🚀 Đang dọn dẹp các tiến trình cũ...
+📦 Đang khởi động API & Web Server (Chạy ngầm)...
+[PM2] Starting /home/giang-adsup/Documents/telegramReport/apps/api/index.js in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name       │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ kpi-api    │ default     │ 1.0.0   │ fork    │ 2675166  │ 0s     │ 0    │ online    │ 0%       │ 21.1mb   │ giang-a… │ disabled │
+└────┴────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+🤖 Đang khởi động Telegram Bot (Chạy ngầm)...
+[PM2] Starting /home/giang-adsup/Documents/telegramReport/apps/bot/index.js in fork_mode (1 instance)
+[PM2] Done.
+┌────┬────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name       │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ kpi-api    │ default     │ 1.0.0   │ fork    │ 2675166  │ 0s     │ 0    │ online    │ 0%       │ 70.1mb   │ giang-a… │ disabled │
+│ 1  │ kpi-bot    │ default     │ 1.0.0   │ fork    │ 2675194  │ 0s     │ 0    │ online    │ 0%       │ 20.3mb   │ giang-a… │ disabled │
+└────┴────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+🌐 Đang khởi động đường hầm mạng Cloudflare...
+⏳ Đang cấu hình kết nối mạng (vui lòng đợi 10 giây)...
+[PM2] Applying action restartProcessId on app [all](ids: [ 0, 1 ])
+[PM2] [kpi-api](0) ✓
+[PM2] [kpi-bot](1) ✓
+┌────┬────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name       │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ kpi-api    │ default     │ 1.0.0   │ fork    │ 2675514  │ 1s     │ 1    │ online    │ 0%       │ 69.4mb   │ giang-a… │ disabled │
+│ 1  │ kpi-bot    │ default     │ 1.0.0   │ fork    │ 2675579  │ 0s     │ 1    │ online    │ 0%       │ 21.1mb   │ giang-a… │ disabled │
+└────┴────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘
+
+==========================================================
+✅ HỆ THỐNG KPI ĐÃ KHỞI CHẠY THÀNH CÔNG!
+==========================================================
+🎯 MINI APP URL (Cloudflare Tunnel):
+👉 https://achieved-ear-diamonds-rebecca.trycloudflare.com
+
+🖥️  WEB ADMIN LOCAL:
+👉 http://localhost:3001
+==========================================================
+💡 Ghi chú:
+- Để xem trực tiếp tiến trình, gõ: pm2 monit
+- Để xem lỗi của Bot nếu có, gõ: pm2 logs kpi-bot
+- Để tắt toàn bộ hệ thống, gõ: pm2 stop all
+==========================================================
