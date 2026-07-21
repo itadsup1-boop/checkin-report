@@ -1,5 +1,17 @@
+/**
+ * @deprecated [DEPRECATED] update_url.cjs - KHONG SU DUNG FILE NAY NUA
+ *
+ * Da duoc tich hop vao: scripts\windows\start.ps1
+ *
+ * Loi da biet:
+ *   BUG: pm2 restart "kpi-bot" - process khong ton tai (phai la "timekeep-bot")
+ *
+ * Giu lai chi de tham khao lich su.
+ */
+
 const fs = require('fs');
 const { execSync } = require('child_process');
+
 
 try {
     const logData = fs.readFileSync('cf_err.log', 'utf8');

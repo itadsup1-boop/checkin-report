@@ -1,0 +1,577 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Điểm Danh Bằng Video</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --warning: #f59e0b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Profile Banner */
+        .profile-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Video Container */
+        .video-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 3/4;
+            background: #000;
+            border-radius: 16px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            border: 2px solid rgba(255, 255, 255, 0.05);
+        }
+
+        #cameraView {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1); /* Mirror effect */
+        }
+
+        .overlay-text {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 14px;
+            text-align: center;
+            pointer-events: none;
+            width: 80%;
+        }
+
+        /* Countdown Badge */
+        .countdown-badge {
+            position: absolute;
+            top: 16px;
+            right: 16px;
+            background: rgba(244, 63, 94, 0.9);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 14px;
+            display: none;
+            box-shadow: 0 4px 12px rgba(244, 63, 94, 0.5);
+            animation: pulse 1s infinite alternate;
+        }
+
+        @keyframes pulse {
+            from { transform: scale(1); opacity: 1; }
+            to { transform: scale(1.05); opacity: 0.8; }
+        }
+
+        /* Buttons */
+        .btn-action {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px var(--primary-glow);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+        }
+
+        .btn-action:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn-action:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .btn-danger {
+            background: #f43f5e;
+            box-shadow: 0 4px 12px rgba(244, 63, 94, 0.35);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #e11d48;
+            box-shadow: 0 6px 20px rgba(244, 63, 94, 0.5);
+        }
+
+        /* iOS Warning */
+        .ios-warning {
+            display: none;
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            color: #fcd34d;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            text-align: center;
+            line-height: 1.4;
+        }
+
+        /* Alert and Success screen */
+        .alert {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            text-align: center;
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            color: #fda4af;
+        }
+
+        .success-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0b0f19;
+            border-radius: 24px;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+        }
+
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 16px;
+        }
+
+        .success-screen h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .success-screen p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+        
+        .loading-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.8);
+            z-index: 50;
+            border-radius: 24px;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255,255,255,0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Loading Overlay -->
+            <div id="loadingOverlay" class="loading-overlay">
+                <div class="spinner"></div>
+                <div style="font-weight: 600; font-size: 14px;">Đang tải video lên...</div>
+            </div>
+
+            <!-- Success screen -->
+            <div id="successScreen" class="success-screen">
+                <div class="success-icon">✓</div>
+                <h2>Điểm Danh Thành Công</h2>
+                <p>Video check-in của bạn đã được lưu và gửi báo cáo vào nhóm.</p>
+                <button class="btn-action" onclick="closeWebApp()">Hoàn Thành</button>
+            </div>
+
+            <div class="header">
+                <h1>Điểm Danh Video</h1>
+                <p>Quay một đoạn video ngắn 5 giây để xác nhận</p>
+            </div>
+
+            <!-- iOS Warning -->
+            <div id="iosWarning" class="ios-warning">
+                📱 <b>Lưu ý cho người dùng iPhone/iPad:</b><br>
+                Bạn có thể cần phải cấp quyền truy cập Camera (Máy ảnh) thủ công khi được hỏi. Vui lòng cho phép để tiếp tục.
+            </div>
+
+            <!-- Alert Box -->
+            <div id="alertBox" class="alert"></div>
+
+            <!-- Profile banner -->
+            <div class="profile-section">
+                <div>
+                    <div id="userName" style="font-weight:700; font-size:15px;">Đang tải...</div>
+                    <div id="userRole" style="font-size:12px; color:var(--text-secondary);">Vị trí: Đang tải...</div>
+                </div>
+                <span id="tgName" style="color:#93c5fd; font-weight:600;">@...</span>
+            </div>
+
+            <!-- Camera View -->
+            <div class="video-container">
+                <div id="overlayText" class="overlay-text">
+                    Đang yêu cầu quyền truy cập Camera...<br>
+                    (Hãy cấp quyền khi có thông báo)
+                </div>
+                <video id="cameraView" autoplay playsinline muted></video>
+                <div id="countdownBadge" class="countdown-badge">🔴 5s</div>
+            </div>
+
+            <!-- Start Recording Button -->
+            <button id="btnRecord" class="btn-action" disabled onclick="startRecording()">
+                <span>📷</span> BẮT ĐẦU CHECK-IN (5 GIÂY)
+            </button>
+        </div>
+    </div>
+
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        let tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand();
+                tg.ready();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
+        let telegramId = "";
+        let telegramUsername = "";
+        let chatId = "";
+        let initData = "";
+        
+        let payloadAction = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        
+        let mediaRecorder;
+        let recordedChunks = [];
+        let videoStream;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Detect iOS
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            if (isIOS) {
+                document.getElementById('iosWarning').style.display = 'block';
+            }
+
+            if (tg && tg.initData) {
+                initData = tg.initData;
+            }
+
+            if (!initData) {
+                document.getElementById('alertBox').textContent = '⚠️ Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram!';
+                document.getElementById('alertBox').style.display = 'block';
+                document.body.style.pointerEvents = 'none';
+                return;
+            }
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                telegramId = user.id;
+                telegramUsername = user.username || user.first_name;
+                document.getElementById('tgName').textContent = `@${telegramUsername}`;
+                
+                let startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else {
+                        chatId = startParam.replace('checkin_', '');
+                    }
+                }
+                
+                if (!chatId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    chatId = urlParams.get('chat_id') || "";
+                    payloadTs = urlParams.get('ts') || "";
+                    payloadSig = urlParams.get('sig') || "";
+                    payloadAction = urlParams.get('action') || "checkin";
+                }
+            }
+
+            loadUserProfile();
+            initCamera();
+        });
+
+        function loadUserProfile() {
+            fetch(`/api/timekeep/schedule/data?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`, {
+                headers: {
+                    'x-telegram-init-data': initData
+                }
+            })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        document.getElementById('userName').textContent = res.user.full_name;
+                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role}`;
+                    } else {
+                        showAlert('Vui lòng đăng ký tài khoản chấm công trước!');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                });
+        }
+
+        async function initCamera() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: { facingMode: "user", width: { ideal: 640 }, height: { ideal: 480 } }, 
+                    audio: false 
+                });
+                
+                const videoElement = document.getElementById('cameraView');
+                videoElement.srcObject = videoStream;
+                document.getElementById('overlayText').style.display = 'none';
+                
+                // Enable Record Button
+                document.getElementById('btnRecord').disabled = false;
+            } catch (err) {
+                console.error("Camera access denied or failed:", err);
+                document.getElementById('overlayText').innerHTML = "❌ Lỗi: Không thể truy cập Camera.<br>Vui lòng kiểm tra quyền cài đặt.";
+                showAlert("Vui lòng cấp quyền Camera để điểm danh.");
+            }
+        }
+
+        function startRecording() {
+            if (!videoStream) return;
+
+            const btnRecord = document.getElementById('btnRecord');
+            const countdownBadge = document.getElementById('countdownBadge');
+            
+            // Set UI state to recording
+            btnRecord.disabled = true;
+            btnRecord.classList.add('btn-danger');
+            btnRecord.innerHTML = '<span>🔴</span> ĐANG GHI HÌNH...';
+            
+            countdownBadge.style.display = 'block';
+            
+            recordedChunks = [];
+            
+            // Choose the best mime type for cross-platform compatibility
+            // iOS Safari supports video/mp4, Android supports video/webm
+            let options = { mimeType: 'video/webm' };
+            if (!MediaRecorder.isTypeSupported('video/webm')) {
+                options = { mimeType: 'video/mp4' }; 
+            }
+
+            try {
+                mediaRecorder = new MediaRecorder(videoStream, options);
+            } catch (e) {
+                mediaRecorder = new MediaRecorder(videoStream);
+            }
+            
+            mediaRecorder.ondataavailable = function(e) {
+                if (e.data.size > 0) {
+                    recordedChunks.push(e.data);
+                }
+            };
+            
+            mediaRecorder.onstop = processVideoAndUpload;
+            
+            // Start recording
+            mediaRecorder.start();
+            
+            // Start 5 second countdown
+            let timeLeft = 5;
+            countdownBadge.textContent = `🔴 ${timeLeft}s`;
+            
+            const countdownInterval = setInterval(() => {
+                timeLeft--;
+                if (timeLeft > 0) {
+                    countdownBadge.textContent = `🔴 ${timeLeft}s`;
+                } else {
+                    clearInterval(countdownInterval);
+                    mediaRecorder.stop();
+                    // Stop camera stream to free resources
+                    videoStream.getTracks().forEach(track => track.stop());
+                }
+            }, 1000);
+        }
+
+        function processVideoAndUpload() {
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            
+            const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType });
+            
+            // Convert Blob to Base64
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = function() {
+                const base64data = reader.result;
+                
+                // Upload via API
+                fetch('/api/timekeep/checkin/save', {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': initData
+                    },
+                    body: JSON.stringify({
+                        telegram_id: telegramId,
+                        chat_id: chatId,
+                        action: payloadAction,
+                        ts: payloadTs,
+                        sig: payloadSig,
+                        video_base64: base64data,
+                        mime_type: mediaRecorder.mimeType
+                    })
+                })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    if (data.success) {
+                        document.getElementById('successScreen').style.display = 'flex';
+                    } else {
+                        showAlert(data.message || 'Lỗi khi tải video lên!');
+                        document.getElementById('btnRecord').disabled = false;
+                        document.getElementById('btnRecord').classList.remove('btn-danger');
+                        document.getElementById('btnRecord').innerHTML = '<span>📷</span> THỬ LẠI';
+                    }
+                })
+                .catch(err => {
+                    document.getElementById('loadingOverlay').style.display = 'none';
+                    console.error(err);
+                    showAlert('Lỗi kết nối máy chủ!');
+                    document.getElementById('btnRecord').disabled = false;
+                    document.getElementById('btnRecord').classList.remove('btn-danger');
+                    document.getElementById('btnRecord').innerHTML = '<span>📷</span> THỬ LẠI';
+                });
+            }
+        }
+
+        function showAlert(msg) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.textContent = msg;
+            alertBox.style.display = 'block';
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            }
+        }
+    </script>
+</body>
+</html>

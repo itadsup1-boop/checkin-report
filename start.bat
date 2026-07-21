@@ -1,4 +1,22 @@
 @echo off
+:: ==============================================================
+:: [DEPRECATED] start.bat - KHONG SU DUNG FILE NAY NUA
+:: Da duoc thay the boi: scripts\windows\start.ps1
+::
+:: Cac loi da biet:
+::   BUG 1: Hardcode path "C:\Users\ADMIN\" - khong dung tren may khac
+::   BUG 2: Cloudflared tro vao port 3001 (API) - phai la 3002 (Bot)
+::   BUG 3: Khong kiem tra .env truoc khi chay
+:: ==============================================================
+echo.
+echo [DEPRECATED] File nay da loi thoi. Hay su dung:
+echo   scripts\windows\start.ps1
+echo.
+pause
+exit /b 1
+
+:: ---- NOI DUNG CU (giu lai de tham khao) ----
+:: @echo off
 SET NODE_DIR=C:\nodejs\node-v22.16.0-win-x64
 SET NPM_GLOBAL=%APPDATA%\npm
 SET PATH=%NODE_DIR%;%NPM_GLOBAL%;%PATH%

@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Xin Nghỉ Phép / Đi Muộn</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(255, 255, 255, 0.08);
+            --input-focus: #818cf8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            color: var(--danger);
+            box-shadow: 0 8px 24px -4px rgba(244, 63, 94, 0.3);
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #ffffff, #fecdd3);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Profile Banner */
+        .profile-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        /* Form Group */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin-bottom: 8px;
+        }
+
+        /* Request Type Selector */
+        .type-selector {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .type-btn {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--input-border);
+            border-radius: 12px;
+            padding: 12px 8px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .type-btn:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            color: var(--text-primary);
+        }
+
+        .type-btn.selected[data-type="FULL_DAY"] {
+            background: rgba(244, 63, 94, 0.15);
+            border-color: var(--danger);
+            color: #fda4af;
+        }
+
+        .type-btn.selected[data-type="HALF_DAY_AM"] {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: var(--warning);
+            color: #fde047;
+        }
+
+        .type-btn.selected[data-type="HALF_DAY_PM"] {
+            background: rgba(245, 158, 11, 0.15);
+            border-color: var(--warning);
+            color: #fde047;
+        }
+
+        .type-btn.selected[data-type="LATE"] {
+            background: rgba(16, 185, 129, 0.15);
+            border-color: var(--success);
+            color: #6ee7b7;
+        }
+
+        /* Late Minutes Dropdown */
+        .late-box {
+            display: none;
+            background: rgba(16, 185, 129, 0.03);
+            border: 1px solid rgba(16, 185, 129, 0.15);
+            border-radius: 12px;
+            padding: 14px;
+            margin-top: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .select-control,
+        .input-control {
+            width: 100%;
+            background: #0f172a !important;
+            border: 1px solid var(--input-border);
+            border-radius: 10px;
+            padding: 12px;
+            color: var(--text-primary) !important;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+            transition: border-color 0.3s ease;
+        }
+
+        .select-control {
+            appearance: none;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>") !important;
+            background-repeat: no-repeat !important;
+            background-position: right 12px center !important;
+            padding-right: 40px !important;
+        }
+
+        .select-control option {
+            background-color: #0f172a !important;
+            color: var(--text-primary) !important;
+        }
+
+        .select-control:focus,
+        .input-control:focus {
+            border-color: var(--input-focus);
+        }
+
+        textarea.input-control {
+            resize: none;
+            height: 90px;
+        }
+
+        /* Image Upload Box */
+        .upload-box {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed var(--input-border);
+            border-radius: 14px;
+            padding: 16px;
+            text-align: center;
+            position: relative;
+            cursor: pointer;
+            transition: border-color 0.3s ease;
+        }
+
+        .upload-box:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .file-input {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            opacity: 0;
+            cursor: pointer;
+        }
+
+        .upload-text {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .preview-img {
+            max-width: 100%;
+            max-height: 140px;
+            border-radius: 8px;
+            margin-top: 12px;
+            display: none;
+            object-fit: contain;
+        }
+
+        /* Submit Button */
+        .btn-submit {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 4px 12px var(--primary-glow);
+            font-family: inherit;
+            margin-top: 12px;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Alert and Success screen */
+        .alert {
+            display: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 13px;
+            font-weight: 500;
+            margin-bottom: 20px;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .alert-error {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            color: #fda4af;
+        }
+
+        .success-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0b0f19;
+            border-radius: 24px;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .success-icon {
+            width: 64px;
+            height: 64px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            margin-bottom: 16px;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .success-screen h2 {
+            font-size: 20px;
+            margin-bottom: 8px;
+        }
+
+        .success-screen p {
+            color: var(--text-secondary);
+            font-size: 13px;
+            line-height: 1.5;
+            margin-bottom: 20px;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Alert Box -->
+            <div id="alertBox" class="alert alert-error"></div>
+
+            <!-- Success screen -->
+            <div id="successScreen" class="success-screen">
+                <div class="success-icon">✓</div>
+                <h2>Gửi Đơn Thành Công</h2>
+                <p>Yêu cầu đã được gửi lên nhóm chat của clinic để chờ phê duyệt.</p>
+                <button class="btn-submit" onclick="closeWebApp()">Hoàn Thành</button>
+            </div>
+
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <path
+                            d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z">
+                        </path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                </div>
+                <h1>Nghỉ Đột Xuất / Đi Muộn</h1>
+                <p>Gửi yêu cầu xin nghỉ hoặc xin đi muộn đột xuất</p>
+            </div>
+
+            <!-- Profile banner -->
+            <div class="profile-section">
+                <div>
+                    <div id="userName" style="font-weight:700; font-size:15px;">Đang tải...</div>
+                    <div id="userRole" style="font-size:12px; color:var(--text-secondary);">Vị trí: Đang tải...</div>
+                </div>
+                <span id="tgName" style="color:#93c5fd; font-weight:600;">@...</span>
+            </div>
+
+            <!-- Form -->
+            <form id="leaveForm" onsubmit="event.preventDefault();">
+                <!-- Request Type -->
+                <div class="form-group">
+                    <label class="form-label">Loại yêu cầu</label>
+                    <div class="type-selector">
+                        <button type="button" class="type-btn selected" data-type="FULL_DAY"
+                            onclick="selectType('FULL_DAY')">
+                            <span>🟥</span>
+                            <span>Nghỉ Cả Ngày</span>
+                        </button>
+                        <button type="button" class="type-btn" data-type="HALF_DAY_AM"
+                            onclick="selectType('HALF_DAY_AM')">
+                            <span>🌅</span>
+                            <span>Nghỉ Sáng</span>
+                        </button>
+                        <button type="button" class="type-btn" data-type="HALF_DAY_PM"
+                            onclick="selectType('HALF_DAY_PM')">
+                            <span>🌇</span>
+                            <span>Nghỉ Chiều</span>
+                        </button>
+                        <button type="button" class="type-btn" data-type="LATE" onclick="selectType('LATE')">
+                            <span>🟩</span>
+                            <span>Xin Đi Muộn</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Late minutes (Conditional) -->
+                <div id="lateBox" class="late-box">
+                    <label class="form-label" style="color:#6ee7b7;">Thời gian đi muộn</label>
+                    <select id="lateMinutes" class="select-control">
+                        <option value="15">Muộn 15 phút</option>
+                        <option value="30" selected>Muộn 30 phút</option>
+                        <option value="45">Muộn 45 phút</option>
+                        <option value="60">Muộn 60 phút</option>
+                        <option value="120">Muộn 120 phút (2 tiếng)</option>
+                    </select>
+                </div>
+
+                <!-- Date selector -->
+                <div class="form-group" style="margin-top: 15px;">
+                    <label class="form-label">Chọn ngày xin phép</label>
+                    <input type="date" id="leaveDate" class="input-control" required>
+                </div>
+
+                <!-- Reason -->
+                <div class="form-group">
+                    <label class="form-label">Lý do xin phép</label>
+                    <textarea id="leaveReason" class="input-control"
+                        placeholder="Nhập lý do chi tiết (ví dụ: Xe hỏng, đi khám bệnh đột xuất...)" required
+                        oninput="validateForm()"></textarea>
+                </div>
+
+                <!-- Proof image -->
+                <div class="form-group">
+                    <label class="form-label">Ảnh minh chứng (nếu có)</label>
+                    <div class="upload-box">
+                        <input type="file" id="fileProof" class="file-input" accept="image/*" onchange="previewFile()">
+                        <span class="upload-text" id="uploadText">📁 Nhấn để chọn hoặc chụp ảnh minh chứng</span>
+                        <img id="imgPreview" class="preview-img" alt="Minh chứng">
+                    </div>
+                </div>
+
+                <!-- Submit -->
+                <button type="button" id="btnSubmit" class="btn-submit" disabled onclick="submitRequest()">GỬI YÊU CẦU
+                    XIN PHÉP</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        let tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand();
+                tg.ready();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
+        let telegramId = "";
+        let telegramUsername = "";
+        let chatId = "";
+        let initData = "";
+        
+        let payloadAction = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        
+        let selectedType = "FULL_DAY";
+        let base64Proof = null;
+        let globalRawReason = 'Test';
+
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // Set date input to today
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            document.getElementById('leaveDate').value = `${yyyy}-${mm}-${dd}`;
+
+            if (tg && tg.initData) {
+                initData = tg.initData;
+            }
+
+            if (!initData) {
+                document.getElementById('alertBox').textContent = '⚠️ Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram!';
+                document.getElementById('alertBox').style.display = 'flex';
+                document.body.style.pointerEvents = 'none';
+                return;
+            }
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                telegramId = user.id;
+                telegramUsername = user.username || user.first_name;
+                document.getElementById('tgName').textContent = `@${telegramUsername}`;
+
+                // Parse Chat ID from start param
+                let startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else {
+                        chatId = startParam.replace(/^(sched_|reg_|leave_|checkin_|stats_)/, '');
+                    }
+                }
+
+                if (!chatId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    chatId = urlParams.get('chat_id') || "";
+                    payloadTs = urlParams.get('ts') || "";
+                    payloadSig = urlParams.get('sig') || "";
+                    payloadAction = urlParams.get('action') || "leave";
+                }
+            }
+
+            // Attach real‑time listener to the reason textarea
+            const reasonField = document.getElementById('leaveReason');
+            if (reasonField) {
+                reasonField.addEventListener('input', (e) => {
+                    if (e.target.value.length != 0) {
+                        globalRawReason = e.target.value;
+                    }
+                });
+            }
+
+            loadUserProfile();
+        });
+
+        function loadUserProfile() {
+            // Re-use schedule data endpoint to get user details
+            fetch(`/api/timekeep/schedule/data?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`, {
+                headers: {
+                    'x-telegram-init-data': initData
+                }
+            })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success) {
+                        document.getElementById('userName').textContent = res.user.full_name;
+                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role}`;
+                    } else {
+                        showAlert('Vui lòng đăng ký tài khoản chấm công trước!');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    showAlert('Lỗi kết nối máy chủ!');
+                });
+        }
+
+        function selectType(type) {
+            selectedType = type;
+
+            // Re-render selected buttons
+            document.querySelectorAll('.type-btn').forEach(btn => {
+                if (btn.getAttribute('data-type') === type) {
+                    btn.classList.add('selected');
+                } else {
+                    btn.classList.remove('selected');
+                }
+            });
+
+            // Toggle late minutes box
+            const lateBox = document.getElementById('lateBox');
+            if (type === 'LATE') {
+                lateBox.style.display = 'block';
+            } else {
+                lateBox.style.display = 'none';
+            }
+
+            validateForm();
+        }
+
+        function previewFile() {
+            const file = document.getElementById('fileProof').files[0];
+            const preview = document.getElementById('imgPreview');
+            const uploadText = document.getElementById('uploadText');
+
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onloadend = function () {
+                base64Proof = reader.result;
+                preview.src = reader.result;
+                preview.style.display = 'block';
+                uploadText.textContent = `✓ Đã chọn: ${file.name}`;
+            }
+            reader.readAsDataURL(file);
+        }
+
+        function validateForm() {
+            // Update global reason on each input
+            const btnSubmit = document.getElementById('btnSubmit');
+            btnSubmit.disabled = false;
+        }
+
+        function submitRequest(e) {
+            // Prevent any default form submission that could reset fields
+            if (e && e.preventDefault) e.preventDefault();
+            const btnSubmit = document.getElementById('btnSubmit');
+            const reason = (globalRawReason) ? globalRawReason : 'Không có';
+            console.log('Submitting leave request, reason:', reason); // debug
+            const date = document.getElementById('leaveDate').value;
+            const lateMinutes = selectedType === 'LATE'
+                ? parseInt(document.getElementById('lateMinutes').value) : 0;
+
+            // UI lock while request is pending
+            // btnSubmit.disabled = true;
+            // btnSubmit.textContent = 'Đang gửi yêu cầu...';
+            // document.getElementById('alertBox').style.display = 'none';
+
+            const fetchPromise = fetch(`${window.location.origin}/api/timekeep/leave-request/save`, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'x-telegram-init-data': initData
+                },
+                body: JSON.stringify({
+                    telegram_id: telegramId,
+                    chat_id: chatId,
+                    action: payloadAction,
+                    ts: payloadTs,
+                    sig: payloadSig,
+                    request_type: selectedType,
+                    late_minutes: lateMinutes,
+                    date: date,
+                    reason: reason,
+                    proof_image: base64Proof
+                })
+            });
+
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), 10000));
+
+            Promise.race([fetchPromise, timeoutPromise])
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        document.getElementById('successScreen').style.display = 'flex';
+                        // close Mini‑App shortly after showing success
+                        setTimeout(() => { if (tg) tg.close(); }, 1500);
+                    } else {
+                        showAlert(data.message || 'Lỗi khi gửi yêu cầu xin nghỉ!');
+                        btnSubmit.disabled = false;
+                        btnSubmit.textContent = 'GỬI YÊU CẦU XIN PHÉP';
+                    }
+                })
+                .catch(err => {
+                    if (err.message === 'timeout') {
+                        showAlert('Yêu cầu quá thời gian, vui lòng thử lại!');
+                    } else {
+                        console.error(err);
+                        showAlert('Lỗi kết nối máy chủ!');
+                    }
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = 'GỬI YÊU CẦU XIN PHỖ';
+                });
+        }
+
+        function showAlert(msg) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.textContent = msg;
+            alertBox.style.display = 'flex';
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            }
+        }
+    </script>
+</body>
+
+</html>

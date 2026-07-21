@@ -1,0 +1,97 @@
+
+services:
+  # ─────────────────────────────────────────
+  # 1. PostgreSQL Database
+  # ─────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: kpi_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: telegram_kpi
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-kpi_secret_2024}
+    volumes:
+      - /home/giang-adsup/mount/postgres_data:/var/lib/postgresql/data
+      - ./scripts/db_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    # Port 5432 không cần expose ra ngoài — các service dùng nội bộ Docker network
+    # Nếu muốn kết nối từ host bằng pgAdmin/DBeaver, đổi thành "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d telegram_kpi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - kpi_network
+
+  # ─────────────────────────────────────────
+  # 2. API Server + Web Admin (port 3000)
+  # ─────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    container_name: kpi_api
+    restart: unless-stopped
+    env_file:
+      - /home/giang-adsup/mount/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-kpi_secret_2024}@postgres:5432/telegram_kpi
+      API_PORT: 3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./apps/web-admin/dist:/app/apps/web-admin/dist:ro
+      - /home/giang-adsup/mount/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kpi_network
+
+  # ─────────────────────────────────────────
+  # 3. Telegram Bot (port 3002)
+  # ─────────────────────────────────────────
+  bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.bot
+    container_name: kpi_bot
+    restart: unless-stopped
+    env_file:
+      - /home/giang-adsup/mount/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-kpi_secret_2024}@postgres:5432/telegram_kpi
+      BOT_PORT: 3002
+    ports:
+      - "3002:3002"
+    volumes:
+      # Mount file Google Service Account nếu dùng Google Sheets
+      - /home/giang-adsup/mount/service_account.json:/app/service_account.json:ro
+      - /home/giang-adsup/mount/logs:/app/logs
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - kpi_network
+
+  # ─────────────────────────────────────────
+  # 4. Cloudflare Tunnel (tuỳ chọn)
+  # Chỉ chạy nếu có CLOUDFLARE_TUNNEL_TOKEN trong .env
+  # ─────────────────────────────────────────
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: kpi_cloudflared
+    restart: unless-stopped
+    # Chạy Quick Tunnel để tự động cấp URL công khai cho Mini App.
+    # Nếu muốn dùng Token cố định, comment dòng dưới và mở comment dòng chứa token.
+    command: tunnel --no-autoupdate --url http://bot:3002
+    # command: tunnel --no-autoupdate run --token YOUR_TOKEN_HERE
+    depends_on:
+      - bot
+    networks:
+      - kpi_network
+
+networks:
+  kpi_network:
+    driver: bridge

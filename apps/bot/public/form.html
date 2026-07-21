@@ -138,20 +138,43 @@
             if (user) {
                 const urlParams = new URLSearchParams(window.location.search);
                 let chatId = urlParams.get('chat_id');
+                let payloadAction = urlParams.get('action') || 'baocao';
+                let payloadTs = urlParams.get('ts') || '';
+                let payloadSig = urlParams.get('sig') || '';
+                
                 const startParam = tg.initDataUnsafe?.start_param || '';
                 
-                if (startParam.startsWith('schedule_')) {
-                    window.location.href = `/mini-app/schedule.html?v=${Date.now()}`;
-                    return;
-                }
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    const action = parts[0];
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else if (startParam.startsWith('baocao_')) {
+                        chatId = startParam.replace('baocao_', '');
+                    }
 
-                if (!chatId && startParam.startsWith('baocao_')) {
-                    chatId = startParam.replace('baocao_', '');
+                    const pageMap = {
+                        'register': 'register.html',
+                        'schedule': 'schedule.html',
+                        'leave': 'urgent_leave.html',
+                        'checkin': 'checkin.html',
+                        'stats': 'stats.html'
+                    };
+                    
+                    if (pageMap[action]) {
+                        window.location.href = `/mini-app/${pageMap[action]}?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}&v=${Date.now()}`;
+                        return;
+                    }
                 }
 
                 if (chatId) {
                     try {
-                        const res = await fetch(`/api/bot/get-report-today?telegramId=${user.id}&chatId=${chatId}`);
+                        const res = await fetch(`/api/bot/get-report-today?chatId=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`, {
+                            headers: { 'x-telegram-init-data': tg.initData }
+                        });
                         const data = await res.json();
                         if (data.success) {
                             document.getElementById('tinNhan').value = data.data.tinNhan !== '0' ? data.data.tinNhan : '';
@@ -290,9 +313,11 @@
 
             // Chuẩn bị dữ liệu gửi về API
             const payload = {
-                initData: tg.initData, // String chứa mã hóa để server xác thực
                 telegramId: tg.initDataUnsafe?.user?.id,
                 chatId: chatId,
+                action: payloadAction,
+                ts: payloadTs,
+                sig: payloadSig,
                 tinNhan,
                 doanhThu,
                 lichKhach,
@@ -308,7 +333,10 @@
                 // Gọi về API backend của chúng ta
                 const response = await fetch('/api/bot/submit-report', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': tg.initData
+                    },
                     body: JSON.stringify(payload)
                 });
 

@@ -1,3 +1,22 @@
+# ==============================================================
+# [DEPRECATED] khoi_dong_he_thong_kpi.ps1 - KHONG SU DUNG FILE NAY NUA
+# Da duoc thay the boi: scripts\windows\start.ps1
+#
+# Cac loi da biet:
+#   BUG 1: Hardcode Node path "C:\nodejs\node-v22.16.0-win-x64"
+#   BUG 2: Khoi dong "apps/bot/index.js" - sai file (phai la timekeep_bot.js)
+#   BUG 3: Cloudflared tro vao port 3001 (API) - phai la 3002 (Bot)
+#
+# Giu lai chi de tham khao lich su.
+# ==============================================================
+Write-Host ""
+Write-Host "[DEPRECATED] File nay da loi thoi. Hay su dung:" -ForegroundColor Yellow
+Write-Host "  .\scripts\windows\start.ps1" -ForegroundColor Cyan
+Write-Host ""
+Read-Host "An Enter de thoat"
+exit 1
+
+# ---- NOI DUNG CU (giu lai de tham khao) ----
 $ErrorActionPreference = "SilentlyContinue"
 
 # Them Node.js portable vao PATH

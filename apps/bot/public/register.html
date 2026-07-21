@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Đăng Ký Tài Khoản Chấm Công</title>
+    <!-- Google Font: Outfit (Very modern and premium) -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(255, 255, 255, 0.08);
+            --input-focus: #818cf8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 440px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 32px 24px;
+            box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 64px;
+            height: 64px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 18px;
+            margin-bottom: 16px;
+            color: var(--primary);
+            box-shadow: 0 8px 24px -4px var(--primary-glow);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 8px;
+            background: linear-gradient(to right, #ffffff, #c7d2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .form-control {
+            width: 100%;
+            background: #0f172a !important;
+            border: 1px solid var(--input-border);
+            border-radius: 12px;
+            padding: 14px 16px;
+            font-size: 15px;
+            color: var(--text-primary) !important;
+            outline: none;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: inherit;
+        }
+
+        .form-control:focus {
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.15);
+            background: rgba(15, 23, 42, 0.8);
+        }
+
+        .form-control::placeholder {
+            color: #475569;
+        }
+
+        /* Readonly styles for auto-filled fields */
+        .form-control:disabled {
+            background: rgba(15, 23, 42, 0.3) !important;
+            border-color: rgba(255, 255, 255, 0.03);
+            color: #64748b;
+            cursor: not-allowed;
+        }
+
+        select.form-control {
+            appearance: none;
+            -webkit-appearance: none;
+            cursor: pointer;
+        }
+
+        select.form-control option {
+            background-color: #0f172a !important;
+            color: var(--text-primary) !important;
+        }
+
+        .select-arrow {
+            position: absolute;
+            right: 16px;
+            pointer-events: none;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-top: 5px solid var(--text-secondary);
+        }
+
+        /* Button styling */
+        .btn-submit {
+            width: 100%;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            margin-top: 12px;
+            box-shadow: 0 4px 12px var(--primary-glow);
+            font-family: inherit;
+        }
+
+        .btn-submit:hover:not(:disabled) {
+            background: var(--primary-hover);
+            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
+            transform: translateY(-1px);
+        }
+
+        .btn-submit:active:not(:disabled) {
+            transform: translateY(1px);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        /* Custom Alert styles */
+        .alert {
+            display: none;
+            padding: 14px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 24px;
+            align-items: center;
+            gap: 10px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .alert-error {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            color: #fda4af;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: #6ee7b7;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .telegram-badge {
+            background: rgba(59, 130, 246, 0.1);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 24px;
+        }
+
+        .telegram-badge span {
+            color: #93c5fd;
+            font-weight: 600;
+        }
+
+        /* Success screen modal overlay style */
+        .success-screen {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0f172a;
+            border-radius: 24px;
+            z-index: 100;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 24px;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .success-icon {
+            width: 72px;
+            height: 72px;
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            margin-bottom: 20px;
+            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+        }
+
+        .success-screen h2 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 12px;
+        }
+
+        .success-screen p {
+            color: var(--text-secondary);
+            font-size: 14px;
+            line-height: 1.5;
+            margin-bottom: 24px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Alert box -->
+            <div id="alertBox" class="alert"></div>
+
+            <!-- Success screen -->
+            <div id="successScreen" class="success-screen">
+                <div class="success-icon">✓</div>
+                <h2>Đăng Ký Thành Công</h2>
+                <p id="successMessage">Tài khoản của bạn đã được kết nối với hệ thống chấm công.</p>
+                <button class="btn-submit" onclick="closeWebApp()">Hoàn Thành</button>
+            </div>
+
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">
+                    <!-- Modern Check-in Icon -->
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                        <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                </div>
+                <h1>ĐĂNG KÝ HỆ THỐNG</h1>
+                <p>Kết nối tài khoản Telegram với hệ thống chấm công</p>
+            </div>
+
+            <!-- Telegram Auto Info Badge -->
+            <div class="telegram-badge" id="tgBadge">
+                <span>Auto-detecting Telegram info...</span>
+            </div>
+
+            <!-- Form -->
+            <form id="regForm" onsubmit="submitForm(event)">
+                <!-- Hidden inputs for auto-filled details -->
+                <input type="hidden" id="telegramId">
+                <input type="hidden" id="telegramUsername">
+                <input type="hidden" id="telegramGroupId">
+
+                <!-- Full Name input -->
+                <div class="form-group">
+                    <label for="fullName">Họ và Tên</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="fullName" class="form-control" placeholder="Nhập đầy đủ Họ và Tên" required>
+                    </div>
+                </div>
+
+                <!-- Position Select dropdown -->
+                <div class="form-group">
+                    <label for="role">Vị trí / Chức vụ</label>
+                    <div class="input-wrapper">
+                        <select id="role" class="form-control" required>
+                            <option value="" disabled selected>-- Chọn chức vụ của bạn --</option>
+                            <option value="Telesale">Telesale</option>
+                            <option value="Sales">Sales</option>
+                            <option value="Kỹ thuật viên">Kỹ thuật viên</option>
+                            <option value="Chăm sóc khách hàng">Chăm sóc khách hàng</option>
+                            <option value="Marketing">Marketing</option>
+                            <option value="Quản lý">Quản lý</option>
+                            <option value="Bộ phận khác">Bộ phận khác</option>
+                        </select>
+                        <div class="select-arrow"></div>
+                    </div>
+                </div>
+
+                <!-- Group Name Display (Readonly, filled by start_param) -->
+                <div class="form-group" id="groupDisplayGroup" style="display: none;">
+                    <label>Nhóm làm việc đăng ký</label>
+                    <input type="text" id="groupDisplayName" class="form-control" disabled>
+                </div>
+
+                <button type="submit" id="btnSubmit" class="btn-submit">ĐĂNG KÝ NGAY</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        // Initialize Telegram WebApp
+        let tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand();
+                tg.ready();
+            }
+        } catch (e) {
+            console.error("Lỗi khởi tạo Telegram WebApp:", e);
+        }
+
+        let initData = "";
+        let payloadAction = "";
+        let payloadTs = "";
+        let payloadSig = "";
+
+        // Auto-detect user details
+        document.addEventListener('DOMContentLoaded', () => {
+            const badge = document.getElementById('tgBadge');
+            
+            if (tg && tg.initData) {
+                initData = tg.initData;
+            }
+
+            if (!initData) {
+                badge.className = 'alert alert-error';
+                badge.style.display = 'flex';
+                badge.innerHTML = '⚠️ Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram.';
+                document.getElementById('btnSubmit').disabled = true;
+                return;
+            }
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                
+                // Set hidden fields
+                document.getElementById('telegramId').value = user.id;
+                document.getElementById('telegramUsername').value = user.username || '';
+                
+                // Show badge
+                badge.innerHTML = `Telegram: <span>@${user.username || user.first_name}</span> (ID: ${user.id})`;
+                
+                // Parse start_param (Group ID) or URL query parameter
+                let groupId = '';
+                const startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        groupId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else if (startParam.startsWith('reg_')) {
+                        groupId = parts[1];
+                    }
+                }
+                
+                // Fallback to query parameter
+                if (!groupId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    groupId = urlParams.get('chat_id');
+                    payloadAction = urlParams.get('action') || "register";
+                    payloadTs = urlParams.get('ts') || "";
+                    payloadSig = urlParams.get('sig') || "";
+                }
+                
+                if (groupId) {
+                    document.getElementById('telegramGroupId').value = groupId;
+                    
+                    // Show Group display field
+                    document.getElementById('groupDisplayGroup').style.display = 'block';
+                    document.getElementById('groupDisplayName').value = `Nhóm ID: ${groupId}`;
+                }
+            } else {
+                badge.className = 'alert alert-error';
+                badge.style.display = 'flex';
+                badge.innerHTML = '⚠️ Không tìm thấy SDK Telegram. Vui lòng mở trang này từ ứng dụng Telegram.';
+                document.getElementById('btnSubmit').disabled = true;
+            }
+        });
+
+        // Form submit handler
+        function submitForm(event) {
+            event.preventDefault();
+            
+            const btnSubmit = document.getElementById('btnSubmit');
+            const alertBox = document.getElementById('alertBox');
+            
+            const fullName = document.getElementById('fullName').value.trim();
+            const role = document.getElementById('role').value;
+            const telegramId = document.getElementById('telegramId').value;
+            const telegramUsername = document.getElementById('telegramUsername').value;
+            const telegramGroupId = document.getElementById('telegramGroupId').value;
+
+            if (!fullName || !role || !telegramId) {
+                showAlert('Vui lòng điền đầy đủ các trường thông tin!', true);
+                return;
+            }
+
+            btnSubmit.disabled = true;
+            btnSubmit.textContent = 'Đang xử lý đăng ký...';
+            alertBox.style.display = 'none';
+
+            // Send to API
+            fetch('/api/timekeep/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-telegram-init-data': initData
+                },
+                body: JSON.stringify({
+                    telegram_id: telegramId,
+                    telegram_username: telegramUsername,
+                    full_name: fullName,
+                    role: role,
+                    telegram_group_id: telegramGroupId,
+                    action: payloadAction,
+                    ts: payloadTs,
+                    sig: payloadSig
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success screen
+                    const successScreen = document.getElementById('successScreen');
+                    const successMessage = document.getElementById('successMessage');
+                    
+                    successMessage.innerHTML = `Chúc mừng <b>${fullName}</b>!<br>Tài khoản của bạn đã được đăng ký thành công vào hệ thống chấm công.<br>Vị trí: <b>${role}</b>`;
+                    successScreen.style.display = 'flex';
+                } else {
+                    showAlert(data.message || 'Đã xảy ra lỗi khi đăng ký!', true);
+                    btnSubmit.disabled = false;
+                    btnSubmit.textContent = 'ĐĂNG KÝ NGAY';
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                showAlert('Lỗi kết nối máy chủ! Vui lòng kiểm tra lại mạng.', true);
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = 'ĐĂNG KÝ NGAY';
+            });
+        }
+
+        function showAlert(msg, isError) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.innerHTML = msg;
+            alertBox.className = 'alert ' + (isError ? 'alert-error' : 'alert-success');
+            alertBox.style.display = 'flex';
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            }
+        }
+    </script>
+</body>
+
+</html>

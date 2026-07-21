@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Thống Kê Cá Nhân & Lịch Tuần</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-glow: rgba(99, 102, 241, 0.25);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --info: #3b82f6;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 20px 16px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(99, 102, 241, 0.1);
+            border: 1px solid rgba(99, 102, 241, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            color: var(--primary);
+            box-shadow: 0 8px 24px -4px var(--primary-glow);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #ffffff, #c7d2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Profile Banner */
+        .profile-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 14px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .profile-info {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .profile-name {
+            font-weight: 700;
+            font-size: 15px;
+            color: #93c5fd;
+        }
+
+        .profile-group {
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .profile-role {
+            font-size: 11px;
+            background: rgba(99, 102, 241, 0.15);
+            color: #a5b4fc;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            width: fit-content;
+            margin-top: 4px;
+            font-weight: 500;
+        }
+
+        /* Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+            padding: 14px;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 3px;
+        }
+
+        .stat-card.late::before {
+            background: var(--warning);
+        }
+
+        .stat-card.penalty::before {
+            background: var(--danger);
+        }
+
+        .stat-title {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            font-weight: 700;
+        }
+
+        .stat-value.warning {
+            color: #fcd34d;
+        }
+
+        .stat-value.danger {
+            color: #fca5a5;
+        }
+
+        /* Tab system */
+        .tabs-header {
+            display: flex;
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 4px;
+            margin-bottom: 16px;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 10px;
+            font-size: 13px;
+            font-weight: 600;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 10px var(--primary-glow);
+        }
+
+        /* Schedule Board */
+        .schedule-section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #cbd5e1;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .schedule-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 380px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+
+        .schedule-item {
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            border-radius: 14px;
+            padding: 12px;
+        }
+
+        .employee-name {
+            font-weight: 600;
+            font-size: 13px;
+            margin-bottom: 8px;
+            color: #e2e8f0;
+            border-left: 3px solid var(--primary);
+            padding-left: 8px;
+        }
+
+        .days-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+        }
+
+        .day-header {
+            font-size: 10px;
+            color: var(--text-secondary);
+            text-align: center;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .day-shift {
+            font-size: 9px;
+            padding: 6px 2px;
+            border-radius: 6px;
+            text-align: center;
+            font-weight: 700;
+            border: 1px solid transparent;
+        }
+
+        /* Shift Badges */
+        .shift-ca1 {
+            background: rgba(59, 130, 246, 0.12);
+            color: #60a5fa;
+            border-color: rgba(59, 130, 246, 0.2);
+        }
+
+        .shift-ca2 {
+            background: rgba(139, 92, 246, 0.12);
+            color: #a78bfa;
+            border-color: rgba(139, 92, 246, 0.2);
+        }
+
+        .shift-full {
+            background: rgba(245, 158, 11, 0.12);
+            color: #fbbf24;
+            border-color: rgba(245, 158, 11, 0.2);
+        }
+
+        .shift-off {
+            background: rgba(244, 63, 94, 0.12);
+            color: #f87171;
+            border-color: rgba(244, 63, 94, 0.2);
+        }
+
+        .shift-none {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-secondary);
+            border-color: rgba(255, 255, 255, 0.04);
+        }
+
+        /* Penalty Section */
+        .penalty-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            max-height: 250px;
+            overflow-y: auto;
+        }
+
+        .penalty-item {
+            background: rgba(244, 63, 94, 0.04);
+            border: 1px solid rgba(244, 63, 94, 0.1);
+            border-radius: 12px;
+            padding: 10px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .penalty-details {
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .penalty-date {
+            font-size: 12px;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .penalty-reason {
+            font-size: 11px;
+            color: var(--text-secondary);
+        }
+
+        .penalty-amount {
+            font-size: 13px;
+            font-weight: 700;
+            color: #f87171;
+            text-align: right;
+        }
+
+        .penalty-status {
+            font-size: 9px;
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+            width: fit-content;
+            margin-top: 2px;
+        }
+
+        .status-unpaid {
+            background: rgba(245, 158, 11, 0.15);
+            color: #fcd34d;
+        }
+
+        .status-paid {
+            background: rgba(16, 185, 129, 0.15);
+            color: #34d399;
+        }
+
+        .empty-message {
+            text-align: center;
+            padding: 24px;
+            color: var(--text-secondary);
+            font-size: 13px;
+            background: rgba(255, 255, 255, 0.01);
+            border: 1px dashed rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+        }
+
+        /* Loading Overlay */
+        .loading-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0f172a;
+            border-radius: 24px;
+            z-index: 100;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(99, 102, 241, 0.1);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.01);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 2px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.15);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Loading Overlay -->
+            <div id="loadingScreen" class="loading-screen">
+                <div class="spinner"></div>
+                <div style="font-size: 13px; color: var(--text-secondary);">Đang tải dữ liệu chấm công...</div>
+            </div>
+
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2.5">
+                        <line x1="18" y1="20" x2="18" y2="10"></line>
+                        <line x1="12" y1="20" x2="12" y2="4"></line>
+                        <line x1="6" y1="20" x2="6" y2="14"></line>
+                    </svg>
+                </div>
+                <h1>THỐNG KÊ CỦA TÔI</h1>
+                <p>Lịch làm việc và báo cáo đi muộn của bạn</p>
+            </div>
+
+            <!-- Profile Info Banner -->
+            <div class="profile-section">
+                <div class="profile-info">
+                    <div id="userName" class="profile-name">Đang tải...</div>
+                    <div id="groupName" class="profile-group">Nhóm: Đang tải...</div>
+                </div>
+                <div id="userRole" class="profile-role">Vị trí</div>
+            </div>
+
+            <!-- Stats Grid -->
+            <div class="stats-grid">
+                <div class="stat-card late">
+                    <div class="stat-title">Đi Muộn (Tháng này)</div>
+                    <div id="statLateCount" class="stat-value warning">0 lần</div>
+                </div>
+                <div class="stat-card penalty">
+                    <div class="stat-title">Tiền Phạt Tích Lũy</div>
+                    <div id="statPenaltyAmount" class="stat-value danger">0đ</div>
+                </div>
+            </div>
+
+            <!-- Tabs System -->
+            <div class="section-title">📅 Lịch Làm Việc Của Nhóm</div>
+            <div class="tabs-header">
+                <button id="tabCurrent" class="tab-btn active" onclick="switchTab('current')">Tuần Này</button>
+                <button id="tabNext" class="tab-btn" onclick="switchTab('next')">Tuần Sau</button>
+            </div>
+
+            <!-- Weekly Schedule Container -->
+            <div class="schedule-section">
+                <!-- Header Days of the week row -->
+                <div class="days-grid" style="margin-bottom: 6px; border-bottom: 1px solid rgba(255,255,255,0.03); padding-bottom: 4px;">
+                    <div class="day-header">T2</div>
+                    <div class="day-header">T3</div>
+                    <div class="day-header">T4</div>
+                    <div class="day-header">T5</div>
+                    <div class="day-header">T6</div>
+                    <div class="day-header">T7</div>
+                    <div class="day-header">CN</div>
+                </div>
+                <!-- Employees rows dynamic load -->
+                <div id="scheduleList" class="schedule-list">
+                    <!-- Loaded dynamically -->
+                </div>
+            </div>
+
+            <!-- Penalty History List -->
+            <div class="section-title" style="margin-top: 24px;">🚨 Lịch Sử Đi Muộn (Tháng này)</div>
+            <div id="penaltyList" class="penalty-list">
+                <!-- Loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        let tg = null;
+        try {
+            if (window.Telegram && window.Telegram.WebApp) {
+                tg = window.Telegram.WebApp;
+                tg.expand();
+                tg.ready();
+            }
+        } catch (e) {
+            console.error(e);
+        }
+
+        // State variables
+        let telegramId = "";
+        let chatId = "";
+        let initData = "";
+        
+        let payloadAction = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        
+        let currentTab = "current"; // 'current' or 'next'
+        
+        let apiData = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (tg && tg.initData) {
+                initData = tg.initData;
+            }
+
+            if (!initData) {
+                document.getElementById('loadingScreen').innerHTML = `
+                    <div style="font-size: 32px; color: #f43f5e;">⚠️</div>
+                    <div style="font-size: 14px; font-weight: 600; color: #fda4af; padding: 0 16px; text-align: center;">
+                        Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram!
+                    </div>
+                `;
+                return;
+            }
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                telegramId = tg.initDataUnsafe.user.id;
+            }
+            
+            // Get chat_id from url params
+            const urlParams = new URLSearchParams(window.location.search);
+            chatId = urlParams.get('chat_id') || "";
+            
+            // Check start_param for payload
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
+                let startParam = tg.initDataUnsafe.start_param;
+                const parts = startParam.split('_');
+                if (parts.length >= 4) {
+                    payloadAction = parts[0];
+                    chatId = parts[1];
+                    payloadTs = parts[2];
+                    payloadSig = parts[3];
+                } else if (startParam.startsWith('stats_')) {
+                    chatId = startParam.replace('stats_', '');
+                }
+            }
+            
+            if (!chatId) {
+                payloadAction = urlParams.get('action') || "stats";
+                payloadTs = urlParams.get('ts') || "";
+                payloadSig = urlParams.get('sig') || "";
+            }
+
+            loadData();
+        });
+
+        function loadData() {
+            const url = `/api/timekeep/personal-stats?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`;
+            
+            fetch(url, {
+                headers: {
+                    'x-telegram-init-data': initData
+                }
+            })
+                .then(res => {
+                    if (!res.ok) throw new Error('Không tìm thấy tài khoản hoặc nhóm tương ứng.');
+                    return res.json();
+                })
+                .then(data => {
+                    apiData = data;
+                    document.getElementById('loadingScreen').style.display = 'none';
+
+                    // Bind Profile
+                    document.getElementById('userName').textContent = data.user.full_name;
+                    document.getElementById('groupName').textContent = `Nhóm: ${data.group_name}`;
+                    document.getElementById('userRole').textContent = data.user.role || 'Nhân viên';
+
+                    // Bind Stats
+                    document.getElementById('statLateCount').textContent = `${data.personal_stats.total_late_count} lần`;
+                    document.getElementById('statPenaltyAmount').textContent = `${data.personal_stats.total_penalty_amount.toLocaleString('vi-VN')}đ`;
+
+                    // Bind Penalty History
+                    renderPenalties(data.personal_stats.penalties);
+
+                    // Render Schedule
+                    switchTab(currentTab);
+                })
+                .catch(err => {
+                    console.error(err);
+                    document.getElementById('loadingScreen').innerHTML = `
+                        <div style="font-size: 32px; color: #f43f5e;">⚠️</div>
+                        <div style="font-size: 14px; font-weight: 600; color: #fda4af; padding: 0 16px; text-align: center;">
+                            ${err.message || 'Lỗi tải dữ liệu chấm công!'}
+                        </div>
+                    `;
+                });
+        }
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.getElementById('tabCurrent').classList.toggle('active', tab === 'current');
+            document.getElementById('tabNext').classList.toggle('active', tab === 'next');
+
+            if (!apiData) return;
+
+            const weekRange = tab === 'current' ? apiData.current_week : apiData.next_week;
+            renderSchedules(weekRange);
+        }
+
+        // Helper to get dates for Mon to Sun in ISO week
+        function getDatesInRange(startStr, endStr) {
+            const dates = [];
+            let current = new Date(startStr);
+            const end = new Date(endStr);
+            while (current <= end) {
+                dates.push(current.toISOString().slice(0, 10));
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
+        }
+
+        function renderSchedules(weekRange) {
+            const listContainer = document.getElementById('scheduleList');
+            listContainer.innerHTML = '';
+
+            const weekDates = getDatesInRange(weekRange.start, weekRange.end); // Should be exactly 7 dates (Mon to Sun)
+
+            // Group schedules by employee
+            const userSchedules = {};
+            
+            // Initialize empty structures for all employees we have schedules for
+            apiData.schedules.forEach(s => {
+                if (!userSchedules[s.user_id]) {
+                    userSchedules[s.user_id] = {
+                        name: s.full_name,
+                        dates: {}
+                    };
+                }
+                userSchedules[s.user_id].dates[s.date] = s.shift_type;
+            });
+
+            const employees = Object.values(userSchedules);
+
+            if (employees.length === 0) {
+                listContainer.innerHTML = '<div class="empty-message">Không có lịch làm việc được xếp trong tuần này.</div>';
+                return;
+            }
+
+            employees.forEach(emp => {
+                const item = document.createElement('div');
+                item.className = 'schedule-item';
+
+                let daysHtml = '';
+                weekDates.forEach(d => {
+                    const shift = emp.dates[d] || 'NONE';
+                    let shiftClass = 'shift-none';
+                    let shiftLabel = '-';
+
+                    if (shift === 'CA_1' || shift === 'CA_SANG') {
+                        shiftClass = 'shift-ca1';
+                        shiftLabel = 'CA 1';
+                    } else if (shift === 'CA_2' || shift === 'CA_CHIEU') {
+                        shiftClass = 'shift-ca2';
+                        shiftLabel = 'CA 2';
+                    } else if (shift === 'FULL_DAY') {
+                        shiftClass = 'shift-full';
+                        shiftLabel = 'FULL';
+                    } else if (shift === 'OFF') {
+                        shiftClass = 'shift-off';
+                        shiftLabel = 'OFF';
+                    }
+
+                    daysHtml += `<div class="day-shift ${shiftClass}">${shiftLabel}</div>`;
+                });
+
+                item.innerHTML = `
+                    <div class="employee-name">${emp.name}</div>
+                    <div class="days-grid">
+                        ${daysHtml}
+                    </div>
+                `;
+
+                listContainer.appendChild(item);
+            });
+        }
+
+        function renderPenalties(penalties) {
+            const container = document.getElementById('penaltyList');
+            container.innerHTML = '';
+
+            if (penalties.length === 0) {
+                container.innerHTML = '<div class="empty-message">Chúc mừng! Bạn không đi muộn lần nào trong tháng này. 🎉</div>';
+                return;
+            }
+
+            penalties.forEach(p => {
+                // Format date from YYYY-MM-DD to DD/MM
+                const parts = p.date.split('-');
+                const dateDisplay = parts.length === 3 ? `${parts[2]}/${parts[1]}` : p.date;
+
+                const amountVal = parseInt(p.amount) || 0;
+                const statusClass = p.is_paid ? 'status-paid' : 'status-unpaid';
+                const statusLabel = p.is_paid ? 'Đã đóng' : 'Chưa đóng';
+
+                const item = document.createElement('div');
+                item.className = 'penalty-item';
+                item.innerHTML = `
+                    <div class="penalty-details">
+                        <div class="penalty-date">Ngày ${dateDisplay} (${p.late_minutes} phút muộn)</div>
+                        <div class="penalty-reason">${p.reason}</div>
+                        <div class="penalty-status ${statusClass}">${statusLabel}</div>
+                    </div>
+                    <div class="penalty-amount">
+                        +${amountVal.toLocaleString('vi-VN')}đ
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+    </script>
+</body>
+
+</html>

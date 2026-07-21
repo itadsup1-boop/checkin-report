@@ -1,0 +1,19 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Copy root package.json
+COPY package*.json ./
+RUN apk add --no-cache ffmpeg && npm ci --omit=dev
+
+# Copy bot source và packages
+COPY apps/bot/ ./apps/bot/
+COPY packages/ ./packages/
+
+# Placeholder cho service_account.json
+# File thực sẽ được mount qua docker-compose volumes
+RUN touch /app/service_account.json
+
+EXPOSE 3002
+
+CMD ["node", "apps/bot/timekeep_bot.js"]
