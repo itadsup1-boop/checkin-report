@@ -159,11 +159,11 @@ function Dashboard({ user, onLogout }) {
 
   const handleExport = async () => {
     try {
-      const res = await axios.get('http://localhost:3002/api/export/today', { responseType: 'blob' });
+      const res = await axios.get(`${API_URL}/export/today`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -175,7 +175,7 @@ function Dashboard({ user, onLogout }) {
 
   const handleUpdateGroupSettings = async (telegramGroupId, settings) => {
     try {
-      await axios.put(`${API_URL}/groups/${telegramGroupId}/settings`, settings);
+      await axios.put(`${API_URL}/tk_group_settings/${telegramGroupId}`, settings);
       setToast('✅ Đã cập nhật cài đặt nhóm!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
@@ -687,8 +687,16 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     const roleValue = botRoles[groupId] || null;
     const isScheduleOpen = scheduleOpen[groupId] !== false;
 
-    // No reminder time field any more
-    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00', roleValue, isScheduleOpen);
+    handleUpdateGroupSettings(groupId, {
+      penalty_under_15: under15,
+      penalty_under_90: under90,
+      penalty_over_90: over90,
+      shift_1_time: shift1Value.length === 5 ? `${shift1Value}:00` : shift1Value,
+      shift_2_time: shift2Value.length === 5 ? `${shift2Value}:00` : shift2Value,
+      bot_role: roleValue,
+      schedule_registration_open: isScheduleOpen,
+      auto_reminder_enabled: true
+    });
   };
 
   return (

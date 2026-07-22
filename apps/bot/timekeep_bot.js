@@ -118,16 +118,16 @@ function verifySignedPayload(action, groupId, ts, sig) {
     const dataString = `${action}:${groupId}:${ts}`;
     const expectedSig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
     if (sig.length === expectedSig.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return true;
-    
+
     return false;
 }
 
 // Middleware xác thực bảo mật cho Mini App API
 async function authenticateTelegramMiniApp(req, res, next) {
     try {
-        const initData = req.headers['x-telegram-init-data'] || 
-                         (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null) ||
-                         req.body?.initData || req.query?.initData;
+        const initData = req.headers['x-telegram-init-data'] ||
+            (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null) ||
+            req.body?.initData || req.query?.initData;
 
         if (!initData) {
             return res.status(401).json({ success: false, message: 'Vui lòng thao tác trực tiếp trên ứng dụng Telegram (Thiếu initData).' });
@@ -181,9 +181,9 @@ async function authenticateTelegramMiniApp(req, res, next) {
                 }
             } catch (err) {
                 console.error('[Security] Membership verification failed (Fail Closed):', err.message);
-                return res.status(403).json({ 
-                    success: false, 
-                    message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message) 
+                return res.status(403).json({
+                    success: false,
+                    message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
                 });
             }
         }
@@ -198,7 +198,7 @@ async function authenticateTelegramMiniApp(req, res, next) {
 const corsOptions = {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'x-admin-id', 'x-admin-role'],
     credentials: true,
     optionsSuccessStatus: 204
 };
@@ -300,7 +300,7 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
     try {
         const { chat_id, target_user_id } = req.query;
         const telegram_id = req.verifiedTelegramId || req.query.telegram_id;
-        
+
         console.log('[DEBUG /schedule/data] req.query:', req.query, 'verifiedTelegramId:', req.verifiedTelegramId);
 
         if (!telegram_id) {
@@ -321,7 +321,7 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
             userRes = await pool.query(
                 `SELECT u.*, g.schedule_registration_open FROM employees u
                  LEFT JOIN telegram_groups g ON u.group_id = g.id
-                 WHERE u.telegram_id = $1 LIMIT 1`, 
+                 WHERE u.telegram_id = $1 LIMIT 1`,
                 [telegram_id]
             );
         }
@@ -479,7 +479,7 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
             callerRes = await pool.query(
                 `SELECT u.*, g.schedule_registration_open FROM employees u
                  LEFT JOIN telegram_groups g ON u.group_id = g.id
-                 WHERE u.telegram_id = $1`, 
+                 WHERE u.telegram_id = $1`,
                 [telegram_id]
             );
         }
@@ -1073,7 +1073,7 @@ async function startHandler(ctx) {
 
             const schedclientSig = crypto.createHmac('sha256', token).update(`scheduleclient:${ctx.chat.id}:${ts}`).digest('hex');
             const scheduleclientUrl2 = `https://t.me/${botUsername}/${appShortName}?startapp=scheduleclient_${ctx.chat.id}_${ts}_${schedclientSig}`;
-            
+
             // Generate dmUrl (Direct Message URL) for Report Form
             const dmUrl = `https://t.me/${botUsername}`; // Used for 'Điền Form Báo Cáo' which typically opens PM
 
@@ -1409,7 +1409,6 @@ cron.schedule('*/1 * * * *', async () => {
 
                 // A. Nhắc nhở trước ca 3 phút
                 if (currentTimeStr === remindTime) {
-                    console.log(`[Cron Timekeep] Quét nhắc nhở trước ca 3 phút cho nhóm ${group_name} (${shift.label}) vào lúc ${currentTimeStr}`);
                     const uncheckedRes = await pool.query(`
                         SELECT u.full_name
                         FROM employees u
@@ -1825,14 +1824,36 @@ botApp.get('/api/export/today', async (req, res) => {
     try {
         const today = new Date();
         const dateStr = req.query.date || today.toISOString().slice(0, 10);
+        const adminId = req.headers['x-admin-id'];
+        const adminRole = req.headers['x-admin-role'];
+
+        if (!adminId || !adminRole) {
+            return res.status(401).json({ success: false, message: 'Thiếu thông tin xác thực admin' });
+        }
+
+        let allowedGroupIds = null;
+        if (adminRole !== 'SUPER_ADMIN') {
+            const mappingRes = await pool.query(
+                'SELECT telegram_group_id FROM admin_group_mappings WHERE admin_id = $1',
+                [adminId]
+            );
+            allowedGroupIds = mappingRes.rows.map(row => row.telegram_group_id);
+        }
 
         // Fetch data for the specified date
-        const userRes = await pool.query(`
-            SELECT u.id, u.full_name, u.group_id, g.telegram_group_id 
+        let userQuery = `
+            SELECT u.id, u.full_name, u.group_id, g.telegram_group_id, g.group_name
             FROM employees u
             LEFT JOIN telegram_groups g ON u.group_id = g.id
-            ORDER BY u.full_name ASC
-        `);
+        `;
+        const userParams = [];
+        if (allowedGroupIds !== null) {
+            userParams.push(allowedGroupIds);
+            userQuery += ` WHERE g.telegram_group_id = ANY($1)`;
+        }
+        userQuery += ` ORDER BY g.group_name ASC, u.full_name ASC`;
+
+        const userRes = await pool.query(userQuery, userParams);
         const scheduleRes = await pool.query('SELECT * FROM tk_schedules WHERE date = $1', [dateStr]);
         const checkinRes = await pool.query('SELECT * FROM tk_check_ins WHERE date = $1', [dateStr]);
         const penaltyRes = await pool.query('SELECT * FROM tk_penalties WHERE date = $1', [dateStr]);
@@ -1852,6 +1873,7 @@ botApp.get('/api/export/today', async (req, res) => {
         // Setup columns
         ws.columns = [
             { header: 'Nhân viên', key: 'employee', width: 25 },
+            { header: 'Tên nhóm', key: 'groupName', width: 25 },
             { header: 'Ca làm', key: 'shift', width: 20 },
             { header: 'Check-in', key: 'checkin', width: 12 },
             { header: 'Check-out', key: 'checkout', width: 12 },
@@ -1863,6 +1885,7 @@ botApp.get('/api/export/today', async (req, res) => {
 
         // Format column alignments & number formats
         ws.getColumn('employee').alignment = { horizontal: 'left', vertical: 'middle' };
+        ws.getColumn('groupName').alignment = { horizontal: 'left', vertical: 'middle' };
         ws.getColumn('shift').alignment = { horizontal: 'center', vertical: 'middle' };
         ws.getColumn('checkin').alignment = { horizontal: 'center', vertical: 'middle' };
         ws.getColumn('checkout').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1952,6 +1975,7 @@ botApp.get('/api/export/today', async (req, res) => {
 
             ws.addRow({
                 employee: user.full_name,
+                groupName: user.group_name || '',
                 shift: shiftDisplay,
                 checkin: checkInDisplay,
                 checkout: checkOutDisplay,
@@ -1976,7 +2000,7 @@ botApp.get('/api/export/today', async (req, res) => {
         // Add auto-filter to columns
         ws.autoFilter = {
             from: { row: 1, column: 1 },
-            to: { row: userRes.rows.length + 1, column: 8 }
+            to: { row: userRes.rows.length + 1, column: 9 }
         };
 
         const buffer = await workbook.xlsx.writeBuffer();

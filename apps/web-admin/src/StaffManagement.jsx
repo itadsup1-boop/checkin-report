@@ -59,11 +59,11 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
 
   const handleExport = async () => {
     try {
-      const res = await axios.get('http://localhost:3002/api/export/today', { responseType: 'blob' });
+      const res = await axios.get(`${API_URL}/export/today`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
