@@ -42,3 +42,9 @@
 2026-07-21T16:07:59Z INF precheck complete hard_fail=false run_id=54fe1558-df49-41c5-be66-5df90c57c748 suggested_protocol=quic
 2026-07-21T16:07:59Z INF Registered tunnel connection connIndex=0 connection=fede6280-f47f-4d6c-a231-a06d4ca2e184 event=0 ip=198.41.200.33 location=hkg08 protocol=quic
 2026-07-21T16:43:04Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-21T17:23:09Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-21T17:48:14Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-21T19:58:19Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-21T20:03:24Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-21T22:23:30Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
+2026-07-22T00:53:35Z ERR Failed to refresh DNS local resolver error="lookup region1.v2.argotunnel.com: i/o timeout"
