@@ -1118,7 +1118,7 @@ async function startHandler(ctx) {
                                     { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' }
                                 ],
                                 [
-                                    { text: '📝 Điền Báo Cáo KPI (Form)', url: dmUrl }
+                                    { text: '📝 Điền Báo Cáo KPI (Form)', url: baocaoUrl }
                                 ],
                                 [
                                     { text: '🔄 Cập Nhật Báo Cáo', callback_data: 'CHECK_UPDATE_REPORT' },
