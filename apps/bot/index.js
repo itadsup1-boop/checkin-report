@@ -297,7 +297,7 @@ cron.schedule('* * * * *', async () => {
             SELECT tg.telegram_group_id, tg.group_name, gs.remind_time_1, gs.deadline_time, gs.penalty_missing_report
             FROM telegram_groups tg
             LEFT JOIN group_settings gs ON tg.telegram_group_id = gs.telegram_group_id
-            WHERE tg.is_active = true
+            WHERE tg.is_active = true AND tg.bot_role = 'report' AND gs.auto_reminder_enabled = true
         `;
         const res = await pool.query(query);
         const groups = res.rows;
@@ -309,7 +309,7 @@ cron.schedule('* * * * *', async () => {
                 console.log(`⏰ Đến giờ nhắc nhở cho nhóm: ${group.group_name}`);
 
                 const todayStr = new Date().toISOString().split('T')[0];
-                const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
+                const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
                 const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
                 const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
 
@@ -334,7 +334,7 @@ cron.schedule('* * * * *', async () => {
 
                 if (currentTimeString === penaltyTimeString) {
                     const todayStr = new Date().toISOString().split('T')[0];
-                    const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
+                    const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
                     const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
                     const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
 

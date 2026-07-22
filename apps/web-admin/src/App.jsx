@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard } from 'lucide-react';
+import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save } from 'lucide-react';
 import LoginScreen from './LoginScreen.jsx';
 import StaffManagement from './StaffManagement.jsx';
 import CheckinManagement from './CheckinManagement.jsx';
@@ -137,7 +137,7 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time, bot_role) => {
+  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time, bot_role, schedule_registration_open) => {
     try {
       await axios.put(`${API_URL}/tk_group_settings/${telegram_group_id}`, {
         penalty_under_15,
@@ -146,6 +146,7 @@ function Dashboard({ onLogout }) {
         shift_1_time,
         shift_2_time,
         bot_role,
+        schedule_registration_open,
         auto_reminder_enabled: true
       });
       setToast('✅ Đã cập nhật cài đặt thành công!');
@@ -567,6 +568,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
   // New late penalties (under 15, under 90, over 90 mins)
   const [latePenalties, setLatePenalties] = useState({});
   const [botRoles, setBotRoles] = useState({});
+  const [scheduleOpen, setScheduleOpen] = useState({});
 
   useEffect(() => {
     const initialTimes = {};
@@ -574,6 +576,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     const initialShift2 = {};
     const initialLatePenalties = {};
     const initialBotRoles = {};
+    const initialScheduleOpen = {};
 
     groups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
@@ -586,6 +589,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
       initialShift1[g.telegram_group_id] = (g.shift_1_time || '08:00:00').substring(0, 5);
       initialShift2[g.telegram_group_id] = (g.shift_2_time || '13:30:00').substring(0, 5);
       initialBotRoles[g.telegram_group_id] = g.bot_role || '';
+      initialScheduleOpen[g.telegram_group_id] = g.schedule_registration_open !== false; // default true
     });
 
     setTimes(initialTimes);
@@ -593,11 +597,13 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     setShift1Times(initialShift1);
     setShift2Times(initialShift2);
     setBotRoles(initialBotRoles);
+    setScheduleOpen(initialScheduleOpen);
   }, [groups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
   const handleShift1Change = (groupId, value) => setShift1Times(prev => ({ ...prev, [groupId]: value }));
   const handleShift2Change = (groupId, value) => setShift2Times(prev => ({ ...prev, [groupId]: value }));
+  const handleScheduleOpenChange = (groupId, value) => setScheduleOpen(prev => ({ ...prev, [groupId]: value }));
   const handleLatePenaltyChange = (groupId, field, value) => {
     setLatePenalties(prev => ({
       ...prev,
@@ -615,9 +621,10 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     const under90 = parseInt(penalties.under90) || 0;
     const over90 = parseInt(penalties.over90) || 0;
     const roleValue = botRoles[groupId] || null;
+    const isScheduleOpen = scheduleOpen[groupId] !== false;
 
     // No reminder time field any more
-    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00', roleValue);
+    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00', roleValue, isScheduleOpen);
   };
 
   return (
@@ -635,62 +642,88 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
       ) : (
         <div className="space-y-6">
           {groups.map(group => (
-            <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col md:flex-row justify-between md:items-center gap-4">
-              <div>
-                <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
-                <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
+            <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col gap-5">
+              <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
+                  <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
+                </div>
+                <div className="flex gap-2 self-start md:self-auto">
+                  <button
+                    onClick={() => handleSave(group.telegram_group_id)}
+                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" /> Lưu cài đặt
+                  </button>
+                  <button
+                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-bold transition-all border border-red-500/30 active:scale-95"
+                    title="Xóa nhóm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-end gap-3 flex-wrap">
 
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
                   <input
                     type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={shift1Times[group.telegram_group_id] || ''}
                     onChange={(e) => handleShift1Change(group.telegram_group_id, e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
                   <input
                     type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={shift2Times[group.telegram_group_id] || ''}
                     onChange={(e) => handleShift2Change(group.telegram_group_id, e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.under15 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.under15 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn đến dưới 90 phút</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.under90 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 90 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.under90 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn 90 phút trở lên</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.over90 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn {'>'} 90 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.over90 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Vai trò của Bot</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Vai trò của Bot</label>
                   <select
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-44"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={botRoles[group.telegram_group_id] || ''}
                     onChange={(e) => handleBotRoleChange(group.telegram_group_id, e.target.value)}
                   >
@@ -699,18 +732,14 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
                     <option value="report">Bot báo cáo</option>
                   </select>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col">
+                  <label className="text-xs font-medium text-slate-400 mb-1">Mở đăng ký lịch</label>
                   <button
-                    onClick={() => handleSave(group.telegram_group_id)}
-                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+                    onClick={() => handleScheduleOpenChange(group.telegram_group_id, !(scheduleOpen[group.telegram_group_id] !== false))}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all border w-full flex items-center justify-center gap-2 ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 shadow-lg shadow-rose-500/10'}`}
                   >
-                    Lưu
-                  </button>
-                  <button
-                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
-                    className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
-                  >
-                    Xóa nhóm
+                    <span className={`w-2 h-2 rounded-full animate-pulse ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                    {scheduleOpen[group.telegram_group_id] !== false ? 'Đang mở đăng ký' : 'Đang đóng'}
                   </button>
                 </div>
               </div>

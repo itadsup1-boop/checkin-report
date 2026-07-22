@@ -467,7 +467,7 @@ app.delete('/api/employees/:id', async (req, res) => {
 app.get('/api/groups', async (req, res) => {
     try {
         const result = await pool.query(`
-            SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role,
+            SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role, tkg.schedule_registration_open,
                    gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
                    gs.penalty_missing_kpi, gs.penalty_per_photo, gs.penalty_missing_report,
                    gs.shift_1_time, gs.shift_2_time

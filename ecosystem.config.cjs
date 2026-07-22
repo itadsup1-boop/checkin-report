@@ -1,5 +1,5 @@
 const path = require('path');
-const fs   = require('fs');
+const fs = require('fs');
 
 // Root của dự án (thư mục chứa file này)
 const PROJECT_ROOT = path.resolve(__dirname);
@@ -53,5 +53,17 @@ module.exports = {
       max_restarts: 10,
       restart_delay: 3000,
     },
+    {
+      name: 'cloudflare-tunnel',
+      script: 'cloudflared.exe',
+      args: 'tunnel --url http://localhost:3001',
+      cwd: PROJECT_ROOT,
+      watch: false,
+      autorestart: true,
+      max_restarts: 10,
+      restart_delay: 5000,
+      out_file: 'cloudflare.log',
+      error_file: 'cf_err.log'
+    }
   ],
 };

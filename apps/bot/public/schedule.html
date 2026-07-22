@@ -539,9 +539,16 @@
                 <button class="tab-btn" onclick="switchTab('next')">Tuần Sau</button>
             </div>
 
+            <!-- Manager Toggle Schedule Button -->
+            <div id="managerToggleBtn" style="display: none; justify-content: flex-end; margin-bottom: 12px;">
+                <button id="btnToggleSchedule" class="btn-upload" style="background: var(--warning); color: #0f172a; border: none; font-weight: 600;" onclick="toggleSchedule()">
+                    🔄 Đóng đăng ký lịch
+                </button>
+            </div>
+
             <!-- Locked Schedule Alert banner -->
-            <div id="lockBanner" class="lock-banner">
-                <span>🔒 Lịch tuần sau đã chốt tự động (sau 20:00 Chủ Nhật).</span>
+            <div id="lockBanner" class="lock-banner" style="display: none;">
+                <span>🔒 Quản lý đã đóng đăng ký lịch tuần sau.</span>
             </div>
 
             <!-- Days list -->
@@ -600,6 +607,7 @@
         
         let isUserAdmin = false;
         let isSystemLocked = false;
+        let scheduleRegistrationOpen = true;
         let currentTab = "current"; // 'current' or 'next'
 
         let allUsers = [];
@@ -675,6 +683,7 @@
                     if (res.success) {
                         isUserAdmin = res.is_admin;
                         isSystemLocked = res.is_locked;
+                        scheduleRegistrationOpen = res.schedule_registration_open;
                         currentWeekDays = res.currentWeekDays;
                         nextWeekDays = res.nextWeekDays;
                         groupSchedules = res.groupSchedules;
@@ -803,9 +812,34 @@
                 // Lock next week if deadline passed AND current user is not admin
                 const isNextWeekLocked = isSystemLocked && !isUserAdmin;
 
+                const isUserManager = allUsers.find(u => u.id === selectedUserId)?.role === 'Quản lý' || 
+                                      document.getElementById('userRole').textContent.includes('Quản lý');
+
+                if (isUserAdmin || isUserManager) {
+                    const toggleBtn = document.getElementById('managerToggleBtn');
+                    toggleBtn.style.display = 'flex';
+                    const btnEl = document.getElementById('btnToggleSchedule');
+                    if (scheduleRegistrationOpen) {
+                        btnEl.innerHTML = '🔄 Đóng đăng ký lịch';
+                        btnEl.style.background = 'var(--warning)';
+                        btnEl.style.color = '#0f172a';
+                    } else {
+                        btnEl.innerHTML = '🔄 Mở đăng ký lịch';
+                        btnEl.style.background = 'var(--success)';
+                        btnEl.style.color = '#fff';
+                    }
+                } else {
+                    document.getElementById('managerToggleBtn').style.display = 'none';
+                }
+
                 if (isNextWeekLocked) {
+                    document.getElementById('lockBanner').innerHTML = '<span>🔒 Quản lý đã đóng đăng ký lịch tuần sau.</span>';
                     document.getElementById('lockBanner').style.display = 'flex';
                     document.getElementById('btnSave').style.display = 'none';
+                } else if ((isUserAdmin || isUserManager) && scheduleRegistrationOpen === false) {
+                    document.getElementById('lockBanner').innerHTML = '<span style="color:#f59e0b;">⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
+                    document.getElementById('lockBanner').style.display = 'flex';
+                    document.getElementById('btnSave').style.display = 'block';
                 } else {
                     document.getElementById('lockBanner').style.display = 'none';
                     document.getElementById('btnSave').style.display = 'block';
@@ -997,18 +1031,34 @@
 
         // Save schedule to database
         function saveSchedule() {
-            const btnSave = document.getElementById('btnSave');
+            if (document.getElementById('btnSave').disabled) return;
 
-            // Construct payload
             const targetDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
-            const daysPayload = targetDays.map(d => ({
+            const daysToSave = targetDays.map(d => ({
                 date: d,
                 shift_type: currentSelections[d]
             }));
 
+            // Validate all selected
+            if (daysToSave.some(d => !d.shift_type)) {
+                showAlert('Vui lòng chọn ca làm việc cho tất cả 7 ngày!', true);
+                return;
+            }
+
+            const btnSave = document.getElementById('btnSave');
             btnSave.disabled = true;
-            btnSave.textContent = 'Đang lưu lịch biểu...';
-            document.getElementById('alertBox').style.display = 'none';
+            btnSave.textContent = 'ĐANG LƯU...';
+
+            const payload = {
+                telegram_id: telegramId,
+                chat_id: chatId,
+                action: payloadAction,
+                ts: payloadTs,
+                sig: payloadSig,
+                target_user_id: selectedUserId,
+                days: daysToSave,
+                proof_image: base64Proof
+            };
 
             fetch('/api/timekeep/schedule/save', {
                 method: 'POST',
@@ -1016,23 +1066,18 @@
                     'Content-Type': 'application/json',
                     'x-telegram-init-data': initData
                 },
-                body: JSON.stringify({
-                    telegram_id: telegramId,
-                    chat_id: chatId,
-                    action: payloadAction,
-                    ts: payloadTs,
-                    sig: payloadSig,
-                    target_user_id: selectedUserId,
-                    days: daysPayload,
-                    proof_image: base64Proof
-                })
+                body: JSON.stringify(payload)
             })
-                .then(res => res.json())
-                .then(data => {
-                    if (data.success) {
-                        document.getElementById('successScreen').style.display = 'flex';
+                .then(r => r.json())
+                .then(res => {
+                    if (res.success) {
+                        showAlert('Đã lưu lịch thành công!');
+                        // Auto-close mini app after short delay
+                        setTimeout(() => {
+                            if (tg) tg.close();
+                        }, 1500);
                     } else {
-                        showAlert(data.message || 'Lỗi khi lưu lịch làm việc!', true);
+                        showAlert(res.message, true);
                         btnSave.disabled = false;
                         btnSave.textContent = 'LƯU LỊCH TUẦN';
                     }
@@ -1043,6 +1088,37 @@
                     btnSave.disabled = false;
                     btnSave.textContent = 'LƯU LỊCH TUẦN';
                 });
+        }
+
+        // Toggle Schedule API
+        function toggleSchedule() {
+            if (!confirm('Bạn có chắc chắn muốn thay đổi trạng thái đóng/mở lịch của nhóm?')) return;
+            const btn = document.getElementById('btnToggleSchedule');
+            btn.disabled = true;
+
+            fetch('/api/timekeep/schedule/toggle', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-telegram-init-data': initData
+                },
+                body: JSON.stringify({ telegram_id: telegramId, chat_id: chatId })
+            })
+            .then(r => r.json())
+            .then(res => {
+                if (res.success) {
+                    showAlert(res.message);
+                    setTimeout(() => loadData(), 500);
+                } else {
+                    showAlert(res.message, true);
+                }
+                btn.disabled = false;
+            })
+            .catch(err => {
+                console.error(err);
+                showAlert('Lỗi kết nối mạng!', true);
+                btn.disabled = false;
+            });
         }
 
         function showAlert(msg, isError) {
