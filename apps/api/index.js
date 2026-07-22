@@ -31,15 +31,180 @@ app.get('/api/health', (req, res) => {
 });
 
 // =====================================
-// NEW WEB ADMIN API (Sprint 1)
+// NEW WEB ADMIN API & AUTH
 // =====================================
 
-app.post('/api/admin/login', (req, res) => {
-    const { username, password } = req.body;
-    if (username === 'admin' && password === 'admin123') {
-        res.json({ success: true, token: 'admin-token-123' });
-    } else {
-        res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc mật khẩu' });
+// Helper lấy danh sách group_id được gán cho Admin từ DB
+async function getAssignedGroupIds(adminId, role) {
+    if (role === 'SUPER_ADMIN') {
+        const res = await pool.query(`SELECT telegram_group_id FROM telegram_groups WHERE is_deleted = false OR is_deleted IS NULL`);
+        return res.rows.map(r => r.telegram_group_id);
+    }
+    const res = await pool.query(`SELECT telegram_group_id FROM admin_group_mappings WHERE admin_id = $1`, [adminId]);
+    return res.rows.map(r => r.telegram_group_id);
+}
+
+// Middleware kiểm tra phân quyền dữ liệu từ Request Headers
+async function getAdminAuthContext(req) {
+    const adminId = req.headers['x-admin-id'];
+    const adminRole = req.headers['x-admin-role'];
+
+    if (!adminId || adminRole === 'SUPER_ADMIN') {
+        return { isSuperAdmin: true, allowedGroupIds: [] };
+    }
+
+    const allowedGroupIds = await getAssignedGroupIds(adminId, adminRole);
+    return { isSuperAdmin: false, allowedGroupIds };
+}
+
+app.post('/api/admin/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        
+        // Check in admin_accounts table
+        const adminRes = await pool.query(
+            `SELECT * FROM admin_accounts WHERE username = $1 AND is_active = true`,
+            [username]
+        );
+
+        if (adminRes.rows.length === 0) {
+            // Fallback for default super admin if DB table is empty or first login
+            if (username === 'admin' && password === 'admin123') {
+                const assigned_groups = await getAssignedGroupIds(null, 'SUPER_ADMIN');
+                return res.json({
+                    success: true,
+                    token: 'admin-token-123',
+                    user: {
+                        id: 'super-admin-id',
+                        username: 'admin',
+                        full_name: 'Super Administrator',
+                        role: 'SUPER_ADMIN',
+                        assigned_groups
+                    }
+                });
+            }
+            return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc tài khoản bị khóa' });
+        }
+
+        const admin = adminRes.rows[0];
+        if (admin.password_hash !== password) {
+            return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác' });
+        }
+
+        const assigned_groups = await getAssignedGroupIds(admin.id, admin.role);
+
+        res.json({
+            success: true,
+            token: `token-${admin.id}`,
+            user: {
+                id: admin.id,
+                username: admin.username,
+                full_name: admin.full_name || admin.username,
+                role: admin.role,
+                assigned_groups
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+});
+
+// APIs Quản lý Tài khoản Admin (Dành cho Super Admin)
+app.get('/api/admin/accounts', async (req, res) => {
+    try {
+        const adminsRes = await pool.query(`
+            SELECT a.id, a.username, a.full_name, a.role, a.is_active, a.created_at,
+                   COALESCE(ARRAY_AGG(m.telegram_group_id) FILTER (WHERE m.telegram_group_id IS NOT NULL), '{}') as assigned_groups
+            FROM admin_accounts a
+            LEFT JOIN admin_group_mappings m ON a.id = m.admin_id
+            GROUP BY a.id
+            ORDER BY a.created_at ASC
+        `);
+        res.json(adminsRes.rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post('/api/admin/accounts', async (req, res) => {
+    try {
+        const { username, password, full_name, role, assigned_groups } = req.body;
+        if (!username || !password) {
+            return res.status(400).json({ success: false, message: 'Tên đăng nhập và mật khẩu là bắt buộc' });
+        }
+
+        const existing = await pool.query('SELECT id FROM admin_accounts WHERE username = $1', [username]);
+        if (existing.rows.length > 0) {
+            return res.status(400).json({ success: false, message: 'Tên đăng nhập đã tồn tại' });
+        }
+
+        const newAdmin = await pool.query(
+            `INSERT INTO admin_accounts (username, password_hash, full_name, role)
+             VALUES ($1, $2, $3, $4) RETURNING *`,
+            [username, password, full_name || username, role || 'ADMIN']
+        );
+
+        const adminId = newAdmin.rows[0].id;
+        if (Array.isArray(assigned_groups) && assigned_groups.length > 0) {
+            for (const gId of assigned_groups) {
+                await pool.query(
+                    `INSERT INTO admin_group_mappings (admin_id, telegram_group_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+                    [adminId, gId]
+                );
+            }
+        }
+
+        res.json({ success: true, data: newAdmin.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.put('/api/admin/accounts/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { password, full_name, role, is_active, assigned_groups } = req.body;
+
+        if (password && password.trim() !== '') {
+            await pool.query(
+                `UPDATE admin_accounts SET password_hash = $1, full_name = $2, role = $3, is_active = $4 WHERE id = $5`,
+                [password, full_name, role, is_active ?? true, id]
+            );
+        } else {
+            await pool.query(
+                `UPDATE admin_accounts SET full_name = $1, role = $2, is_active = $3 WHERE id = $4`,
+                [full_name, role, is_active ?? true, id]
+            );
+        }
+
+        // Re-map assigned groups
+        await pool.query(`DELETE FROM admin_group_mappings WHERE admin_id = $1`, [id]);
+        if (Array.isArray(assigned_groups) && assigned_groups.length > 0) {
+            for (const gId of assigned_groups) {
+                await pool.query(
+                    `INSERT INTO admin_group_mappings (admin_id, telegram_group_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+                    [id, gId]
+                );
+            }
+        }
+
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.delete('/api/admin/accounts/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const adminCheck = await pool.query('SELECT username FROM admin_accounts WHERE id = $1', [id]);
+        if (adminCheck.rows.length > 0 && adminCheck.rows[0].username === 'admin') {
+            return res.status(400).json({ success: false, message: 'Không thể xóa tài khoản Super Admin mặc định' });
+        }
+        await pool.query('DELETE FROM admin_accounts WHERE id = $1', [id]);
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
     }
 });
 
@@ -70,22 +235,35 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
     }
 });
 
+
 // =====================================
 // SPRINT 2: Check-in Management APIs
 // =====================================
 
-// Lấy danh sách check-in, filter theo ngày và user
+// Lấy danh sách check-in, filter theo ngày và user và group
 app.get('/api/admin/checkins', async (req, res) => {
     try {
-        const { date, user_id } = req.query;
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+        const { date, user_id, group_id } = req.query;
         let query = `
-            SELECT c.*, u.full_name, u.role, u.telegram_id, g.group_name
+            SELECT c.*, u.full_name, u.role, u.telegram_id, g.group_name, g.telegram_group_id
             FROM tk_check_ins c
             LEFT JOIN employees u ON c.user_id = u.id
             LEFT JOIN telegram_groups g ON c.group_id = g.id
             WHERE 1=1
         `;
         const params = [];
+
+        if (group_id && group_id !== 'ALL') {
+            if (!isSuperAdmin && !allowedGroupIds.includes(group_id)) {
+                return res.status(403).json({ error: 'Bạn không có quyền xem điểm danh nhóm này' });
+            }
+            params.push(group_id);
+            query += ` AND (g.telegram_group_id = $${params.length} OR g.id::text = $${params.length})`;
+        } else if (!isSuperAdmin) {
+            params.push(allowedGroupIds);
+            query += ` AND (g.telegram_group_id = ANY($${params.length}) OR g.id::text = ANY($${params.length}))`;
+        }
 
         if (date) {
             params.push(date);
@@ -141,7 +319,8 @@ app.post('/api/admin/checkins', async (req, res) => {
 // Lấy lịch làm việc theo tuần (from_date, to_date)
 app.get('/api/admin/schedules', async (req, res) => {
     try {
-        const { from_date, to_date } = req.query;
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+        const { from_date, to_date, group_id } = req.query;
         let query = `
             SELECT
                 s.id,
@@ -157,13 +336,25 @@ app.get('/api/admin/schedules', async (req, res) => {
                 u.full_name,
                 u.role,
                 u.telegram_id,
-                g.group_name
+                g.group_name,
+                g.telegram_group_id
             FROM tk_schedules s
             LEFT JOIN employees u ON s.user_id = u.id
             LEFT JOIN telegram_groups g ON s.group_id = g.id
             WHERE 1 = 1
         `;
         const params = [];
+
+        if (group_id && group_id !== 'ALL') {
+            if (!isSuperAdmin && !allowedGroupIds.includes(group_id)) {
+                return res.status(403).json({ error: 'Bạn không có quyền xem lịch làm việc nhóm này' });
+            }
+            params.push(group_id);
+            query += ` AND (g.telegram_group_id = $${params.length} OR g.id::text = $${params.length})`;
+        } else if (!isSuperAdmin) {
+            params.push(allowedGroupIds);
+            query += ` AND (g.telegram_group_id = ANY($${params.length}) OR g.id::text = ANY($${params.length}))`;
+        }
 
         if (from_date) {
             params.push(from_date);
@@ -186,17 +377,29 @@ app.get('/api/admin/schedules', async (req, res) => {
 // Lấy thống kê lịch làm việc theo ngày và theo ca
 app.get('/api/admin/schedules/stats', async (req, res) => {
     try {
-        const { from_date, to_date } = req.query;
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+        const { from_date, to_date, group_id } = req.query;
         let query = `
             SELECT s.date::text as date_str, s.shift_type, s.is_locked,
                    u.id as user_id, u.full_name, u.role, u.telegram_id,
-                   g.id as group_id, g.group_name
+                   g.id as group_id, g.group_name, g.telegram_group_id
             FROM tk_schedules s
             LEFT JOIN employees u ON s.user_id = u.id
             LEFT JOIN telegram_groups g ON s.group_id = g.id
             WHERE 1=1
         `;
         const params = [];
+
+        if (group_id && group_id !== 'ALL') {
+            if (!isSuperAdmin && !allowedGroupIds.includes(group_id)) {
+                return res.status(403).json({ error: 'Bạn không có quyền xem thống kê lịch nhóm này' });
+            }
+            params.push(group_id);
+            query += ` AND (g.telegram_group_id = $${params.length} OR g.id::text = $${params.length})`;
+        } else if (!isSuperAdmin) {
+            params.push(allowedGroupIds);
+            query += ` AND (g.telegram_group_id = ANY($${params.length}) OR g.id::text = ANY($${params.length}))`;
+        }
 
         if (from_date) {
             params.push(from_date);
@@ -256,13 +459,31 @@ app.get('/api/admin/schedules/stats', async (req, res) => {
 // Lấy danh sách đơn xin nghỉ phép
 app.get('/api/admin/leave-requests', async (req, res) => {
     try {
-        const result = await pool.query(`
-            SELECT r.*, u.full_name, u.role, u.telegram_id, g.group_name
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+        const { group_id } = req.query;
+
+        let query = `
+            SELECT r.*, u.full_name, u.role, u.telegram_id, g.group_name, g.telegram_group_id
             FROM tk_leave_requests r
             LEFT JOIN employees u ON r.user_id = u.id
             LEFT JOIN telegram_groups g ON r.group_id = g.id
-            ORDER BY r.created_at DESC
-        `);
+            WHERE 1=1
+        `;
+        const params = [];
+
+        if (group_id && group_id !== 'ALL') {
+            if (!isSuperAdmin && !allowedGroupIds.includes(group_id)) {
+                return res.status(403).json({ error: 'Bạn không có quyền xem đơn xin nghỉ nhóm này' });
+            }
+            params.push(group_id);
+            query += ` AND (g.telegram_group_id = $${params.length} OR g.id::text = $${params.length})`;
+        } else if (!isSuperAdmin) {
+            params.push(allowedGroupIds);
+            query += ` AND (g.telegram_group_id = ANY($${params.length}) OR g.id::text = ANY($${params.length}))`;
+        }
+
+        query += ` ORDER BY r.created_at DESC`;
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (error) {
         res.status(500).json({ error: error.message });

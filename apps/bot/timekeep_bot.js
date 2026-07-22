@@ -1409,6 +1409,7 @@ cron.schedule('*/1 * * * *', async () => {
 
                 // A. Nhắc nhở trước ca 3 phút
                 if (currentTimeStr === remindTime) {
+                    console.log(`[Cron Timekeep] Quét nhắc nhở trước ca 3 phút cho nhóm ${group_name} (${shift.label}) vào lúc ${currentTimeStr}`);
                     const uncheckedRes = await pool.query(`
                         SELECT u.full_name
                         FROM employees u

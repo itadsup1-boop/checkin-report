@@ -1,37 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save } from 'lucide-react';
+import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save, Shield } from 'lucide-react';
 import LoginScreen from './LoginScreen.jsx';
 import StaffManagement from './StaffManagement.jsx';
 import CheckinManagement from './CheckinManagement.jsx';
 import ScheduleManagement from './ScheduleManagement.jsx';
 import LeaveManagement from './LeaveManagement.jsx';
 import DashboardTab from './DashboardTab.jsx';
+import AdminManagement from './AdminManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('admin_token'));
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('admin_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
     setIsLoggedIn(false);
+    setUser(null);
   };
 
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+    return <LoginScreen onLogin={(u) => {
+      setUser(u || (localStorage.getItem('admin_user') ? JSON.parse(localStorage.getItem('admin_user')) : null));
+      setIsLoggedIn(true);
+    }} />;
   }
 
-  return <Dashboard onLogout={handleLogout} />;
+  return <Dashboard user={user} onLogout={handleLogout} />;
 }
 
-function Dashboard({ onLogout }) {
+function Dashboard({ user, onLogout }) {
   const [employees, setEmployees] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedGroupId, setSelectedGroupId] = useState('ALL');
+
+  useEffect(() => {
+    const reqInterceptor = axios.interceptors.request.use((config) => {
+      try {
+        const savedUser = localStorage.getItem('admin_user');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u.id) config.headers['x-admin-id'] = u.id;
+          if (u.role) config.headers['x-admin-role'] = u.role;
+        }
+      } catch (e) {}
+      return config;
+    });
+    return () => axios.interceptors.request.eject(reqInterceptor);
+  }, []);
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const assignedGroupIds = user?.assigned_groups || [];
+  const displayGroups = isSuperAdmin
+    ? groups
+    : groups.filter(g => assignedGroupIds.includes(g.telegram_group_id));
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -137,35 +173,27 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time, bot_role, schedule_registration_open) => {
+  const handleUpdateGroupSettings = async (telegramGroupId, settings) => {
     try {
-      await axios.put(`${API_URL}/tk_group_settings/${telegram_group_id}`, {
-        penalty_under_15,
-        penalty_under_90,
-        penalty_over_90,
-        shift_1_time,
-        shift_2_time,
-        bot_role,
-        schedule_registration_open,
-        auto_reminder_enabled: true
-      });
-      setToast('✅ Đã cập nhật cài đặt thành công!');
+      await axios.put(`${API_URL}/groups/${telegramGroupId}/settings`, settings);
+      setToast('✅ Đã cập nhật cài đặt nhóm!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
-      alert("Lỗi khi cập nhật cài đặt: " + err.message);
+      alert("Lỗi cập nhật cài đặt: " + err.message);
     }
   };
 
-  const handleDeleteGroup = async (telegram_group_id) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa nhóm này khỏi hệ thống (soft delete)?")) return;
-    try {
-      await axios.delete(`${API_URL}/groups/${telegram_group_id}`);
-      setToast('✅ Đã xóa nhóm thành công!');
-      fetchData();
-      setTimeout(() => setToast(null), 3000);
-    } catch (err) {
-      alert("Lỗi khi xóa nhóm: " + err.message);
+  const handleDeleteGroup = async (telegramGroupId) => {
+    if (window.confirm("Bạn có chắc muốn xóa nhóm này khỏi hệ thống?")) {
+      try {
+        await axios.delete(`${API_URL}/groups/${telegramGroupId}`);
+        setToast('✅ Đã xóa nhóm!');
+        fetchData();
+        setTimeout(() => setToast(null), 3000);
+      } catch (err) {
+        alert("Lỗi khi xóa nhóm: " + err.message);
+      }
     }
   };
 
@@ -175,7 +203,7 @@ function Dashboard({ onLogout }) {
   );
 
   const totalEmp = employees.length;
-  const passedKPI = employees.filter(e => (e.kpi_actual || 0) >= (e.kpi_required || 10)).length;
+  const passedKPI = employees.filter(e => e.status === 'DAT_KPI').length;
   const failedKPI = totalEmp - passedKPI;
   const completionRate = totalEmp === 0 ? 0 : Math.round((passedKPI / totalEmp) * 100);
 
@@ -201,6 +229,9 @@ function Dashboard({ onLogout }) {
           <NavItem icon={<CalendarDays />} label="Lịch làm việc" active={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')} />
           <NavItem icon={<CalendarX />} label="Nghỉ phép & Quỹ phép" active={activeTab === 'leave'} onClick={() => setActiveTab('leave')} />
           <NavItem icon={<Settings />} label="Cấu hình hệ thống" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          {user?.role === 'SUPER_ADMIN' && (
+            <NavItem icon={<Shield />} label="Quản lý Admin" active={activeTab === 'admins'} onClick={() => setActiveTab('admins')} />
+          )}
         </nav>
         <div className="p-4 m-4">
           <button
@@ -220,23 +251,50 @@ function Dashboard({ onLogout }) {
             <button className="p-2 text-slate-400 hover:text-white"><Menu className="w-6 h-6" /></button>
             <h1 className="text-xl font-bold text-white">KPI Master</h1>
           </div>
-          <div className="hidden md:flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-96 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
-            <Search className="w-5 h-5 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm nhân viên..."
-              className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="hidden md:flex items-center gap-4">
+            <div className="flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-80 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
+              <Search className="w-5 h-5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm nhân viên..."
+                className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Global Group Selector */}
+            <div className="flex items-center gap-2 bg-[#111827] rounded-full px-4 py-2 border border-white/10 text-sm hover:border-white/20 transition-colors">
+              <Users className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <select
+                value={selectedGroupId}
+                onChange={(e) => setSelectedGroupId(e.target.value)}
+                className="bg-transparent border-none outline-none text-white text-xs sm:text-sm font-medium cursor-pointer max-w-[200px] truncate"
+              >
+                <option value="ALL" className="bg-[#111827] text-white">
+                  Tất cả nhóm ({displayGroups.length})
+                </option>
+                {displayGroups.map((g) => (
+                  <option key={g.telegram_group_id} value={g.telegram_group_id} className="bg-[#111827] text-white">
+                    {g.group_name || `Nhóm ${g.telegram_group_id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
               <Bell className="w-6 h-6" />
               <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0B0F19]"></span>
             </button>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 p-[2px] cursor-pointer hover:scale-105 transition-transform">
-              <img src="https://i.pravatar.cc/150?img=11" alt="Admin" className="w-full h-full rounded-full border-2 border-[#0B0F19]" />
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-semibold text-white">{user?.full_name || user?.username || 'Admin'}</p>
+                <p className="text-xs text-cyan-400 font-medium">{user?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 p-[2px] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center font-bold text-white text-xs">
+                {user?.username?.substring(0, 2)?.toUpperCase() || 'AD'}
+              </div>
             </div>
           </div>
         </header>
@@ -436,26 +494,28 @@ function Dashboard({ onLogout }) {
           )}
 
           {activeTab === 'dashboard' && (
-            <DashboardTab />
+            <DashboardTab selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'staff' && (
-            <StaffManagement />
+            <StaffManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'checkins' && (
-            <CheckinManagement />
+            <CheckinManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'schedules' && (
-            <ScheduleManagement />
+            <ScheduleManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'leave' && (
-            <LeaveManagement />
+            <LeaveManagement selectedGroupId={selectedGroupId} />
           )}
 
-          {activeTab === 'settings' && <SettingsTab groups={groups} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}
+          {activeTab === 'settings' && <SettingsTab groups={displayGroups} selectedGroupId={selectedGroupId} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}
+
+          {activeTab === 'admins' && user?.role === 'SUPER_ADMIN' && <AdminManagement groups={groups} />}
         </div>
       </main>
 
@@ -561,7 +621,7 @@ function Dashboard({ onLogout }) {
   );
 }
 
-function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
+function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSettings, handleDeleteGroup }) {
   const [times, setTimes] = useState({});
   const [shift1Times, setShift1Times] = useState({});
   const [shift2Times, setShift2Times] = useState({});
@@ -569,6 +629,10 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
   const [latePenalties, setLatePenalties] = useState({});
   const [botRoles, setBotRoles] = useState({});
   const [scheduleOpen, setScheduleOpen] = useState({});
+
+  const displayedGroups = selectedGroupId && selectedGroupId !== 'ALL'
+    ? groups.filter(g => g.telegram_group_id === selectedGroupId)
+    : groups;
 
   useEffect(() => {
     const initialTimes = {};
@@ -578,7 +642,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     const initialBotRoles = {};
     const initialScheduleOpen = {};
 
-    groups.forEach(g => {
+    displayedGroups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
       // Default late penalties (can be customized later)
       initialLatePenalties[g.telegram_group_id] = {
@@ -598,7 +662,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     setShift2Times(initialShift2);
     setBotRoles(initialBotRoles);
     setScheduleOpen(initialScheduleOpen);
-  }, [groups]);
+  }, [displayedGroups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
   const handleShift1Change = (groupId, value) => setShift1Times(prev => ({ ...prev, [groupId]: value }));
@@ -637,11 +701,11 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
         </p>
       </div>
 
-      {groups.length === 0 ? (
-        <p className="text-slate-400">Chưa có nhóm nào kết nối. Vui lòng thêm bot vào nhóm và gõ lệnh /setup.</p>
+      {displayedGroups.length === 0 ? (
+        <p className="text-slate-400">Chưa có nhóm nào kết nối hoặc được phân quyền.</p>
       ) : (
         <div className="space-y-6">
-          {groups.map(group => (
+          {displayedGroups.map(group => (
             <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col gap-5">
               <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 border-b border-white/10 pb-4">
                 <div>
