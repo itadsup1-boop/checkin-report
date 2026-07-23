@@ -5,15 +5,15 @@ import { CalendarDays, Users, ChevronLeft, ChevronRight, Clock, Coffee, Plus, Pe
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const SHIFT_LABELS = {
-  'CA_SANG': { label: 'Ca sáng', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
-  'CA_CHIEU': { label: 'Ca chiều', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+  'CA_SANG': { label: 'Ca sớm', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
+  'CA_CHIEU': { label: 'Ca muộn', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
   'FULL_DAY': { label: 'Cả ngày', color: 'text-warning', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
   'OFF': { label: 'Nghỉ', color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
 };
 
 const SHIFT_OPTIONS = [
-  { value: 'CA_SANG', label: 'Ca sáng' },
-  { value: 'CA_CHIEU', label: 'Ca chiều ' },
+  { value: 'CA_SANG', label: 'Ca sớm' },
+  { value: 'CA_CHIEU', label: 'Ca muộn' },
   { value: 'FULL_DAY', label: 'Cả ngày' },
   { value: 'OFF', label: 'Nghỉ' },
 ];

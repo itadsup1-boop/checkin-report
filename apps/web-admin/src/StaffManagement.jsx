@@ -33,6 +33,8 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
       full_name: user.full_name,
       role: user.role,
       leave_quota: user.leave_quota ?? 12,
+      is_exempt_checkin: !!user.is_exempt_checkin,
+      is_active: user.is_active !== undefined ? !!user.is_active : true,
     });
   };
 
@@ -160,6 +162,8 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                 <th className="py-4 px-6 font-medium">Vai trò</th>
                 <th className="py-4 px-6 font-medium">Nhóm</th>
                 <th className="py-4 px-6 font-medium text-center">Số phép / năm</th>
+                <th className="py-4 px-6 font-medium text-center">Miễn Check-in</th>
+                <th className="py-4 px-6 font-medium text-center">Trạng thái</th>
                 <th className="py-4 px-6 font-medium">Ngày đăng ký</th>
                 <th className="py-4 px-6 font-medium text-right">Hành động</th>
               </tr>
@@ -167,13 +171,13 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
             <tbody className="divide-y divide-white/5 text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center">
+                  <td colSpan="10" className="py-12 text-center">
                     <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
                   </td>
                 </tr>
               ) : filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-500">
+                  <td colSpan="10" className="py-12 text-center text-slate-500">
                     {searchTerm ? 'Không tìm thấy nhân viên phù hợp.' : 'Chưa có nhân viên nào đăng ký qua Telegram.'}
                   </td>
                 </tr>
@@ -232,6 +236,42 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                         ) : (
                           <span className="px-2.5 py-1 bg-purple-500/10 text-purple-400 rounded-md text-xs border border-purple-500/20 font-semibold">
                             {user.leave_quota ?? 12} ngày
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        {isEditing ? (
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+                            checked={editForm.is_exempt_checkin || false}
+                            onChange={e => setEditForm({ ...editForm, is_exempt_checkin: e.target.checked })}
+                          />
+                        ) : user.is_exempt_checkin ? (
+                          <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">
+                            ✅ Miễn
+                          </span>
+                        ) : (
+                          <span className="text-slate-500 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        {isEditing ? (
+                          <select
+                            className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none cursor-pointer"
+                            value={editForm.is_active ? 'active' : 'disabled'}
+                            onChange={e => setEditForm({ ...editForm, is_active: e.target.value === 'active' })}
+                          >
+                            <option value="active">🟢 Hoạt động</option>
+                            <option value="disabled">🔴 Vô hiệu hóa</option>
+                          </select>
+                        ) : user.is_active !== false ? (
+                          <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">
+                            🟢 Hoạt động
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 bg-rose-500/15 text-rose-400 rounded-md text-xs border border-rose-500/30 font-semibold">
+                            🔴 Vô hiệu hóa
                           </span>
                         )}
                       </td>

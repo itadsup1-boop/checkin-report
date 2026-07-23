@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tải Up Video Check-in</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.35);
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        .user-info-bar {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 14px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            font-size: 13px;
+        }
+
+        .user-name {
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .user-role {
+            font-size: 12px;
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        .upload-zone {
+            border: 2px dashed rgba(99, 102, 241, 0.4);
+            background: rgba(99, 102, 241, 0.05);
+            border-radius: 20px;
+            padding: 28px 16px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+            margin-bottom: 20px;
+        }
+
+        .upload-zone:hover, .upload-zone.dragover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.12);
+            transform: translateY(-2px);
+        }
+
+        .upload-icon {
+            font-size: 42px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        .upload-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #f1f5f9;
+            margin-bottom: 6px;
+        }
+
+        .upload-desc {
+            font-size: 12px;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        .file-info {
+            display: none;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 12px 14px;
+            margin-top: 12px;
+            text-align: left;
+        }
+
+        .file-info-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 13px;
+            font-weight: 600;
+            color: #e2e8f0;
+            margin-bottom: 4px;
+        }
+
+        .file-size {
+            font-size: 12px;
+            color: var(--primary);
+            font-weight: 500;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 14px;
+            margin-top: 10px;
+            background: #000;
+            max-height: 240px;
+            object-fit: contain;
+            display: none;
+        }
+
+        .btn-primary {
+            width: 100%;
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 14px;
+            font-size: 15px;
+            font-weight: 700;
+            font-family: 'Outfit', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 8px 25px -5px var(--primary-glow);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary:disabled {
+            background: #334155;
+            color: #64748b;
+            box-shadow: none;
+            cursor: not-allowed;
+        }
+
+        .btn-primary:not(:disabled):active {
+            transform: scale(0.98);
+        }
+
+        .alert-box {
+            display: none;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px 14px;
+            border-radius: 14px;
+            font-size: 13px;
+            margin-top: 16px;
+            text-align: center;
+        }
+
+        /* Loading Screen Overlay */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(8px);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(99, 102, 241, 0.2);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            animation: spin 1s infinite linear;
+            margin-bottom: 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .overlay-title {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: #f8fafc;
+        }
+
+        .overlay-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            max-width: 280px;
+            line-height: 1.5;
+        }
+
+        /* Success Screen */
+        .success-icon {
+            width: 72px;
+            height: 72px;
+            background: rgba(16, 185, 129, 0.15);
+            border: 2px solid var(--success);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 36px;
+            margin-bottom: 16px;
+            animation: popIn 0.4s ease-out;
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0.5); opacity: 0; }
+            80% { transform: scale(1.1); }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: white;
+            border: none;
+            border-radius: 16px;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: 'Outfit', sans-serif;
+            margin-top: 20px;
+            cursor: pointer;
+        }
+    </style>
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>Tải Up Video Check-in</h1>
+                <p>Chọn file Video điểm danh từ thiết bị của bạn</p>
+            </div>
+
+            <div class="user-info-bar">
+                <div>
+                    <span id="userName" class="user-name">Đang tải thông tin...</span>
+                    <span id="tgName" style="color:#64748b; font-size:11px; margin-left:4px;"></span>
+                </div>
+                <div id="userRole" class="user-role">---</div>
+            </div>
+
+            <!-- Upload Drop Zone -->
+            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('videoFileInput').click()">
+                <span class="upload-icon">📹</span>
+                <div class="upload-title">Chọn file Video từ thiết bị</div>
+                <div class="upload-desc">Chạm vào đây để chọn Video điểm danh<br>(Hỗ trợ MP4, MOV, WEBM...)</div>
+                <input type="file" id="videoFileInput" accept="video/*" style="display: none;" onchange="onFileSelected(event)">
+            </div>
+
+            <!-- Selected File Info & Preview -->
+            <div class="file-info" id="fileInfo">
+                <div class="file-info-header">
+                    <span id="fileName" style="word-break: break-all;">video_checkin.mp4</span>
+                    <span id="fileSize" class="file-size">0 MB</span>
+                </div>
+                <video id="videoPreview" controls playsinline></video>
+            </div>
+
+            <button id="btnUpload" class="btn-primary" disabled onclick="uploadVideo()">
+                <span>📤</span> GỬI VIDEO CHECK-IN
+            </button>
+
+            <div id="alertBox" class="alert-box"></div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="overlay">
+        <div class="spinner"></div>
+        <div class="overlay-title" id="loadingTitle">Đang tải Video điểm danh...</div>
+        <div style="width: 260px; background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; overflow: hidden; margin: 12px 0;">
+            <div id="uploadProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.15s ease;"></div>
+        </div>
+        <div id="uploadPercentText" style="font-size: 14px; font-weight: 700; color: #818cf8; margin-bottom: 8px;">0%</div>
+        <div class="overlay-desc">Vui lòng giữ màn hình mở trong khi đang tải dữ liệu!</div>
+    </div>
+
+    <!-- Success Screen Overlay -->
+    <div id="successScreen" class="overlay">
+        <div class="success-icon">✅</div>
+        <div class="overlay-title" style="color: #10b981;">ĐIỂM DANH THÀNH CÔNG!</div>
+        <div class="overlay-desc">Video điểm danh của bạn đã được ghi nhận vào hệ thống thành công.</div>
+        <button class="btn-success" onclick="closeWebApp()">HOÀN TẤT & ĐÓNG</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
+        let initData = "";
+        let telegramId = "";
+        let telegramUsername = "";
+        let chatId = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        let payloadAction = "checkin";
+        let selectedFile = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                initData = tg.initData || "";
+            }
+
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                telegramId = user.id;
+                telegramUsername = user.username || user.first_name;
+                document.getElementById('tgName').textContent = `@${telegramUsername}`;
+
+                let startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else {
+                        chatId = startParam.replace('checkin_', '');
+                    }
+                }
+
+                if (!chatId) {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    chatId = urlParams.get('chat_id') || "";
+                    payloadTs = urlParams.get('ts') || "";
+                    payloadSig = urlParams.get('sig') || "";
+                    payloadAction = urlParams.get('action') || "checkin";
+                }
+            }
+
+            loadUserProfile();
+        });
+
+        function loadUserProfile() {
+            fetch(`/api/timekeep/schedule/data?chat_id=${chatId}&action=${payloadAction}&ts=${payloadTs}&sig=${payloadSig}`, {
+                headers: {
+                    'x-telegram-init-data': initData
+                }
+            })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.success && res.user) {
+                        document.getElementById('userName').textContent = res.user.full_name;
+                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role || 'Nhân viên'}`;
+                    } else {
+                        showAlert('Vui lòng đăng ký tài khoản chấm công trước!');
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                });
+        }
+
+        function onFileSelected(event) {
+            const files = event.target.files;
+            if (!files || files.length === 0) return;
+
+            selectedFile = files[0];
+
+            // Display file info
+            document.getElementById('fileName').textContent = selectedFile.name;
+            const sizeInMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
+            document.getElementById('fileSize').textContent = `${sizeInMB} MB`;
+            document.getElementById('fileInfo').style.display = 'block';
+
+            // Show Video Preview
+            const videoPreview = document.getElementById('videoPreview');
+            const videoURL = URL.createObjectURL(selectedFile);
+            videoPreview.src = videoURL;
+            videoPreview.style.display = 'block';
+
+            // Enable Upload Button
+            document.getElementById('btnUpload').disabled = false;
+            document.getElementById('alertBox').style.display = 'none';
+        }
+
+        function uploadVideo() {
+            if (!selectedFile) return;
+
+            // Warn if file > 200MB
+            if (selectedFile.size > 200 * 1024 * 1024) {
+                showAlert('Dung lượng video vượt quá 200MB. Vui lòng chọn video nhỏ hơn!');
+                return;
+            }
+
+            const progressBar = document.getElementById('uploadProgressBar');
+            const percentText = document.getElementById('uploadPercentText');
+            progressBar.style.width = '0%';
+            percentText.textContent = '0%';
+            document.getElementById('loadingOverlay').style.display = 'flex';
+
+            const formData = new FormData();
+            formData.append('video_file', selectedFile);
+            formData.append('telegram_id', telegramId);
+            formData.append('chat_id', chatId);
+            formData.append('action', payloadAction);
+            formData.append('ts', payloadTs);
+            formData.append('sig', payloadSig);
+
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', '/api/timekeep/checkin/save', true);
+
+            if (initData) {
+                xhr.setRequestHeader('x-telegram-init-data', initData);
+            }
+
+            xhr.upload.onprogress = function (e) {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    progressBar.style.width = percent + '%';
+                    percentText.textContent = percent + '%';
+                }
+            };
+
+            xhr.onload = function () {
+                document.getElementById('loadingOverlay').style.display = 'none';
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        if (data.success) {
+                            document.getElementById('successScreen').style.display = 'flex';
+                        } else {
+                            showAlert(data.message || 'Lỗi khi tải video lên!');
+                        }
+                    } catch (err) {
+                        showAlert('Lỗi phản hồi từ máy chủ!');
+                    }
+                } else {
+                    try {
+                        const data = JSON.parse(xhr.responseText);
+                        showAlert(data.message || `Lỗi tải lên (${xhr.status})`);
+                    } catch (e) {
+                        showAlert(`Lỗi kết nối máy chủ (${xhr.status})!`);
+                    }
+                }
+            };
+
+            xhr.onerror = function () {
+                document.getElementById('loadingOverlay').style.display = 'none';
+                showAlert('Lỗi kết nối máy chủ!');
+            };
+
+            xhr.send(formData);
+        }
+
+        function showAlert(msg) {
+            const alertBox = document.getElementById('alertBox');
+            alertBox.textContent = msg;
+            alertBox.style.display = 'block';
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            }
+        }
+    </script>
+</body>
+
+</html>

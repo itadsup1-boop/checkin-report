@@ -23,8 +23,8 @@ const app = express();
 app.disable('etag');
 app.use(loggerMiddleware);
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '200mb' }));
+app.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'API is running' });
@@ -242,11 +242,43 @@ app.get('/api/admin/tk-users', async (req, res) => {
 
 app.put('/api/admin/tk-users/:id', async (req, res) => {
     try {
-        const { full_name, role, leave_quota } = req.body;
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+
+        // 1. Kiểm tra tồn tại nhân viên
+        const empRes = await pool.query(`SELECT * FROM employees WHERE id = $1`, [req.params.id]);
+        if (empRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
+        }
+        const currentEmp = empRes.rows[0];
+
+        // 2. Kiểm tra quyền quản lý nhóm
+        if (!isSuperAdmin && (!currentEmp.telegram_group_id || !allowedGroupIds.includes(currentEmp.telegram_group_id))) {
+            return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa nhân sự nhóm này' });
+        }
+
+        const { full_name, role, leave_quota, is_exempt_checkin, is_active } = req.body;
+
+        // Giữ nguyên is_active hiện tại nếu body không truyền
+        const newIsActive = is_active !== undefined ? !!is_active : (currentEmp.is_active !== false);
+
         await pool.query(
-            `UPDATE employees SET full_name = $1, role = $2, leave_quota = $3 WHERE id = $4`,
-            [full_name, role, leave_quota || 12, req.params.id]
+            `UPDATE employees SET full_name = $1, role = $2, leave_quota = $3, is_exempt_checkin = $4, is_active = $5 WHERE id = $6`,
+            [
+                full_name !== undefined ? full_name : currentEmp.full_name,
+                role !== undefined ? role : currentEmp.role,
+                leave_quota !== undefined ? leave_quota : (currentEmp.leave_quota || 12),
+                is_exempt_checkin !== undefined ? !!is_exempt_checkin : !!currentEmp.is_exempt_checkin,
+                newIsActive,
+                req.params.id
+            ]
         );
+
+        // 3. Nếu nhân viên bị vô hiệu hóa, tự động đóng/hủy tất cả pending_reports của nhân viên đó
+        if (!newIsActive && currentEmp.telegram_id) {
+            await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [currentEmp.telegram_id.toString()]);
+            console.log(`[Admin API] Đã dọn dẹp pending_reports của nhân viên bị vô hiệu hóa (telegram_id: ${currentEmp.telegram_id})`);
+        }
+
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -703,10 +735,18 @@ app.delete('/api/employees/:id', async (req, res) => {
 // Thêm các endpoint khác theo tài liệu THIET_KE_HE_THONG.md ở đây
 
 // Group & Settings Endpoints
+function extractSheetId(input) {
+    if (!input) return null;
+    const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) return match[1];
+    return input.trim();
+}
+
 app.get('/api/groups', async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role, tkg.schedule_registration_open,
+                   tkg.kpi_sheet_id, tkg.customer_sheet_id,
                    gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
                    gs.penalty_missing_kpi, gs.penalty_per_photo, gs.penalty_missing_report,
                    gs.shift_1_time, gs.shift_2_time
@@ -746,17 +786,24 @@ app.put('/api/groups/:telegram_group_id/settings', async (req, res) => {
             photo_deadline_minutes,
             penalty_missing_kpi,
             penalty_per_photo,
-            penalty_missing_report
+            penalty_missing_report,
+            kpi_sheet_id,
+            customer_sheet_id
         } = req.body;
+
+        const cleanKpiSheetId = extractSheetId(kpi_sheet_id);
+        const cleanCustomerSheetId = extractSheetId(customer_sheet_id);
 
         // Upsert into telegram_groups
         await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open) 
-             VALUES ($1, $2, $3, COALESCE($4, true))
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open, kpi_sheet_id, customer_sheet_id) 
+             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6)
              ON CONFLICT (telegram_group_id) DO UPDATE SET 
                  bot_role = COALESCE(EXCLUDED.bot_role, telegram_groups.bot_role), 
-                 schedule_registration_open = COALESCE(EXCLUDED.schedule_registration_open, telegram_groups.schedule_registration_open)`,
-            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open]
+                 schedule_registration_open = COALESCE(EXCLUDED.schedule_registration_open, telegram_groups.schedule_registration_open),
+                 kpi_sheet_id = COALESCE(EXCLUDED.kpi_sheet_id, telegram_groups.kpi_sheet_id),
+                 customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id)`,
+            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open, cleanKpiSheetId, cleanCustomerSheetId]
         );
 
         // Upsert into group_settings
@@ -824,7 +871,12 @@ app.get('/api/bot/get-report-today', async (req, res) => {
             urlObj.searchParams.append(key, value);
         }
 
-        const response = await fetch(urlObj.toString());
+        const headers = {};
+        const initData = req.headers['x-telegram-init-data'] || req.headers['X-Telegram-Init-Data'];
+        if (initData) headers['x-telegram-init-data'] = initData;
+        if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
+
+        const response = await fetch(urlObj.toString(), { headers });
         const data = await response.json();
         res.status(response.status).json(data);
     } catch (e) {
@@ -835,9 +887,14 @@ app.get('/api/bot/get-report-today', async (req, res) => {
 app.post('/api/bot/submit-report', async (req, res) => {
     try {
         const fetch = (await import('node-fetch')).default || globalThis.fetch;
+        const headers = { 'Content-Type': 'application/json' };
+        const initData = req.headers['x-telegram-init-data'] || req.headers['X-Telegram-Init-Data'];
+        if (initData) headers['x-telegram-init-data'] = initData;
+        if (req.headers['authorization']) headers['authorization'] = req.headers['authorization'];
+
         const response = await fetch(`${BOT_URL}/api/bot/submit-report`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers,
             body: JSON.stringify(req.body)
         });
         const data = await response.json();

@@ -794,60 +794,51 @@
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
-            if (tab === 'current') {
-                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
-                document.getElementById('lockBanner').style.display = 'none';
-                document.getElementById('proofBox').style.display = 'none';
+            const isUserManager = allUsers.find(u => u.id === selectedUserId)?.role === 'Quản lý' || 
+                                  document.getElementById('userRole').textContent.includes('Quản lý');
 
-                if (isUserAdmin) {
-                    document.getElementById('btnSave').style.display = 'block';
-                    renderDays(currentWeekDays, false); // Admin can edit current week
+            if (isUserAdmin || isUserManager) {
+                const toggleBtn = document.getElementById('managerToggleBtn');
+                toggleBtn.style.display = 'flex';
+                const btnEl = document.getElementById('btnToggleSchedule');
+                if (scheduleRegistrationOpen) {
+                    btnEl.innerHTML = '🔄 Đóng đăng ký lịch';
+                    btnEl.style.background = 'var(--warning)';
+                    btnEl.style.color = '#0f172a';
                 } else {
-                    document.getElementById('btnSave').style.display = 'none';
-                    renderDays(currentWeekDays, true); // Regular staff is locked
+                    btnEl.innerHTML = '🔄 Mở đăng ký lịch';
+                    btnEl.style.background = 'var(--success)';
+                    btnEl.style.color = '#fff';
                 }
             } else {
-                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
-
-                // Lock next week if deadline passed AND current user is not admin
-                const isNextWeekLocked = isSystemLocked && !isUserAdmin;
-
-                const isUserManager = allUsers.find(u => u.id === selectedUserId)?.role === 'Quản lý' || 
-                                      document.getElementById('userRole').textContent.includes('Quản lý');
-
-                if (isUserAdmin || isUserManager) {
-                    const toggleBtn = document.getElementById('managerToggleBtn');
-                    toggleBtn.style.display = 'flex';
-                    const btnEl = document.getElementById('btnToggleSchedule');
-                    if (scheduleRegistrationOpen) {
-                        btnEl.innerHTML = '🔄 Đóng đăng ký lịch';
-                        btnEl.style.background = 'var(--warning)';
-                        btnEl.style.color = '#0f172a';
-                    } else {
-                        btnEl.innerHTML = '🔄 Mở đăng ký lịch';
-                        btnEl.style.background = 'var(--success)';
-                        btnEl.style.color = '#fff';
-                    }
-                } else {
-                    document.getElementById('managerToggleBtn').style.display = 'none';
-                }
-
-                if (isNextWeekLocked) {
-                    document.getElementById('lockBanner').innerHTML = '<span>🔒 Quản lý đã đóng đăng ký lịch tuần sau.</span>';
-                    document.getElementById('lockBanner').style.display = 'flex';
-                    document.getElementById('btnSave').style.display = 'none';
-                } else if ((isUserAdmin || isUserManager) && scheduleRegistrationOpen === false) {
-                    document.getElementById('lockBanner').innerHTML = '<span style="color:#f59e0b;">⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
-                    document.getElementById('lockBanner').style.display = 'flex';
-                    document.getElementById('btnSave').style.display = 'block';
-                } else {
-                    document.getElementById('lockBanner').style.display = 'none';
-                    document.getElementById('btnSave').style.display = 'block';
-                }
-
-                renderDays(nextWeekDays, isNextWeekLocked);
-                checkConsecutiveOff();
+                document.getElementById('managerToggleBtn').style.display = 'none';
             }
+
+            const isWeekLocked = isSystemLocked && !isUserAdmin;
+            const daysToRender = tab === 'current' ? currentWeekDays : nextWeekDays;
+            const weekLabel = tab === 'current' ? 'tuần này' : 'tuần sau';
+
+            if (tab === 'current') {
+                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+            }
+
+            if (isWeekLocked) {
+                document.getElementById('lockBanner').innerHTML = `<span>🔒 Quản lý đã đóng đăng ký lịch ${weekLabel}.</span>`;
+                document.getElementById('lockBanner').style.display = 'flex';
+                document.getElementById('btnSave').style.display = 'none';
+            } else if ((isUserAdmin || isUserManager) && scheduleRegistrationOpen === false) {
+                document.getElementById('lockBanner').innerHTML = '<span style="color:#f59e0b;">⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
+                document.getElementById('lockBanner').style.display = 'flex';
+                document.getElementById('btnSave').style.display = 'block';
+            } else {
+                document.getElementById('lockBanner').style.display = 'none';
+                document.getElementById('btnSave').style.display = 'block';
+            }
+
+            renderDays(daysToRender, isWeekLocked);
+            checkConsecutiveOff();
         }
 
         // Render days in table
@@ -895,9 +886,9 @@
                     </div>
                     <div class="options-group">
                         <button class="option-btn ${selectedVal === 'CA_SANG' ? 'selected' : ''}" 
-                                data-val="CA_SANG" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca sáng</button>
+                                data-val="CA_SANG" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca sớm</button>
                         <button class="option-btn ${selectedVal === 'CA_CHIEU' ? 'selected' : ''}" 
-                                data-val="CA_CHIEU" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca chiều</button>
+                                data-val="CA_CHIEU" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca muộn</button>
                         <button class="option-btn ${selectedVal === 'FULL_DAY' ? 'selected' : ''}" 
                                 data-val="FULL_DAY" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'FULL_DAY')">Full</button>
                         <button class="option-btn ${selectedVal === 'OFF' ? 'selected' : ''}" 
@@ -953,13 +944,13 @@
             return !!overlap;
         }
 
-        // Check if user has chosen >= 2 days OFF in next week (consecutive or not)
+        // Check if user has chosen >= 2 days OFF in active week (consecutive or not)
         function checkConsecutiveOff() {
-            if (currentTab !== 'next') return;
+            const activeDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
 
             // Count total OFF days
             let offDaysCount = 0;
-            nextWeekDays.forEach(d => {
+            activeDays.forEach(d => {
                 if (currentSelections[d] === 'OFF') {
                     offDaysCount++;
                 }
@@ -982,10 +973,11 @@
         // Update button active state
         function updateSaveButtonState() {
             const btnSave = document.getElementById('btnSave');
+            const activeDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
 
-            // Check if all 7 days of next week have a selection
+            // Check if all 7 days of active week have a selection
             let allFilled = true;
-            nextWeekDays.forEach(d => {
+            activeDays.forEach(d => {
                 if (!currentSelections[d]) {
                     allFilled = false;
                 }
@@ -993,7 +985,7 @@
 
             // Check if any overlap warning exists
             let hasOverlap = false;
-            nextWeekDays.forEach(d => {
+            activeDays.forEach(d => {
                 if (currentSelections[d] === 'OFF' && checkRoleOverlap(d, 'OFF')) {
                     hasOverlap = true;
                 }

@@ -629,6 +629,8 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
   const [latePenalties, setLatePenalties] = useState({});
   const [botRoles, setBotRoles] = useState({});
   const [scheduleOpen, setScheduleOpen] = useState({});
+  const [kpiSheetIds, setKpiSheetIds] = useState({});
+  const [customerSheetIds, setCustomerSheetIds] = useState({});
 
   const displayedGroups = selectedGroupId && selectedGroupId !== 'ALL'
     ? groups.filter(g => g.telegram_group_id === selectedGroupId)
@@ -641,6 +643,8 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     const initialLatePenalties = {};
     const initialBotRoles = {};
     const initialScheduleOpen = {};
+    const initialKpiSheets = {};
+    const initialCustomerSheets = {};
 
     displayedGroups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
@@ -654,6 +658,8 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
       initialShift2[g.telegram_group_id] = (g.shift_2_time || '13:30:00').substring(0, 5);
       initialBotRoles[g.telegram_group_id] = g.bot_role || '';
       initialScheduleOpen[g.telegram_group_id] = g.schedule_registration_open !== false; // default true
+      initialKpiSheets[g.telegram_group_id] = g.kpi_sheet_id || '';
+      initialCustomerSheets[g.telegram_group_id] = g.customer_sheet_id || '';
     });
 
     setTimes(initialTimes);
@@ -662,6 +668,8 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     setShift2Times(initialShift2);
     setBotRoles(initialBotRoles);
     setScheduleOpen(initialScheduleOpen);
+    setKpiSheetIds(initialKpiSheets);
+    setCustomerSheetIds(initialCustomerSheets);
   }, [displayedGroups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
@@ -739,7 +747,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca sớm</label>
                   <input
                     type="time"
                     className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
@@ -748,7 +756,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca muộn</label>
                   <input
                     type="time"
                     className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"

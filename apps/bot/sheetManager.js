@@ -7,7 +7,8 @@ import pool from '../../packages/database/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const credsPath = path.join(__dirname, '../../hybrid-flame-499905-r2-ccd6aff86787.json');
+const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || 'hybrid-flame-499905-r2-3034c23f309c.json';
+const credsPath = path.isAbsolute(keyFile) ? keyFile : path.join(__dirname, '../../', keyFile);
 const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
 
 const serviceAccountAuth = new JWT({

@@ -1,4 +1,5 @@
 import pool from './index.js';
+import { cleanInvalidNotificationGroups } from './clean_invalid_notification_groups.js';
 
 async function run() {
     try {
@@ -18,6 +19,9 @@ async function run() {
             USING updated_by::text;
         `);
         console.log('✅ Altered column tk_schedules.updated_by to VARCHAR(100).');
+
+        // 3. Clean invalid schedule_notification_groups mappings
+        await cleanInvalidNotificationGroups();
 
         console.log('Migration v5 completed successfully.');
     } catch (e) {

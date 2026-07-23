@@ -70,3 +70,8 @@ pgsql/
 scripts/windows/cloudflared.exe
 /logs
 /graphify-out
+
+# video & uploaded files
+apps/bot/public/uploads/
+apps/public/uploads/
+**/public/uploads/

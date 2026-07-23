@@ -44,7 +44,8 @@ dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const credsPath = path.join(__dirname, '../../hybrid-flame-499905-r2-ccd6aff86787.json');
+const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || 'hybrid-flame-499905-r2-3034c23f309c.json';
+const credsPath = path.isAbsolute(keyFile) ? keyFile : path.join(__dirname, '../../', keyFile);
 const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
 
 const serviceAccountAuth = new JWT({
@@ -1136,12 +1137,12 @@ bot.command(['app', 'form', 'lamviec', 'tienich', 'start'], (ctx) => {
     const shortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
     const ts = Date.now();
     const token = process.env.TELEGRAM_BOT_TOKEN || '';
-    
+
     // Create sig for baocao
     const bcDataString = `baocao:${ctx.chat.id}:${ts}`;
     const bcSig = crypto.createHmac('sha256', token).update(bcDataString).digest('hex');
     const dmUrl = `https://t.me/${botUsername}/${shortName}?startapp=baocao_${ctx.chat.id}_${ts}_${bcSig}`;
-    
+
     // Create sig for schedule
     const schedDataString = `schedule:${ctx.chat.id}:${ts}`;
     const schedSig = crypto.createHmac('sha256', token).update(schedDataString).digest('hex');
@@ -1519,7 +1520,7 @@ function verifySignedPayload(action, groupId, ts, sig) {
     const dataString = `${action}:${groupId}:${ts}`;
     const expectedSig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
     if (sig.length === expectedSig.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return true;
-    
+
     return false;
 }
 

@@ -1,87 +1,163 @@
-# Kế Hoạch Triển Khai Hệ Thống KPI & Chấm Công Clinic
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-Tài liệu này vạch ra kiến trúc logic và cách vận hành chi tiết nhất cho hệ thống Bot + Mini App quản lý thời gian làm việc, nhằm giải quyết các lỗ hổng nhân sự có thể lách luật.
+• Kế hoạch sửa nên theo nguyên tắc “lọc từ truy vấn và kiểm tra lại ngay trước khi gửi”, để dữ liệu cũ hoặc sai cũng không thể làm gửi nhầm.
 
-## 1. Trả Lời Câu Hỏi Cốt Lõi Của Bạn
+  ### 1. Tạo lớp gửi Telegram theo role dùng chung
 
-### A. Về Tài Khoản (Dùng cũ hay Tạo mới?)
-Đề xuất: Tạo mới (Đăng ký lại từ đầu). 
-Lý do: 
-- Hệ thống mới này sẽ chạy ở một Group mới, lưu trữ dữ liệu hoàn toàn khác (Tiền phạt, lịch trực, check-in video). 
-- Việc tách bạch DB giúp bạn không bị dính dáng với dữ liệu rác bên hệ thống Lịch Hẹn cũ, đồng thời loại bỏ các nhân sự đã nghỉ việc.
-- Ở Bot mới, ta sẽ có nút "Đăng Ký Tài Khoản" như ảnh bạn gửi. Nhân sự chỉ cần bấm vào, nhập Tên + Bộ phận là xong rất nhanh.
+  Trong apps/bot/role_guard.js, bổ sung:
 
-### B. Về Lỗ Hổng Lách Luật "Đăng ký ca 1, đi muộn lén sửa thành ca 2"
-Đề xuất: Áp dụng cơ chế CHỐT LỊCH (LOCK SCHEDULE).
+  sendMessageToRoleGroup(bot, groupId, requiredRole, message, options)
+  sendPhotoToRoleGroup(bot, groupId, requiredRole, photo, options)
 
-1. Ai là người nhập lịch? 
-   - Trừ khi Clinic của bạn có lễ tân chuyên xếp lịch cho mọi người, còn lại tối ưu nhất là: Nhân viên TỰ NHẬP lịch của mình cho cả tuần tiếp theo vào Mini App.
-   - Hạn chót: Ví dụ 20:00 Chủ Nhật hàng tuần.
-2. Khóa lịch (Chốt sổ):
-   - Qua 20:00 Chủ Nhật, hệ thống Khóa chặt toàn bộ lịch của tuần sau. 
-   - Kể từ lúc này, nhân viên KHÔNG THỂ TỰ SỬA lịch của mình (Ví dụ: Hôm nay thứ 3, không thể mở Mini App lên tự đổi thành ca 2).
-3. Xử lý sự cố: Nếu nhân sự có việc gấp thật sự muốn đổi ca 1 xuống ca 2, bắt buộc phải báo Quản lý. Chỉ Quản lý (Admin) mới có quyền vào sửa lịch cho nhân viên trong ngày.
-=> *Điều này triệt tiêu hoàn toàn khả năng nhân sự lươn lẹo đi muộn rồi lén đổi ca. Bot cứ auto lấy đúng ca đã chốt lúc đầu để trừ tiền.*
+  Mỗi hàm phải:
 
----
+  - Gọi getGroupRole(groupId).
+  - Chỉ gửi nếu role đúng.
+  - Chặn nhóm inactive hoặc đã xóa.
+  - Ghi log khi chặn, gồm groupId, role thực tế và nguồn gửi.
+  - Không cho phép gửi nếu không tìm thấy cấu hình nhóm.
 
-## 2. Kiến Trúc Cơ Sở Dữ Liệu (Database PostgreSQL)
+  Đây là lớp bảo vệ cuối cùng cho mọi cron và API.
 
-Hệ thống sẽ gồm 4 bảng chính để xử lý gọn gàng dữ liệu:
-- users: ID, Telegram_ID, Tên, Chức vụ (Role - dùng để chặn 2 người cùng chức vụ nghỉ cùng ngày).
-- schedules: ID, User_ID, Ngày (Date), Loại ca (Ca 1 / Ca 2 / Nghỉ), Trạng thái (Pending / Locked).
-- check_ins: ID, User_ID, Giờ gửi video, Trạng thái Duyệt (Đạt / Phạt 50k - Lỗi trang phục).
-- penalties: ID, User_ID, Ngày, Loại phạt (Muộn / Vắng mặt / Trang phục), Số tiền, Đã nộp quỹ chưa (Boolean).
+  ### 2. Thay toàn bộ lệnh gửi tự động của module report
 
----
+  Trong apps/bot/kpi_features.js, thay các lệnh gửi trực tiếp:
 
-## 3. Luồng Hoạt Động Của Telegram Bot
+  bot.telegram.sendMessage(...)
+  bot.telegram.sendPhoto(...)
+  bot.telegram.sendMediaGroup(...)
 
-Bot sẽ có Menu tương tự ảnh bạn gửi, kèm theo tính năng "Lắng nghe" group âm thầm:
+  bằng helper yêu cầu:
 
-1. Nghe Video Check-in: Bắt event bất kỳ ai gửi Video/Video Note vào nhóm -> Tự động lưu timestamp tin nhắn -> Đối chiếu với ca làm hôm nay của người đó -> Báo kết quả (Đúng giờ/Đi muộn).
-2. Nghe Báo Cáo: Quét từ khóa mọi tin nhắn text:
-   - Nếu có từ khóa (muộn|trễ) -> Ghi nhận có báo trước (nếu trước 30p thì giảm 50% phạt).
-   - Nếu có từ khóa (nghỉ|ốm) -> Ghi nhận báo nghỉ đột xuất.
-3. Giao tiếp Menu: Các nút như Đăng Ký, Xếp Lịch/Ca, Bảng Tiền Phạt -> Bấm vào sẽ mở Mini App (giao diện Web).
+  requiredRole = 'report'
 
----
+  Ưu tiên các khu vực:
 
-## 4. Giao Diện & Tính Năng Telegram Mini App
+  - Cron nhắc nộp KPI.
+  - Cron chốt phạt sau hai giờ.
+  - Cron nhắc thiếu ảnh.
+  - Thông báo lịch khách khẩn cấp.
+  - Cron lịch khách 20:02.
+  - Cron tổng kết 22:00.
+  - Cron lịch khách đến giờ.
+  - API /api/upload-proof.
+  - API /api/bot/submit-report.
+  - Các callback cập nhật/hủy lịch khách.
 
-1. Giao diện Nhân Viên:
-   - Xếp ca: Bảng 7 ngày. Nhân viên chọn ngày và ca. (Hệ thống sẽ check: Nếu có 2 người cùng vị trí nghỉ cùng ngày -> Hiện cảnh báo đỏ và không cho lưu. Nếu nghỉ 2 ngày liên tiếp -> Chặn, bắt nộp minh chứng đi viện/cưới).
-   - Lịch sử cá nhân: Xem tháng này mình đã muộn bao nhiêu phút, nợ quỹ bao nhiêu tiền.
-   
-2. Giao diện Quản Lý (Admin):
-   - Duyệt Video Check-in: Hiển thị danh sách Video nhân viên gửi hôm nay. Quản lý xem qua và bấm nút [Đạt] hoặc [Phạt Tác Phong 50k].
-   - Sửa ca khẩn cấp: Admin có quyền ghi đè, sửa ca của bất kỳ ai bất chấp việc hệ thống đã Lock.
-   - Quỹ Phạt: Bảng tổng kết số tiền thu được của phòng ban.
-   - Hàng Đợi Khách (Queue): List nhân sự làm hôm nay, Bot tự động đẩy người đi muộn xuống cuối mảng.
+  ### 3. Sửa ngay đường gửi ảnh có nguy cơ cao
 
----
+  Route /api/upload-proof hiện có thể lấy trực tiếp customer_appointments.group_id hoặc nhóm đầu tiên trong schedule_notification_groups.
 
-## 5. Chuỗi Thông Báo Tự Động & Tính Phạt (Cronjobs & Events)
+  Cần:
 
-Đây là kịch bản chuẩn hóa dựa trên logic thực tế (Ví dụ cho Ca 1 - 08:30):
+  - Kiểm tra getGroupRole(targetGroup) === 'report' trước khi gửi.
+  - Khi dùng fallback, query phải join telegram_groups.
+  - Không dùng LIMIT 1 trên danh sách chưa lọc.
+  - Nếu không tìm thấy nhóm report hợp lệ thì chỉ lưu ảnh, không gửi Telegram.
 
-- 08:00 (Trước 30p): Nhắc nhở vào ca. Hết giờ nhận báo muộn/nghỉ để được giảm 50% phạt.
-- 08:25 (Trước 5p): Bot điểm danh những ai chưa gửi video. Cảnh báo sắp muộn.
-- 08:31 (Vào ca 1p): Thông báo Danh sách đã đi muộn. 
-  *(Lúc này hệ thống chỉ réo tên cảnh báo, chưa chốt số tiền phạt vì chưa biết nhân sự sẽ đi muộn bao nhiêu phút).*
-- Sự kiện Tự động (Tính tiền khi Check-in): 
-  Ngay khoảnh khắc người đi muộn gửi video check-in vào group (VD: lúc 08:45), Bot lập tức bấm giờ, tính ra số phút muộn, đối chiếu với công thức và báo số tiền phạt ngay lập tức (VD: *Thuong check-in muộn 15p, nộp quỹ 20k*).
-- 10:00 (Quá 90 phút): Chốt danh sách Nghỉ không phép. Những ai quá 90 phút (so với giờ vào ca) mà vẫn chưa có video check-in, hệ thống tự động ghi nhận là Nghỉ không phép và áp mức phạt kịch khung 200.000đ.
+  ### 4. Chuẩn hóa toàn bộ truy vấn lấy nhóm report
 
----
+  Mọi truy vấn lấy danh sách nhóm report phải có đủ:
 
-## 6. Tích Hợp Google Sheets (Đồng Bộ Dữ Liệu)
+  WHERE tg.bot_role = 'report'
+    AND tg.is_active = true
+    AND COALESCE(tg.is_deleted, false) = false
 
-Toàn bộ dữ liệu vận hành sẽ được đồng bộ tự động lên Google Sheets để Ban Giám Đốc hoặc Kế Toán/Nhân Sự dễ dàng theo dõi, tổng hợp lương mà không cần thao tác trên Mini App.
+  Với cron nhắc KPI, bổ sung thêm:
 
-- Sheet "Lịch Làm Việc": Tự động kết xuất (export) lịch đã chốt của tuần ra Sheet để có cái nhìn tổng quan toàn bộ ca trực của Clinic.
-- Sheet "Chấm Công & Tiền Phạt": Ghi nhận Real-time từng lượt check-in (kèm link tải/xem Video gốc trên Telegram để kế toán có thể đối chiếu lại khi cần), ghi nhận số phút đi muộn, lý do vắng mặt đột xuất và số tiền phạt tương ứng của từng cá nhân theo từng ngày.
-- Cơ chế hoạt động: Hệ thống sử dụng Google Sheets API để Append Row (thêm dòng mới) hoặc cập nhật ô dữ liệu ngay khi có sự kiện phát sinh (VD: lúc gửi video check-in thành công hoặc lúc Bot tự động chốt sổ cuối ngày).
+  AND COALESCE(gs.auto_reminder_enabled, true) = true
 
-> [!IMPORTANT]
-> Bản kế hoạch đã được cập nhật logic tính phạt (Phần 5): Báo đi muộn tại phút 31 -> Tính tiền chính xác tại thời điểm gửi video -> Phạt kịch khung 200k nếu quá 90 phút.
+  Áp dụng tương tự cho các truy vấn từ schedule_notification_groups.
+
+  ### 5. Bảo vệ chiều ngược lại cho nhóm timekeep
+
+  Trong apps/bot/timekeep_bot.js, các thông báo sau phải dùng helper với:
+
+  requiredRole = 'timekeep'
+
+  Bao gồm:
+
+  - Nhắc check-in trước ca.
+  - Thông báo đi muộn.
+  - Gửi video check-in vào nhóm.
+  - Gửi đơn xin nghỉ/đi muộn.
+  - Các thông báo lịch ca làm việc.
+
+  Như vậy nhóm report cũng không thể nhận nhầm nội dung chấm công.
+
+  ### 6. Dọn dữ liệu nhóm nhận thông báo cũ
+
+  Kiểm tra các bản ghi sai:
+
+  SELECT
+      s.group_id,
+      tg.group_name,
+      tg.bot_role,
+      tg.is_active,
+      tg.is_deleted
+  FROM schedule_notification_groups s
+  LEFT JOIN telegram_groups tg
+      ON tg.telegram_group_id = s.group_id
+  WHERE tg.telegram_group_id IS NULL
+     OR tg.bot_role <> 'report'
+     OR tg.is_active = false
+     OR COALESCE(tg.is_deleted, false) = true;
+
+  Xóa các mapping không còn hợp lệ sau khi sao lưu.
+
+  ### 7. Thêm log kiểm toán
+
+  Mọi tin tự động nên log:
+
+  [Telegram Send]
+  source=kpi_daily_reminder
+  group_id=-123456
+  required_role=report
+  actual_role=report
+  status=sent|blocked|failed
+
+  Không log token Telegram hoặc nội dung nhạy cảm.
+
+  ### 8. Kiểm thử bắt buộc
+
+  Tạo tối thiểu bốn nhóm giả lập:
+
+  - Nhóm report, active.
+  - Nhóm timekeep, active.
+  - Nhóm report, inactive.
+  - Nhóm report, đã xóa.
+
+  Ma trận kiểm thử:
+
+   Chức năng         report    timekeep    inactive/deleted
+  ━━━━━━━━━━━━━━━━  ━━━━━━━━  ━━━━━━━━━━  ━━━━━━━━━━━━━━━━━━
+   Nhắc KPI             Gửi        Chặn                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Chốt phạt KPI        Gửi        Chặn                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Nhắc thiếu ảnh       Gửi        Chặn                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Lịch khách           Gửi        Chặn                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Ảnh chứng thực       Gửi        Chặn                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Nhắc check-in       Chặn         Gửi                Chặn
+  ────────────────  ────────  ──────────  ──────────────────
+   Báo đi muộn         Chặn         Gửi                Chặn
+
+  Ngoài ra kiểm tra auto_reminder_enabled = false phải chặn nhắc KPI.
+
+  ### 9. Triển khai an toàn
+
+  Thứ tự triển khai:
+
+  1. Backup database.
+  2. Dọn mapping sai.
+  3. Deploy helper role guard.
+  4. Deploy các thay đổi trong kpi_features.js và timekeep_bot.js.
+  5. Chạy kiểm tra cú pháp.
+  6. Restart timekeep-bot.
+  7. Theo dõi log ít nhất qua một chu kỳ cron.
+  8. Test thủ công bằng giờ nhắc cách hiện tại 2–3 phút.
+
+  Tiêu chí hoàn thành: không còn lệnh gửi tự động nào vào group ID mà không đi qua kiểm tra role ngay trước thao tác Telegram API.

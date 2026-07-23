@@ -16,7 +16,9 @@ import { initLogger, loggerMiddleware, setupLogRotation, overrideGlobals } from 
 import { setupKpiBot } from './kpi_features.js';
 import { reportWizard } from './reportWizard.js';
 import { setupWizard } from './setupWizard.js';
-import { requireGroupRole } from './role_guard.js';
+import { requireGroupRole, sendMessageToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
+import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
+import multer from 'multer';
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -27,6 +29,25 @@ setupLogRotation();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Cấu hình Multer cho upload video check-in dạng binary stream
+const checkinStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, 'public/uploads/checkins');
+        fs.mkdirSync(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const telegramId = req.verifiedTelegramId || req.body.telegram_id || 'user';
+        const ext = path.extname(file.originalname) || '.mp4';
+        cb(null, `checkin_${telegramId}_${Date.now()}${ext}`);
+    }
+});
+
+const uploadCheckin = multer({
+    storage: checkinStorage,
+    limits: { fileSize: 200 * 1024 * 1024 }
+});
 
 // Initialize Telegraf Bot
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
@@ -39,6 +60,58 @@ const bot = new Telegraf(botToken);
 const stage = new Scenes.Stage([reportWizard, setupWizard]);
 bot.use(session());
 bot.use(stage.middleware());
+
+// Tự động kiểm tra và lưu nhóm vào DB mỗi khi có tương tác từ nhóm
+bot.use(async (ctx, next) => {
+    if (ctx.chat && ['group', 'supergroup'].includes(ctx.chat.type)) {
+        const groupId = ctx.chat.id.toString();
+        const groupName = ctx.chat.title || `Group ${groupId}`;
+        pool.query(
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, is_active, is_deleted)
+             VALUES ($1, $2, true, false)
+             ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = EXCLUDED.group_name, is_active = true`,
+            [groupId, groupName]
+        ).then(() => {
+            return pool.query(
+                `INSERT INTO group_settings (telegram_group_id) VALUES ($1) ON CONFLICT (telegram_group_id) DO NOTHING`,
+                [groupId]
+            );
+        }).catch(err => {
+            console.error('[Auto Sync Group Middleware Error]', err.message);
+        });
+    }
+    return next();
+});
+
+// // Tự động đồng bộ nhóm khi Bot được thêm mới vào nhóm hoặc thay đổi trạng thái (my_chat_member)
+// bot.on('my_chat_member', async (ctx) => {
+//     try {
+//         const chat = ctx.myChatMember?.chat;
+//         const newStatus = ctx.myChatMember?.new_chat_member?.status;
+//         if (chat && ['group', 'supergroup'].includes(chat.type)) {
+//             const groupId = chat.id.toString();
+//             const groupName = chat.title || `Group ${groupId}`;
+//             if (['member', 'administrator'].includes(newStatus)) {
+//                 await pool.query(
+//                     `INSERT INTO telegram_groups (telegram_group_id, group_name, is_active, is_deleted)
+//                      VALUES ($1, $2, true, false)
+//                      ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = $2, is_active = true, is_deleted = false`,
+//                     [groupId, groupName]
+//                 );
+//                 await pool.query(
+//                     `INSERT INTO group_settings (telegram_group_id) VALUES ($1) ON CONFLICT (telegram_group_id) DO NOTHING`,
+//                     [groupId]
+//                 );
+//                 console.log(`[MyChatMember Sync] ✅ Đã lưu/cập nhật nhóm từ Telegram: ${groupName} (${groupId})`);
+//             } else if (['left', 'kicked'].includes(newStatus)) {
+//                 await pool.query(`UPDATE telegram_groups SET is_active = false WHERE telegram_group_id = $1`, [groupId]);
+//                 console.log(`[MyChatMember Sync] 🔴 Bot đã rời/bị xóa khỏi nhóm: ${groupName} (${groupId})`);
+//             }
+//         }
+//     } catch (err) {
+//         console.error('[MyChatMember Sync Error]', err.message);
+//     }
+// });
 const botApp = express();
 botApp.disable('etag');
 
@@ -206,8 +279,8 @@ const corsOptions = {
 botApp.use(cors(corsOptions));
 botApp.use(loggerMiddleware);
 
-botApp.use(express.json({ limit: '10mb' }));
-botApp.use(express.urlencoded({ limit: '10mb', extended: true }));
+botApp.use(express.json({ limit: '200mb' }));
+botApp.use(express.urlencoded({ limit: '200mb', extended: true }));
 
 // Serve static registration & schedule pages
 botApp.use('/mini-app', express.static(path.join(__dirname, 'public')));
@@ -375,13 +448,13 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
         );
         const mySchedules = mySchedulesRes.rows;
 
-        // 4. Fetch all group schedules for next week (for overlap/role-based checks)
+        // 4. Fetch all group schedules for current & next week (for overlap/role-based checks)
         const groupSchedulesRes = await pool.query(
             `SELECT s.date::text, s.shift_type, u.id as user_id, u.full_name, u.role 
              FROM tk_schedules s 
              JOIN employees u ON s.user_id = u.id 
              WHERE s.group_id = $1 AND s.date >= $2 AND s.date <= $3`,
-            [groupId, nextWeekDays[0], nextWeekDays[6]]
+            [groupId, currentWeekDays[0], nextWeekDays[6]]
         );
         const groupSchedules = groupSchedulesRes.rows;
 
@@ -514,15 +587,14 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
                 return res.status(403).json({ success: false, message: 'Quản lý đã đóng đăng ký lịch!' });
             }
 
-            const startOfNextWeek = moment().add(1, 'week').startOf('isoWeek').format('YYYY-MM-DD');
-            const endOfNextWeek = moment().add(1, 'week').endOf('isoWeek').format('YYYY-MM-DD');
+            const startOfCurrentWeek = moment().startOf('isoWeek').format('YYYY-MM-DD');
 
             for (const day of days) {
                 const dayStr = moment(day.date).format('YYYY-MM-DD');
 
-                // Chặn sửa lịch tuần này/cũ
-                if (dayStr < startOfNextWeek) {
-                    return res.status(400).json({ success: false, message: 'Bạn không thể thay đổi lịch của tuần này hoặc lịch cũ!' });
+                // Chặn sửa lịch của các tuần cũ hơn tuần này
+                if (dayStr < startOfCurrentWeek) {
+                    return res.status(400).json({ success: false, message: 'Bạn không thể thay đổi lịch của các tuần cũ!' });
                 }
             }
 
@@ -654,8 +726,8 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
                     const displayDate = moment(day.date).format('DD/MM/YYYY');
                     const getShiftName = (shift) => {
                         if (shift === 'OFF') return 'Nghỉ 🟥';
-                        if (shift === 'CA_SANG') return 'Ca SANG 🌅';
-                        if (shift === 'CA_CHIEU') return 'Ca 13H30 🌇';
+                        if (shift === 'CA_SANG' || shift === 'CA_1') return 'Ca SỚM 🌅';
+                        if (shift === 'CA_CHIEU' || shift === 'CA_2') return 'Ca MUỘN 🌇';
                         if (shift === 'FULL_DAY') return 'Cả ngày 🌞';
                         return shift;
                     };
@@ -797,7 +869,7 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
                 `<i>Vui lòng Quản lý (Admin) bấm chọn nút dưới đây để phê duyệt:</i>`;
 
             console.log(`[DEBUG API XIN NGHỈ] Đang gửi tin nhắn cho group ${telegramGroupId}`);
-            await bot.telegram.sendMessage(telegramGroupId, msg, {
+            await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, {
                 parse_mode: 'HTML',
                 reply_markup: {
                     inline_keyboard: [
@@ -807,7 +879,7 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
                         ]
                     ]
                 }
-            });
+            }, 'leave_request_notice');
             console.log(`[DEBUG API XIN NGHỈ] Đã gửi thành công.`);
         }
 
@@ -822,14 +894,14 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
 // ==========================================
 // 3.2. API ĐIỂM DANH CHECK-IN VIDEO
 // ==========================================
-botApp.post('/api/timekeep/checkin/save', async (req, res) => {
+botApp.post('/api/timekeep/checkin/save', uploadCheckin.single('video_file'), async (req, res) => {
     try {
         const { chat_id, video_base64, mime_type } = req.body;
         const telegram_id = req.verifiedTelegramId || req.body.telegram_id;
         console.log(`[DEBUG API CHECK-IN] Đã nhận request từ Telegram ID: ${telegram_id}`);
 
-        if (!telegram_id || !video_base64) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc!' });
+        if (!telegram_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin Telegram ID!' });
         }
 
         // 1. Get user details
@@ -870,14 +942,33 @@ botApp.post('/api/timekeep/checkin/save', async (req, res) => {
         let finalMp4Path = null;
         let isMp4 = false;
 
-        if (video_base64 && video_base64.includes(';base64,')) {
+        if (req.file) {
+            // Direct binary stream file upload via Multer (Fast & efficient)
+            originalUploadPath = req.file.path;
+            const filename = req.file.filename;
+            videoUrl = `/mini-app/uploads/checkins/${filename}`;
+            const ext = path.extname(filename).toLowerCase();
+            isMp4 = ['.mp4', '.mov', '.m4v'].includes(ext);
+            finalMp4Path = isMp4 ? originalUploadPath : originalUploadPath.replace(ext, '.mp4');
+            console.log(`[DEBUG API CHECK-IN] File binary upload thành công: ${filename} (${(req.file.size / (1024 * 1024)).toFixed(2)} MB)`);
+        } else if (video_base64 && video_base64.includes(';base64,')) {
+            // Fallback Base64 string decode
             const parts = video_base64.split(';base64,');
             const base64Data = parts[1];
             const buffer = Buffer.from(base64Data, 'base64');
             let ext = 'webm';
-            if (mime_type && mime_type.includes('mp4')) {
-                ext = 'mp4';
-                isMp4 = true;
+            if (mime_type) {
+                const mimeLower = mime_type.toLowerCase();
+                if (mimeLower.includes('mp4') || mimeLower.includes('quicktime') || mimeLower.includes('mov') || mimeLower.includes('m4v')) {
+                    ext = 'mp4';
+                    isMp4 = true;
+                } else if (mimeLower.includes('3gp')) {
+                    ext = '3gp';
+                } else if (mimeLower.includes('avi')) {
+                    ext = 'avi';
+                } else if (mimeLower.includes('webm')) {
+                    ext = 'webm';
+                }
             }
 
             const filename = `checkin_${telegram_id}_${Date.now()}.${ext}`;
@@ -890,7 +981,7 @@ botApp.post('/api/timekeep/checkin/save', async (req, res) => {
             videoUrl = `/mini-app/uploads/checkins/${filename}`;
             finalMp4Path = isMp4 ? originalUploadPath : originalUploadPath.replace('.webm', '.mp4');
         } else {
-            console.error('[DEBUG] Lỗi: Chuỗi video_base64 không hợp lệ. Format:', video_base64 ? video_base64.substring(0, 50) : 'null');
+            return res.status(400).json({ success: false, message: 'Thiếu dữ liệu video tải lên!' });
         }
 
         const currentDate = moment().utcOffset(7).format('YYYY-MM-DD');
@@ -930,11 +1021,11 @@ botApp.post('/api/timekeep/checkin/save', async (req, res) => {
                 }
 
                 console.log(`[DEBUG API CHECK-IN] Đang gửi video MP4 cho group ${telegramGroupId}`);
-                await bot.telegram.sendVideo(telegramGroupId, { source: finalMp4Path }, {
+                await sendVideoToRoleGroup(bot, telegramGroupId, 'timekeep', { source: finalMp4Path }, {
                     caption: msg,
                     parse_mode: 'HTML'
-                });
-                console.log(`[DEBUG API CHECK-IN] Đã gửi thành công.`);
+                }, 'checkin_video');
+                console.log(`[DEBUG API CHECK-IN] Hoàn tất tiến trình gửi video.`);
 
             } catch (err) {
                 console.error('[Send Checkin Video Error]:', err);
@@ -965,16 +1056,31 @@ botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
             photo_deadline_minutes = 60,
             penalty_missing_kpi = 100000,
             penalty_per_photo = 20000,
-            penalty_missing_report = 100000
+            penalty_missing_report = 100000,
+            kpi_sheet_id,
+            customer_sheet_id
         } = req.body;
+
+        function extractSheetId(input) {
+            if (!input) return null;
+            const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+            if (match) return match[1];
+            return input.trim();
+        }
+
+        const cleanKpiSheetId = extractSheetId(kpi_sheet_id);
+        const cleanCustomerSheetId = extractSheetId(customer_sheet_id);
 
         // Cập nhật hoặc tạo mới nhóm và gán bot_role
         await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open) VALUES ($1, $2, $3, COALESCE($4, true))
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open, kpi_sheet_id, customer_sheet_id) 
+             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6)
              ON CONFLICT (telegram_group_id) DO UPDATE SET 
              bot_role = EXCLUDED.bot_role, 
-             schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open)`,
-            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open]
+             schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open),
+             kpi_sheet_id = COALESCE(EXCLUDED.kpi_sheet_id, telegram_groups.kpi_sheet_id),
+             customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id)`,
+            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open, cleanKpiSheetId, cleanCustomerSheetId]
         );
 
         const checkRes = await pool.query(
@@ -1067,7 +1173,7 @@ async function startHandler(ctx) {
             const scheduleclientUrl = createWebAppUrl('scheduleclient', 'schedule_client.html');
             const scheduleUrl = createWebAppUrl('schedule', 'schedule.html');
             const leaveUrl = createWebAppUrl('leave', 'urgent_leave.html');
-            const checkinUrl = createWebAppUrl('checkin', 'checkin.html');
+            const checkinUrl = createWebAppUrl('checkin', 'checkin_upload.html');
             const statsUrl = createWebAppUrl('stats', 'stats.html');
             const baocaoUrl = createWebAppUrl('baocao', 'form.html');
 
@@ -1093,7 +1199,7 @@ async function startHandler(ctx) {
                             inline_keyboard: [
                                 [
                                     { text: '👤 Đăng ký tài khoản', url: registerUrl },
-                                    { text: '📸 Check-in (Video)', url: checkinUrl }
+                                    { text: '📸 Check-in (Upload Video)', url: checkinUrl }
                                 ],
                                 [
                                     { text: '📅 Đăng ký lịch tuần', url: scheduleUrl },
@@ -1189,17 +1295,17 @@ async function startHandler(ctx) {
                 );
             } else if (startPayload && startPayload.startsWith('checkin_')) {
                 const groupId = startPayload.replace('checkin_', '');
-                const checkinUrl = `${miniAppUrl}/mini-app/checkin.html?chat_id=${groupId}`;
+                const checkinUrl = `${miniAppUrl}/mini-app/checkin_upload.html?chat_id=${groupId}`;
 
                 await ctx.reply(
                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-                    `Vui lòng nhấn nút <b>Bắt đầu Check-in</b> dưới đây để điểm danh bằng Video:`,
+                    `Vui lòng nhấn nút <b>Tải Up Video Check-in</b> dưới đây để điểm danh bằng Video:`,
                     {
                         parse_mode: 'HTML',
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: '📸 Bắt đầu Check-in', web_app: { url: checkinUrl } }
+                                    { text: '📸 Tải Up Video Check-in', web_app: { url: checkinUrl } }
                                 ]
                             ]
                         }
@@ -1251,6 +1357,10 @@ async function startHandler(ctx) {
 
 bot.start(startHandler);
 bot.command(['app', 'menu', 'setup', 'chamcong', 'form', 'lamviec', 'tienich'], startHandler);
+bot.command(['help', 'huongdan'], async (ctx) => {
+    if (!(await requireGroupRole(ctx, 'timekeep'))) return;
+    return ctx.replyWithHTML(TIMEKEEP_BOT_HELP_HTML);
+});
 
 // ==========================================
 // 5. PHÊ DUYỆT YÊU CẦU XIN NGHỈ / ĐI MUỘN QUA BUTTON
@@ -1385,17 +1495,17 @@ cron.schedule('*/1 * * * *', async () => {
         for (const row of groupsSettingsRes.rows) {
             const { group_uuid, telegram_group_id, group_name, shift_1_time, shift_2_time } = row;
 
-            // Xử lý cho Ca 1 (Shift 1) và Ca 2 (Shift 2)
+            // Xử lý cho Ca sớm (Shift 1) và Ca muộn (Shift 2)
             const shifts = [
                 {
                     num: 1,
-                    label: 'Ca 1',
+                    label: 'Ca sớm',
                     startStr: shift_1_time,
-                    types: ['CA_1', 'CA_SANG', 'FULL_DAY']
+                    types: ['CA_1', 'CA_SANG']
                 },
                 {
                     num: 2,
-                    label: 'Ca 2',
+                    label: 'Ca muộn',
                     startStr: shift_2_time,
                     types: ['CA_2', 'CA_CHIEU', 'FULL_DAY']
                 }
@@ -1407,13 +1517,15 @@ cron.schedule('*/1 * * * *', async () => {
                 const remindTime = shiftStartMoment.clone().subtract(3, 'minutes').format('HH:mm');
                 const lateTime = shiftStartMoment.clone().add(1, 'minutes').format('HH:mm');
 
-                // A. Nhắc nhở trước ca 3 phút
+                // A. Nhắc nhở trước ca 3 phút (Bỏ qua nhân sự được miễn check-in hoặc bị vô hiệu hóa)
                 if (currentTimeStr === remindTime) {
                     const uncheckedRes = await pool.query(`
                         SELECT u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
                         WHERE u.group_id = $1
+                          AND COALESCE(u.is_exempt_checkin, false) = false
+                          AND COALESCE(u.is_active, true) = true
                           AND s.shift_type = ANY($3)
                           AND NOT EXISTS (
                               SELECT 1 FROM tk_check_ins c
@@ -1428,20 +1540,22 @@ cron.schedule('*/1 * * * *', async () => {
                             `⏰ Chỉ còn 3 phút nữa là đến giờ vào làm (<b>${shift.startStr.substring(0, 5)}</b>).\n` +
                             `Các nhân sự sau chưa điểm danh, vui lòng check-in ngay nhé:\n\n${names}`;
                         try {
-                            await bot.telegram.sendMessage(telegram_group_id, msg, { parse_mode: 'HTML' });
+                            await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_reminder_3min');
                         } catch (err) {
                             console.error(`Lỗi gửi nhắc nhở checkin ca ${shift.num} cho nhóm ${group_name}:`, err.message);
                         }
                     }
                 }
 
-                // B. Báo cáo đi muộn sau ca 1 phút
+                // B. Báo cáo đi muộn sau ca 1 phút (Bỏ qua nhân sự được miễn check-in hoặc bị vô hiệu hóa)
                 if (currentTimeStr === lateTime) {
                     const lateRes = await pool.query(`
                         SELECT u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
                         WHERE u.group_id = $1
+                          AND COALESCE(u.is_exempt_checkin, false) = false
+                          AND COALESCE(u.is_active, true) = true
                           AND s.shift_type = ANY($3)
                           AND NOT EXISTS (
                               SELECT 1 FROM tk_check_ins c
@@ -1456,7 +1570,7 @@ cron.schedule('*/1 * * * *', async () => {
                             `🚫 Đã quá giờ vào làm 1 phút (<b>${shift.startStr.substring(0, 5)}</b>).\n` +
                             `Các nhân sự sau chưa điểm danh (ghi nhận đi muộn):\n\n${names}`;
                         try {
-                            await bot.telegram.sendMessage(telegram_group_id, msg, { parse_mode: 'HTML' });
+                            await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_late_warning_1min');
                         } catch (err) {
                             console.error(`Lỗi gửi báo muộn ca ${shift.num} cho nhóm ${group_name}:`, err.message);
                         }
@@ -1465,7 +1579,7 @@ cron.schedule('*/1 * * * *', async () => {
             }
         }
 
-        // --- PHẦN 2: TÍNH PHẠT ĐI MUỘN KHI NHÂN VIÊN GỬI CHECK-IN ---
+        // --- PHẦN 2: TÍNH PHẠT ĐI MUỘN KHI NHÂN VIÊN GỬI CHECK-IN (Bỏ qua nhân sự miễn checkin hoặc vô hiệu hóa) ---
         // Lấy checkin đầu tiên của mỗi user trong ngày hôm nay kèm theo ca làm việc và cấu hình giờ bắt đầu ca
         const checkInsRes = await pool.query(`
             SELECT DISTINCT ON (c.user_id) 
@@ -1478,6 +1592,8 @@ cron.schedule('*/1 * * * *', async () => {
             LEFT JOIN tk_schedules s ON c.user_id = s.user_id AND c.date = s.date
             LEFT JOIN group_settings gs ON g.telegram_group_id = gs.telegram_group_id
             WHERE c.date = $1
+              AND COALESCE(u.is_exempt_checkin, false) = false
+              AND COALESCE(u.is_active, true) = true
             ORDER BY c.user_id, c.check_in_time ASC
         `, [todayStr]);
 
@@ -1487,7 +1603,7 @@ cron.schedule('*/1 * * * *', async () => {
                 continue;
             }
 
-            const shiftStart = (c.shift_type === 'CA_1' || c.shift_type === 'CA_SANG' || c.shift_type === 'FULL_DAY')
+            const shiftStart = (c.shift_type === 'CA_1' || c.shift_type === 'CA_SANG')
                 ? (c.shift_1_time || '08:00:00')
                 : (c.shift_2_time || '13:30:00');
 
@@ -1567,7 +1683,7 @@ cron.schedule('*/1 * * * *', async () => {
                             `🔴 <b>Số phút đi muộn:</b> ${lateMinutes} phút\n` +
                             `💰 <b>Trạng thái phạt:</b> ${penaltyText}\n` +
                             `📝 <b>Chi tiết:</b> ${reason}`;
-                        try { await bot.telegram.sendMessage(c.telegram_group_id, msg, { parse_mode: 'HTML' }); } catch (err) { console.error(err); }
+                        try { await sendMessageToRoleGroup(bot, c.telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'late_penalty_notice'); } catch (err) { console.error(err); }
                     }
                 }
             }
@@ -2147,6 +2263,92 @@ botApp.delete('/api/admin/schedules/:id', async (req, res) => {
     }
 });
 
+// Handler nhận video check-in trực tiếp hoặc khi trả lời (reply) video cũ kèm text chứa chữ "check"
+bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
+    try {
+        if (!ctx.chat || !['group', 'supergroup'].includes(ctx.chat.type)) {
+            return next();
+        }
+
+        let videoObj = ctx.message.video || ctx.message.video_note;
+        let isReplyCheck = false;
+
+        // Trường hợp tin nhắn chữ reply lại một video/video_note đã gửi trước đó
+        if (!videoObj && ctx.message.reply_to_message) {
+            const repliedMsg = ctx.message.reply_to_message;
+            videoObj = repliedMsg.video || repliedMsg.video_note;
+            if (videoObj) {
+                isReplyCheck = true;
+            }
+        }
+
+        // Nếu không có video trực tiếp hoặc video được reply thì bỏ qua
+        if (!videoObj) {
+            return next();
+        }
+
+        const textOrCaption = (ctx.message.caption || ctx.message.text || '').trim();
+        if (!textOrCaption.toLowerCase().includes('check')) {
+            return next();
+        }
+
+        const telegram_id = ctx.message.from.id.toString();
+        const chat_id = ctx.chat.id.toString();
+
+        // 1. Tìm thông tin nhân sự trong nhóm
+        let userRes = await pool.query(
+            `SELECT u.id, u.full_name, u.role, u.group_id 
+             FROM employees u 
+             JOIN telegram_groups g ON u.group_id = g.id 
+             WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
+            [telegram_id, chat_id]
+        );
+
+        if (userRes.rows.length === 0) {
+            userRes = await pool.query(
+                `SELECT id, full_name, role, group_id FROM employees WHERE telegram_id = $1 LIMIT 1`,
+                [telegram_id]
+            );
+        }
+
+        if (userRes.rows.length === 0) {
+            await ctx.reply(
+                `⚠️ <b>${ctx.message.from.first_name || 'Bạn'}</b> ơi, bạn chưa đăng ký tài khoản nhân sự trong hệ thống!\nVui lòng đăng ký tài khoản trước khi thực hiện check-in.`,
+                { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+            );
+            return next();
+        }
+
+        const user = userRes.rows[0];
+        const currentDate = moment().utcOffset(7).format('YYYY-MM-DD');
+        const checkInTime = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+        const fileId = videoObj.file_id;
+
+        // 2. Lưu thông tin điểm danh vào bảng tk_check_ins
+        await pool.query(
+            `INSERT INTO tk_check_ins (group_id, user_id, date, check_in_time, video_file_id, status)
+             VALUES ($1, $2, $3, $4, $5, 'APPROVED')`,
+            [user.group_id, user.id, currentDate, checkInTime, fileId]
+        );
+
+        // 3. Phản hồi xác nhận điểm danh thành công
+        const timestampStr = moment().utcOffset(7).format('HH:mm:ss - DD/MM/YYYY');
+        const replyNote = isReplyCheck ? ' (Xác nhận từ video được trả lời)' : '';
+        await ctx.reply(
+            `📸 <b>ĐÃ GHI NHẬN CHECK-IN VIDEO THÀNH CÔNG</b> 📸\n\n` +
+            `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
+            `💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n` +
+            `⏰ <b>Thời gian điểm danh:</b> ${timestampStr}${replyNote}\n\n` +
+            `<i>Hệ thống đã lưu video điểm danh của bạn thành công!</i>`,
+            { parse_mode: 'HTML', reply_to_message_id: ctx.message.message_id }
+        );
+
+    } catch (err) {
+        console.error('[Video Checkin Message Handler Error]', err);
+    }
+    return next();
+});
+
 // Setup KPI bot features
 setupKpiBot(bot, botApp);
 
@@ -2166,8 +2368,78 @@ bot.telegram.setMyCommands([
     console.error('[Telegraf Error] Lỗi đăng ký commands:', err);
 });
 
+async function syncGroupsOnStartup() {
+    try {
+        console.log('[Startup Sync] Đang kiểm tra và bổ sung các nhóm còn thiếu vào DB...');
+
+        // 1. Tự động tìm và lưu các telegram_group_id có trong DB nhưng chưa có trong telegram_groups
+        const missingFromDb = await pool.query(`
+            SELECT DISTINCT telegram_group_id 
+            FROM (
+                SELECT telegram_group_id FROM employees WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+                UNION
+                SELECT telegram_group_id FROM kpi_policies WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+                UNION
+                SELECT telegram_group_id FROM daily_reports WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+                UNION
+                SELECT telegram_group_id FROM penalty_records WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+                UNION
+                SELECT telegram_group_id FROM reminder_logs WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+                UNION
+                SELECT telegram_group_id FROM group_settings WHERE telegram_group_id IS NOT NULL AND telegram_group_id != ''
+            ) AS referenced_groups
+            WHERE telegram_group_id NOT IN (SELECT telegram_group_id FROM telegram_groups)
+        `);
+
+        for (const row of missingFromDb.rows) {
+            const gid = row.telegram_group_id;
+            await pool.query(
+                `INSERT INTO telegram_groups (telegram_group_id, group_name, is_active, is_deleted)
+                 VALUES ($1, $2, true, false) ON CONFLICT (telegram_group_id) DO NOTHING`,
+                [gid, `Group ${gid}`]
+            );
+            await pool.query(
+                `INSERT INTO group_settings (telegram_group_id) VALUES ($1) ON CONFLICT (telegram_group_id) DO NOTHING`,
+                [gid]
+            );
+            console.log(`[Startup Sync] Đã bổ sung nhóm từ dữ liệu DB: ${gid}`);
+        }
+
+        // 2. Gọi Telegram API getChat để đồng bộ tên nhóm thực tế và trạng thái hoạt động
+        const allGroups = await pool.query(`SELECT telegram_group_id, group_name FROM telegram_groups WHERE COALESCE(is_deleted, false) = false`);
+
+        let syncedCount = 0;
+        for (const g of allGroups.rows) {
+            const gid = g.telegram_group_id;
+            try {
+                const chatInfo = await bot.telegram.getChat(gid);
+                if (chatInfo && chatInfo.title) {
+                    await pool.query(
+                        `UPDATE telegram_groups SET group_name = $1, is_active = true WHERE telegram_group_id = $2`,
+                        [chatInfo.title, gid]
+                    );
+                    await pool.query(
+                        `INSERT INTO group_settings (telegram_group_id) VALUES ($1) ON CONFLICT (telegram_group_id) DO NOTHING`,
+                        [gid]
+                    );
+                    syncedCount++;
+                }
+            } catch (err) {
+                if (err.message && (err.message.includes('chat not found') || err.message.includes('bot was kicked'))) {
+                    await pool.query(`UPDATE telegram_groups SET is_active = false WHERE telegram_group_id = $1`, [gid]);
+                }
+            }
+        }
+
+        console.log(`[Startup Sync] ✅ Đã hoàn tất kiểm tra & đồng bộ ${syncedCount}/${allGroups.rows.length} nhóm với Telegram.`);
+    } catch (err) {
+        console.error('[Startup Sync Error]', err.message);
+    }
+}
+
 bot.launch().then(() => {
     console.log('[Telegraf] Bot Chấm công đã sẵn sàng...');
+    syncGroupsOnStartup();
 }).catch((err) => {
     console.error('[Telegraf Error] Lỗi khởi động Bot:', err);
 });
