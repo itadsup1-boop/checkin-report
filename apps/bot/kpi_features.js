@@ -13,6 +13,8 @@ import dns from 'dns';
 import crypto from 'crypto';
 import { computeHashFromBase64, findDuplicateImages, saveHashesToDB } from './image_hasher.js';
 import { uploadToDrive, deleteOldPhotos } from './googleDrive.js';
+import { Composer } from 'telegraf';
+import { requireGroupRole, getGroupRole } from './role_guard.js';
 
 // Khởi chạy cronjob dọn ảnh rác lúc 03:00 sáng
 cron.schedule('0 3 * * *', async () => {
@@ -65,11 +67,15 @@ if (CUSTOMER_SPREADSHEET_ID) {
 }
 let customerSheetQueue = Promise.resolve();
 
-
 let sheetQueue = Promise.resolve();
 
 export function setupKpiBot(bot, botApp) {
+    const kpiComposer = new Composer();
 
+    kpiComposer.use(async (ctx, next) => {
+        if (!(await requireGroupRole(ctx, 'report'))) return;
+        return next();
+    });
 
 async function logPenaltyToSheet(user_full_name, employee_code, telegram_id, penalty_type, amount, details) {
     if (SPREADSHEET_ID === 'SPREADSHEET_ID_CHUA_CAI_DAT' || amount <= 0) return;
@@ -158,7 +164,7 @@ function checkAdmin(ctx) {
     return false;
 }
 
-bot.command('myid', (ctx) => {
+kpiComposer.command('myid', (ctx) => {
     ctx.reply(`🆔 ID Telegram của bạn là: <code>${ctx.from.id}</code>\n\nSếp hãy copy dãy số này và dán vào file .env (ADMIN_IDS=...) để phân quyền nhé!`, { parse_mode: 'HTML' });
 });
 
@@ -403,7 +409,7 @@ cron.schedule('* * * * *', async () => {
 });
 
 // Lệnh thay đổi giờ nhắc nhở: /hengio 17:30
-bot.command('hengio', async (ctx) => {
+kpiComposer.command('hengio', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     if (chat.type === 'private') {
@@ -433,7 +439,7 @@ bot.command('hengio', async (ctx) => {
     }
 });
 // Lệnh /batnhanlich và /tatnhanlich
-bot.command('batnhanlich', async (ctx) => {
+kpiComposer.command('batnhanlich', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     if (chat.type === 'private') return ctx.reply("Lệnh này chỉ dùng trong Group chat.");
@@ -451,7 +457,7 @@ bot.command('batnhanlich', async (ctx) => {
     }
 });
 
-bot.command('tatnhanlich', async (ctx) => {
+kpiComposer.command('tatnhanlich', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     if (chat.type === 'private') return ctx.reply("Lệnh này chỉ dùng trong Group chat.");
@@ -465,7 +471,7 @@ bot.command('tatnhanlich', async (ctx) => {
     }
 });
 
-bot.command('xoalich', async (ctx) => {
+kpiComposer.command('xoalich', async (ctx) => {
     const text = ctx.message.text.replace('/xoalich', '').trim();
     if (!text) {
         return ctx.reply("❌ Vui lòng nhập tên khách hàng hoặc Mã ID cần xóa.\nCú pháp: /xoalich [Tên khách/Mã ID]\nVí dụ: /xoalich Văn A  hoặc  /xoalich 15");
@@ -522,7 +528,7 @@ bot.command('xoalich', async (ctx) => {
     }
 });
 
-bot.command('lich', (ctx) => {
+kpiComposer.command('lich', (ctx) => {
     ctx.reply('📅 <b>HỆ THỐNG QUẢN LÝ LỊCH KHÁCH HÀNG</b>\n\nVui lòng bấm vào nút bên dưới để mở Hệ thống Check Lịch, Thêm, Sửa hoặc Hủy lịch:', {
         parse_mode: 'HTML',
         reply_markup: {
@@ -534,7 +540,7 @@ bot.command('lich', (ctx) => {
 });
 
 // 2. CHỨC NĂNG: NHẬN BÁO CÁO & LƯU DB + GOOGLE SHEET
-bot.on('message', async (ctx, next) => {
+kpiComposer.on('message', async (ctx, next) => {
     console.log(`[DEBUG] Nhận được tin nhắn từ ID ${ctx.from.id}:`, ctx.message.text || "(Không phải text)");
     return next();
 });
@@ -713,7 +719,7 @@ async function processReport(user, parsedJSON, kpiTarget, telegram_id, group_id,
 }
 
 // Xử lý khi nhận được ảnh/video minh chứng
-bot.on(['photo', 'video'], async (ctx, next) => {
+kpiComposer.on(['photo', 'video'], async (ctx, next) => {
     const telegram_id = ctx.message.from.id.toString();
 
     try {
@@ -813,7 +819,7 @@ bot.on(['photo', 'video'], async (ctx, next) => {
     return next();
 });
 
-bot.on('text', async (ctx, next) => {
+kpiComposer.on('text', async (ctx, next) => {
     const text = ctx.message.text;
     const telegram_id = ctx.message.from.id.toString();
     const username = ctx.message.from.username || "Không có username";
@@ -925,7 +931,7 @@ bot.on('text', async (ctx, next) => {
 
 // Lệnh thiết lập mức phạt nợ ảnh: /phatnoanh 100k
 // Lệnh thiết lập mức phạt chung: /phatvipham 100k
-bot.command('phatvipham', async (ctx) => {
+kpiComposer.command('phatvipham', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     const text = ctx.message.text.replace(/\/phatvipham/i, '').trim().toLowerCase();
@@ -965,7 +971,7 @@ bot.command('phatvipham', async (ctx) => {
 });
 
 // Lệnh thiết lập phạt không báo cáo: /phatbaocao 500k
-bot.command('phatbaocao', async (ctx) => {
+kpiComposer.command('phatbaocao', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     const text = ctx.message.text.replace('/phatbaocao', '').trim().toLowerCase();
@@ -1004,7 +1010,7 @@ bot.command('phatbaocao', async (ctx) => {
 });
 
 // Lệnh thiết lập KPI: /kpi 10
-bot.command('kpi', async (ctx) => {
+kpiComposer.command('kpi', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     const text = ctx.message.text.replace(/\/kpi/i, '').trim();
@@ -1031,7 +1037,7 @@ bot.command('kpi', async (ctx) => {
 });
 
 // Lệnh thiết lập lịch chốt báo cáo: /lichbaocao 18:00 hoặc 18h
-bot.command('lichbaocao', async (ctx) => {
+kpiComposer.command('lichbaocao', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     const text = ctx.message.text.replace('/lichbaocao', '').trim();
@@ -1064,7 +1070,7 @@ bot.command('lichbaocao', async (ctx) => {
 });
 
 // Lệnh tạo quy trình mới cho Nhóm (Gắn lệnh báo cáo)
-bot.command('taocaulenh', async (ctx) => {
+kpiComposer.command('taocaulenh', async (ctx) => {
     if (!checkAdmin(ctx)) return;
     const chat = ctx.chat;
     const text = ctx.message.text.replace('/taocaulenh', '').trim().toLowerCase();
@@ -1104,7 +1110,7 @@ bot.command('taocaulenh', async (ctx) => {
 });
 
 // Lệnh hiển thị danh sách các lệnh hướng dẫn
-bot.command(['help', 'huongdan'], (ctx) => {
+kpiComposer.command(['help', 'huongdan'], (ctx) => {
     const menuMsg = `
 🤖 <b>HƯỚNG DẪN SỬ DỤNG BOT KPI</b> 🤖
 
@@ -1128,13 +1134,12 @@ bot.command(['help', 'huongdan'], (ctx) => {
     return ctx.replyWithHTML(menuMsg);
 });
 
-
-bot.action('START_SETUP_WIZARD', (ctx) => {
+kpiComposer.action('START_SETUP_WIZARD', (ctx) => {
     ctx.answerCbQuery();
     return ctx.scene.enter('SETUP_WIZARD');
 });
 
-bot.action('REQUEST_LEAVE', async (ctx) => {
+kpiComposer.action('REQUEST_LEAVE', async (ctx) => {
     ctx.answerCbQuery();
     const name = ctx.from.first_name || ctx.from.username || 'Bạn';
     const telegramId = ctx.from.id;
@@ -1150,7 +1155,7 @@ bot.action('REQUEST_LEAVE', async (ctx) => {
     });
 });
 
-bot.action(/^CANCEL_LEAVE_(\d+)$/, (ctx) => {
+kpiComposer.action(/^CANCEL_LEAVE_(\d+)$/, (ctx) => {
     const targetId = ctx.match[1];
     if (ctx.from.id.toString() !== targetId) {
         return ctx.answerCbQuery('❌ Nút này không dành cho bạn!', { show_alert: true });
@@ -1159,7 +1164,7 @@ bot.action(/^CANCEL_LEAVE_(\d+)$/, (ctx) => {
     ctx.deleteMessage().catch(() => { });
 });
 
-bot.action(/^CONFIRM_LEAVE_(\d+)$/, async (ctx) => {
+kpiComposer.action(/^CONFIRM_LEAVE_(\d+)$/, async (ctx) => {
     const targetId = ctx.match[1];
     if (ctx.from.id.toString() !== targetId) {
         return ctx.answerCbQuery('❌ Nút này không dành cho bạn!', { show_alert: true });
@@ -1195,7 +1200,7 @@ bot.action(/^CONFIRM_LEAVE_(\d+)$/, async (ctx) => {
     }
 });
 
-bot.action('CHECK_UPDATE_REPORT', async (ctx) => {
+kpiComposer.action('CHECK_UPDATE_REPORT', async (ctx) => {
     ctx.answerCbQuery();
     const telegramId = ctx.from.id.toString();
     const groupId = ctx.chat.id.toString();
@@ -1272,13 +1277,13 @@ bot.start((ctx) => {
     return ctx.reply('Xin chào! Tôi là Bot quản lý KPI. Vui lòng sử dụng tôi trong nhóm làm việc của bạn.');
 });
 
-bot.action('START_REPORT_WIZARD', (ctx) => {
+kpiComposer.action('START_REPORT_WIZARD', (ctx) => {
     ctx.answerCbQuery(); // Clear the loading state
     return ctx.scene.enter('REPORT_WIZARD');
 });
 
 // Lệnh setup nhóm để lấy Chat ID hoặc Nhân viên đăng ký tên
-bot.command('setup', async (ctx) => {
+kpiComposer.command('setup', async (ctx) => {
     const chat = ctx.chat;
     const text = ctx.message.text.replace('/setup', '').trim();
 
@@ -1358,7 +1363,15 @@ bot.command('setup', async (ctx) => {
 cron.schedule('* * * * *', async () => {
     try {
         const now = new Date();
-        const pendingResult = await pool.query(`SELECT * FROM pending_reports WHERE status = 'WAITING_PHOTOS'`);
+        const pendingResult = await pool.query(`
+            SELECT pr.* 
+            FROM pending_reports pr
+            JOIN telegram_groups tg ON tg.telegram_group_id = pr.group_id
+            WHERE pr.status = 'WAITING_PHOTOS'
+              AND tg.bot_role = 'report'
+              AND tg.is_active = true
+              AND COALESCE(tg.is_deleted, false) = false
+        `);
 
         for (const report of pendingResult.rows) {
             const deadline = new Date(report.deadline_at);
@@ -1442,8 +1455,6 @@ cron.schedule('* * * * *', async () => {
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-
-
 
 botApp.use(cors());
 botApp.use(express.json({ limit: '50mb' }));
@@ -1549,6 +1560,27 @@ async function authenticateTelegramMiniApp(req, res, next) {
         return res.status(500).json({ success: false, message: 'Lỗi xác thực hệ thống.' });
     }
 }
+
+// API KPI endpoints role guard
+botApp.use('/api/bot', async (req, res, next) => {
+    const groupId =
+        req.body?.telegram_group_id ||
+        req.body?.chat_id ||
+        req.body?.chatId ||
+        req.query?.chat_id ||
+        req.query?.chatId ||
+        req.query?.telegram_group_id;
+    if (groupId) {
+        const role = await getGroupRole(groupId);
+        if (role !== 'report') {
+            return res.status(403).json({
+                success: false,
+                message: 'Nhóm này không được cấu hình chức năng báo cáo KPI.'
+            });
+        }
+    }
+    next();
+});
 
 botApp.get('/api/bot/get-report-today', authenticateTelegramMiniApp, async (req, res) => {
     console.log('GET REPORT TODAY CALLED:', req.query);
@@ -1799,9 +1831,17 @@ botApp.post('/api/schedules/add', async (req, res) => {
             try {
                 let targetGroups = [];
                 if (groupId && groupId !== 'MINI_APP') {
-                    targetGroups.push(groupId);
+                    const role = await getGroupRole(groupId);
+                    if (role === 'report') {
+                        targetGroups.push(groupId);
+                    }
                 } else {
-                    const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+                    const groupsRes = await pool.query(`
+            SELECT s.group_id 
+            FROM schedule_notification_groups s
+            JOIN telegram_groups g ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role = 'report'
+        `);
                     for (const g of groupsRes.rows) targetGroups.push(g.group_id);
                 }
                 const timeStr = new Date(appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -2172,7 +2212,12 @@ ${lichKhach}`;
 // CRON: 20h02 tối báo cáo lịch khách hàng ngày mai
 cron.schedule('2 20 * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        const groupsRes = await pool.query(`
+            SELECT s.group_id 
+            FROM schedule_notification_groups s
+            JOIN telegram_groups g ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role = 'report'
+        `);
         if (groupsRes.rows.length === 0) return;
 
         const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('vi-VN');
@@ -2203,7 +2248,12 @@ cron.schedule('2 20 * * *', async () => {
 // CRON: 22h đêm tổng kết lịch khách hàng đã qua
 cron.schedule('0 22 * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        const groupsRes = await pool.query(`
+            SELECT s.group_id 
+            FROM schedule_notification_groups s
+            JOIN telegram_groups g ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role = 'report'
+        `);
         if (groupsRes.rows.length === 0) return;
 
         const apsRes = await pool.query(
@@ -2238,7 +2288,12 @@ cron.schedule('0 22 * * *', async () => {
 // CRON: Nhắc nhở khi tới giờ (quét mỗi phút)
 cron.schedule('* * * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        const groupsRes = await pool.query(`
+            SELECT s.group_id 
+            FROM schedule_notification_groups s
+            JOIN telegram_groups g ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role = 'report'
+        `);
         const defaultGroups = groupsRes.rows.map(g => g.group_id);
         if (defaultGroups.length === 0) return;
 
@@ -2261,10 +2316,15 @@ cron.schedule('* * * * *', async () => {
                 `👉 <i>Vui lòng chuẩn bị đón khách!</i>`;
 
             let targetGroups = [];
-            if (a.group_id && a.group_id !== 'MINI_APP') {
-                targetGroups.push(a.group_id);
-            } else {
+            if (!a.group_id || a.group_id === 'MINI_APP') {
                 targetGroups = defaultGroups;
+            } else {
+                const role = await getGroupRole(a.group_id);
+                if (role === 'report') {
+                    targetGroups.push(a.group_id);
+                } else {
+                    console.log(`[Cảnh báo] Lịch khách có group_id ${a.group_id} nhưng không phải nhóm report, bỏ qua gửi thông báo.`);
+                }
             }
 
             for (const gId of targetGroups) {
@@ -2290,7 +2350,7 @@ cron.schedule('* * * * *', async () => {
 });
 
 // Xử lý nút bấm thông báo khách đến
-bot.action(/^arr_(\d+)$/, async (ctx) => {
+kpiComposer.action(/^arr_(\d+)$/, async (ctx) => {
     try {
         const id = ctx.match[1];
 
@@ -2332,7 +2392,7 @@ bot.action(/^arr_(\d+)$/, async (ctx) => {
     }
 });
 
-bot.action(/^can_(\d+)$/, async (ctx) => {
+kpiComposer.action(/^can_(\d+)$/, async (ctx) => {
     try {
         const id = ctx.match[1];
 
@@ -2366,7 +2426,7 @@ bot.action(/^can_(\d+)$/, async (ctx) => {
     }
 });
 
-bot.action(/^cr_back_(\d+)$/, async (ctx) => {
+kpiComposer.action(/^cr_back_(\d+)$/, async (ctx) => {
     try {
         const id = ctx.match[1];
         let originalMsg = ctx.callbackQuery.message.text || '';
@@ -2387,7 +2447,7 @@ bot.action(/^cr_back_(\d+)$/, async (ctx) => {
     }
 });
 
-bot.action(/^cr_(bom|ban|tien|khacspa|app)_(\d+)$/, async (ctx) => {
+kpiComposer.action(/^cr_(bom|ban|tien|khacspa|app)_(\d+)$/, async (ctx) => {
     try {
         const type = ctx.match[1];
         const id = ctx.match[2];
@@ -2542,7 +2602,7 @@ botApp.post('/api/upload-proof', async (req, res) => {
     }
 });
 // Lắng nghe nhân viên reply ảnh trực tiếp trên Telegram
-bot.on('photo', async (ctx) => {
+kpiComposer.on('photo', async (ctx) => {
     try {
         const replyMsg = ctx.message.reply_to_message;
         if (!replyMsg || replyMsg.from.id !== ctx.botInfo.id) return;
@@ -2633,6 +2693,5 @@ bot.on('photo', async (ctx) => {
         ctx.reply('❌ Có lỗi xảy ra khi lưu ảnh, vui lòng tải lên bằng Mini App!', { reply_to_message_id: ctx.message.message_id });
     }
 });
-
-
+    bot.use(kpiComposer);
 }

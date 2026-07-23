@@ -553,11 +553,14 @@
                 telegramId = tg.initDataUnsafe.user.id;
             }
             
-            // Get chat_id from url params
+            // Get from url params (Direct URL)
             const urlParams = new URLSearchParams(window.location.search);
             chatId = urlParams.get('chat_id') || "";
+            payloadAction = urlParams.get('action') || "stats";
+            payloadTs = urlParams.get('ts') || "";
+            payloadSig = urlParams.get('sig') || "";
             
-            // Check start_param for payload
+            // Override with start_param if it's a deep link payload
             if (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) {
                 let startParam = tg.initDataUnsafe.start_param;
                 const parts = startParam.split('_');
@@ -569,12 +572,6 @@
                 } else if (startParam.startsWith('stats_')) {
                     chatId = startParam.replace('stats_', '');
                 }
-            }
-            
-            if (!chatId) {
-                payloadAction = urlParams.get('action') || "stats";
-                payloadTs = urlParams.get('ts') || "";
-                payloadSig = urlParams.get('sig') || "";
             }
 
             loadData();

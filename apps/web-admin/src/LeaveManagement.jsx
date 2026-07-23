@@ -4,7 +4,7 @@ import { CalendarX, Search, Check, X, FileText, Image, Calendar, User, Clock, Al
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-export default function LeaveManagement() {
+export default function LeaveManagement({ selectedGroupId = 'ALL' }) {
   const [activeSubTab, setActiveSubTab] = useState('requests'); // 'requests' or 'balance'
   const [requests, setRequests] = useState([]);
   const [balances, setBalances] = useState([]);
@@ -20,12 +20,16 @@ export default function LeaveManagement() {
     } else {
       fetchBalances();
     }
-  }, [activeSubTab, selectedYear]);
+  }, [activeSubTab, selectedYear, selectedGroupId]);
 
   const fetchRequests = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/admin/leave-requests`);
+      const params = {};
+      if (selectedGroupId && selectedGroupId !== 'ALL') {
+        params.group_id = selectedGroupId;
+      }
+      const res = await axios.get(`${API_URL}/admin/leave-requests`, { params });
       setRequests(res.data);
     } catch (err) {
       console.error('Lỗi tải danh sách đơn xin nghỉ:', err);
@@ -38,7 +42,11 @@ export default function LeaveManagement() {
   const fetchBalances = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/admin/leave-balances`, { params: { year: selectedYear } });
+      const params = { year: selectedYear };
+      if (selectedGroupId && selectedGroupId !== 'ALL') {
+        params.group_id = selectedGroupId;
+      }
+      const res = await axios.get(`${API_URL}/admin/leave-balances`, { params });
       setBalances(res.data);
     } catch (err) {
       console.error('Lỗi tải quỹ phép:', err);

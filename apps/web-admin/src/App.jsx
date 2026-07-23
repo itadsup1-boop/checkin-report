@@ -1,37 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard } from 'lucide-react';
+import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save, Shield } from 'lucide-react';
 import LoginScreen from './LoginScreen.jsx';
 import StaffManagement from './StaffManagement.jsx';
 import CheckinManagement from './CheckinManagement.jsx';
 import ScheduleManagement from './ScheduleManagement.jsx';
 import LeaveManagement from './LeaveManagement.jsx';
 import DashboardTab from './DashboardTab.jsx';
+import AdminManagement from './AdminManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(() => !!localStorage.getItem('admin_token'));
+  const [user, setUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('admin_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
 
   const handleLogout = () => {
     localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_user');
     setIsLoggedIn(false);
+    setUser(null);
   };
 
   if (!isLoggedIn) {
-    return <LoginScreen onLogin={() => setIsLoggedIn(true)} />;
+    return <LoginScreen onLogin={(u) => {
+      setUser(u || (localStorage.getItem('admin_user') ? JSON.parse(localStorage.getItem('admin_user')) : null));
+      setIsLoggedIn(true);
+    }} />;
   }
 
-  return <Dashboard onLogout={handleLogout} />;
+  return <Dashboard user={user} onLogout={handleLogout} />;
 }
 
-function Dashboard({ onLogout }) {
+function Dashboard({ user, onLogout }) {
   const [employees, setEmployees] = useState([]);
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [toast, setToast] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [selectedGroupId, setSelectedGroupId] = useState('ALL');
+
+  useEffect(() => {
+    const reqInterceptor = axios.interceptors.request.use((config) => {
+      try {
+        const savedUser = localStorage.getItem('admin_user');
+        if (savedUser) {
+          const u = JSON.parse(savedUser);
+          if (u.id) config.headers['x-admin-id'] = u.id;
+          if (u.role) config.headers['x-admin-role'] = u.role;
+        }
+      } catch (e) {}
+      return config;
+    });
+    return () => axios.interceptors.request.eject(reqInterceptor);
+  }, []);
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const assignedGroupIds = user?.assigned_groups || [];
+  const displayGroups = isSuperAdmin
+    ? groups
+    : groups.filter(g => assignedGroupIds.includes(g.telegram_group_id));
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -123,11 +159,11 @@ function Dashboard({ onLogout }) {
 
   const handleExport = async () => {
     try {
-      const res = await axios.get('http://localhost:3002/api/export/today', { responseType: 'blob' });
+      const res = await axios.get(`${API_URL}/export/today`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -137,34 +173,27 @@ function Dashboard({ onLogout }) {
     }
   };
 
-  const handleUpdateGroupSettings = async (telegram_group_id, penalty_under_15, penalty_under_90, penalty_over_90, shift_1_time, shift_2_time, bot_role) => {
+  const handleUpdateGroupSettings = async (telegramGroupId, settings) => {
     try {
-      await axios.put(`${API_URL}/tk_group_settings/${telegram_group_id}`, {
-        penalty_under_15,
-        penalty_under_90,
-        penalty_over_90,
-        shift_1_time,
-        shift_2_time,
-        bot_role,
-        auto_reminder_enabled: true
-      });
-      setToast('✅ Đã cập nhật cài đặt thành công!');
+      await axios.put(`${API_URL}/tk_group_settings/${telegramGroupId}`, settings);
+      setToast('✅ Đã cập nhật cài đặt nhóm!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
     } catch (err) {
-      alert("Lỗi khi cập nhật cài đặt: " + err.message);
+      alert("Lỗi cập nhật cài đặt: " + err.message);
     }
   };
 
-  const handleDeleteGroup = async (telegram_group_id) => {
-    if (!window.confirm("Bạn có chắc chắn muốn xóa nhóm này khỏi hệ thống (soft delete)?")) return;
-    try {
-      await axios.delete(`${API_URL}/groups/${telegram_group_id}`);
-      setToast('✅ Đã xóa nhóm thành công!');
-      fetchData();
-      setTimeout(() => setToast(null), 3000);
-    } catch (err) {
-      alert("Lỗi khi xóa nhóm: " + err.message);
+  const handleDeleteGroup = async (telegramGroupId) => {
+    if (window.confirm("Bạn có chắc muốn xóa nhóm này khỏi hệ thống?")) {
+      try {
+        await axios.delete(`${API_URL}/groups/${telegramGroupId}`);
+        setToast('✅ Đã xóa nhóm!');
+        fetchData();
+        setTimeout(() => setToast(null), 3000);
+      } catch (err) {
+        alert("Lỗi khi xóa nhóm: " + err.message);
+      }
     }
   };
 
@@ -174,7 +203,7 @@ function Dashboard({ onLogout }) {
   );
 
   const totalEmp = employees.length;
-  const passedKPI = employees.filter(e => (e.kpi_actual || 0) >= (e.kpi_required || 10)).length;
+  const passedKPI = employees.filter(e => e.status === 'DAT_KPI').length;
   const failedKPI = totalEmp - passedKPI;
   const completionRate = totalEmp === 0 ? 0 : Math.round((passedKPI / totalEmp) * 100);
 
@@ -200,6 +229,9 @@ function Dashboard({ onLogout }) {
           <NavItem icon={<CalendarDays />} label="Lịch làm việc" active={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')} />
           <NavItem icon={<CalendarX />} label="Nghỉ phép & Quỹ phép" active={activeTab === 'leave'} onClick={() => setActiveTab('leave')} />
           <NavItem icon={<Settings />} label="Cấu hình hệ thống" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
+          {user?.role === 'SUPER_ADMIN' && (
+            <NavItem icon={<Shield />} label="Quản lý Admin" active={activeTab === 'admins'} onClick={() => setActiveTab('admins')} />
+          )}
         </nav>
         <div className="p-4 m-4">
           <button
@@ -219,23 +251,50 @@ function Dashboard({ onLogout }) {
             <button className="p-2 text-slate-400 hover:text-white"><Menu className="w-6 h-6" /></button>
             <h1 className="text-xl font-bold text-white">KPI Master</h1>
           </div>
-          <div className="hidden md:flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-96 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
-            <Search className="w-5 h-5 text-slate-500" />
-            <input
-              type="text"
-              placeholder="Tìm kiếm nhân viên..."
-              className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+          <div className="hidden md:flex items-center gap-4">
+            <div className="flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-80 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
+              <Search className="w-5 h-5 text-slate-500" />
+              <input
+                type="text"
+                placeholder="Tìm kiếm nhân viên..."
+                className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+
+            {/* Global Group Selector */}
+            <div className="flex items-center gap-2 bg-[#111827] rounded-full px-4 py-2 border border-white/10 text-sm hover:border-white/20 transition-colors">
+              <Users className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              <select
+                value={selectedGroupId}
+                onChange={(e) => setSelectedGroupId(e.target.value)}
+                className="bg-transparent border-none outline-none text-white text-xs sm:text-sm font-medium cursor-pointer max-w-[200px] truncate"
+              >
+                <option value="ALL" className="bg-[#111827] text-white">
+                  Tất cả nhóm ({displayGroups.length})
+                </option>
+                {displayGroups.map((g) => (
+                  <option key={g.telegram_group_id} value={g.telegram_group_id} className="bg-[#111827] text-white">
+                    {g.group_name || `Nhóm ${g.telegram_group_id}`}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
           <div className="flex items-center gap-4">
             <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
               <Bell className="w-6 h-6" />
               <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-[#0B0F19]"></span>
             </button>
-            <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 p-[2px] cursor-pointer hover:scale-105 transition-transform">
-              <img src="https://i.pravatar.cc/150?img=11" alt="Admin" className="w-full h-full rounded-full border-2 border-[#0B0F19]" />
+            <div className="flex items-center gap-3">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm font-semibold text-white">{user?.full_name || user?.username || 'Admin'}</p>
+                <p className="text-xs text-cyan-400 font-medium">{user?.role === 'SUPER_ADMIN' ? 'Super Admin' : 'Admin'}</p>
+              </div>
+              <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 p-[2px] cursor-pointer hover:scale-105 transition-transform flex items-center justify-center font-bold text-white text-xs">
+                {user?.username?.substring(0, 2)?.toUpperCase() || 'AD'}
+              </div>
             </div>
           </div>
         </header>
@@ -435,26 +494,28 @@ function Dashboard({ onLogout }) {
           )}
 
           {activeTab === 'dashboard' && (
-            <DashboardTab />
+            <DashboardTab selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'staff' && (
-            <StaffManagement />
+            <StaffManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'checkins' && (
-            <CheckinManagement />
+            <CheckinManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'schedules' && (
-            <ScheduleManagement />
+            <ScheduleManagement selectedGroupId={selectedGroupId} />
           )}
 
           {activeTab === 'leave' && (
-            <LeaveManagement />
+            <LeaveManagement selectedGroupId={selectedGroupId} />
           )}
 
-          {activeTab === 'settings' && <SettingsTab groups={groups} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}
+          {activeTab === 'settings' && <SettingsTab groups={displayGroups} selectedGroupId={selectedGroupId} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}
+
+          {activeTab === 'admins' && user?.role === 'SUPER_ADMIN' && <AdminManagement groups={groups} />}
         </div>
       </main>
 
@@ -560,13 +621,18 @@ function Dashboard({ onLogout }) {
   );
 }
 
-function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
+function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSettings, handleDeleteGroup }) {
   const [times, setTimes] = useState({});
   const [shift1Times, setShift1Times] = useState({});
   const [shift2Times, setShift2Times] = useState({});
   // New late penalties (under 15, under 90, over 90 mins)
   const [latePenalties, setLatePenalties] = useState({});
   const [botRoles, setBotRoles] = useState({});
+  const [scheduleOpen, setScheduleOpen] = useState({});
+
+  const displayedGroups = selectedGroupId && selectedGroupId !== 'ALL'
+    ? groups.filter(g => g.telegram_group_id === selectedGroupId)
+    : groups;
 
   useEffect(() => {
     const initialTimes = {};
@@ -574,8 +640,9 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     const initialShift2 = {};
     const initialLatePenalties = {};
     const initialBotRoles = {};
+    const initialScheduleOpen = {};
 
-    groups.forEach(g => {
+    displayedGroups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
       // Default late penalties (can be customized later)
       initialLatePenalties[g.telegram_group_id] = {
@@ -586,6 +653,7 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
       initialShift1[g.telegram_group_id] = (g.shift_1_time || '08:00:00').substring(0, 5);
       initialShift2[g.telegram_group_id] = (g.shift_2_time || '13:30:00').substring(0, 5);
       initialBotRoles[g.telegram_group_id] = g.bot_role || '';
+      initialScheduleOpen[g.telegram_group_id] = g.schedule_registration_open !== false; // default true
     });
 
     setTimes(initialTimes);
@@ -593,11 +661,13 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     setShift1Times(initialShift1);
     setShift2Times(initialShift2);
     setBotRoles(initialBotRoles);
-  }, [groups]);
+    setScheduleOpen(initialScheduleOpen);
+  }, [displayedGroups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
   const handleShift1Change = (groupId, value) => setShift1Times(prev => ({ ...prev, [groupId]: value }));
   const handleShift2Change = (groupId, value) => setShift2Times(prev => ({ ...prev, [groupId]: value }));
+  const handleScheduleOpenChange = (groupId, value) => setScheduleOpen(prev => ({ ...prev, [groupId]: value }));
   const handleLatePenaltyChange = (groupId, field, value) => {
     setLatePenalties(prev => ({
       ...prev,
@@ -615,9 +685,18 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
     const under90 = parseInt(penalties.under90) || 0;
     const over90 = parseInt(penalties.over90) || 0;
     const roleValue = botRoles[groupId] || null;
+    const isScheduleOpen = scheduleOpen[groupId] !== false;
 
-    // No reminder time field any more
-    handleUpdateGroupSettings(groupId, under15, under90, over90, shift1Value + ':00', shift2Value + ':00', roleValue);
+    handleUpdateGroupSettings(groupId, {
+      penalty_under_15: under15,
+      penalty_under_90: under90,
+      penalty_over_90: over90,
+      shift_1_time: shift1Value.length === 5 ? `${shift1Value}:00` : shift1Value,
+      shift_2_time: shift2Value.length === 5 ? `${shift2Value}:00` : shift2Value,
+      bot_role: roleValue,
+      schedule_registration_open: isScheduleOpen,
+      auto_reminder_enabled: true
+    });
   };
 
   return (
@@ -630,67 +709,93 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
         </p>
       </div>
 
-      {groups.length === 0 ? (
-        <p className="text-slate-400">Chưa có nhóm nào kết nối. Vui lòng thêm bot vào nhóm và gõ lệnh /setup.</p>
+      {displayedGroups.length === 0 ? (
+        <p className="text-slate-400">Chưa có nhóm nào kết nối hoặc được phân quyền.</p>
       ) : (
         <div className="space-y-6">
-          {groups.map(group => (
-            <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col md:flex-row justify-between md:items-center gap-4">
-              <div>
-                <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
-                <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
+          {displayedGroups.map(group => (
+            <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col gap-5">
+              <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 border-b border-white/10 pb-4">
+                <div>
+                  <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
+                  <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
+                </div>
+                <div className="flex gap-2 self-start md:self-auto">
+                  <button
+                    onClick={() => handleSave(group.telegram_group_id)}
+                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center gap-2"
+                  >
+                    <Save className="w-4 h-4" /> Lưu cài đặt
+                  </button>
+                  <button
+                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
+                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-bold transition-all border border-red-500/30 active:scale-95"
+                    title="Xóa nhóm"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-end gap-3 flex-wrap">
 
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 1</label>
                   <input
                     type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={shift1Times[group.telegram_group_id] || ''}
                     onChange={(e) => handleShift1Change(group.telegram_group_id, e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca 2</label>
                   <input
                     type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-32"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={shift2Times[group.telegram_group_id] || ''}
                     onChange={(e) => handleShift2Change(group.telegram_group_id, e.target.value)}
                   />
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.under15 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.under15 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn đến dưới 90 phút</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.under90 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 90 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.under90 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Phạt muộn 90 phút trở lên</label>
-                  <input
-                    type="number" min="0" step="1000"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-44"
-                    value={latePenalties[group.telegram_group_id]?.over90 || ''}
-                    onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
-                  />
+                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn {'>'} 90 phút</label>
+                  <div className="relative">
+                    <input
+                      type="number" min="0" step="1000"
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                      value={latePenalties[group.telegram_group_id]?.over90 || ''}
+                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                  </div>
                 </div>
                 <div className="flex flex-col">
-                  <label className="text-xs text-slate-400 mb-1">Vai trò của Bot</label>
+                  <label className="text-xs font-medium text-slate-400 mb-1">Vai trò của Bot</label>
                   <select
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-44"
+                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
                     value={botRoles[group.telegram_group_id] || ''}
                     onChange={(e) => handleBotRoleChange(group.telegram_group_id, e.target.value)}
                   >
@@ -699,18 +804,14 @@ function SettingsTab({ groups, handleUpdateGroupSettings, handleDeleteGroup }) {
                     <option value="report">Bot báo cáo</option>
                   </select>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-col">
+                  <label className="text-xs font-medium text-slate-400 mb-1">Mở đăng ký lịch</label>
                   <button
-                    onClick={() => handleSave(group.telegram_group_id)}
-                    className="px-4 py-2 bg-cyan-500 hover:bg-cyan-400 text-[#0B0F19] rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95"
+                    onClick={() => handleScheduleOpenChange(group.telegram_group_id, !(scheduleOpen[group.telegram_group_id] !== false))}
+                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all border w-full flex items-center justify-center gap-2 ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 shadow-lg shadow-rose-500/10'}`}
                   >
-                    Lưu
-                  </button>
-                  <button
-                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
-                    className="px-4 py-2 bg-red-500 hover:bg-red-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-red-500/20 active:scale-95"
-                  >
-                    Xóa nhóm
+                    <span className={`w-2 h-2 rounded-full animate-pulse ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                    {scheduleOpen[group.telegram_group_id] !== false ? 'Đang mở đăng ký' : 'Đang đóng'}
                   </button>
                 </div>
               </div>

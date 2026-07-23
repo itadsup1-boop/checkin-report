@@ -4,7 +4,7 @@ import { Users, Search, Edit3, Save, X, UserCheck, Briefcase, Calendar, FileDown
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-export default function StaffManagement() {
+export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [staff, setStaff] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -12,12 +12,13 @@ export default function StaffManagement() {
   const [editForm, setEditForm] = useState({});
   const [toast, setToast] = useState(null);
 
-  useEffect(() => { fetchStaff(); }, []);
+  useEffect(() => { fetchStaff(); }, [selectedGroupId]);
 
   const fetchStaff = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/admin/tk-users`);
+      const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${selectedGroupId}` : '';
+      const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
       setStaff(res.data);
     } catch (err) {
       console.error('Lỗi tải danh sách nhân viên:', err);
@@ -58,11 +59,11 @@ export default function StaffManagement() {
 
   const handleExport = async () => {
     try {
-      const res = await axios.get('http://localhost:3002/api/export/today', { responseType: 'blob' });
+      const res = await axios.get(`${API_URL}/export/today`, { responseType: 'blob' });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.csv`);
+      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
       document.body.appendChild(link);
       link.click();
       link.remove();

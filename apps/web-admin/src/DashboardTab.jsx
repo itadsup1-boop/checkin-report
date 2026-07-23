@@ -120,12 +120,11 @@ function TableSkeleton() {
 // ────────────────────────────────────────
 // Main DashboardTab component
 // ────────────────────────────────────────
-export default function DashboardTab() {
+export default function DashboardTab({ selectedGroupId = 'ALL' }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [lastUpdated, setLastUpdated] = useState(null);
   const timerRef = useRef(null);
 
@@ -134,16 +133,17 @@ export default function DashboardTab() {
     else setRefreshing(true);
     setError(null);
     try {
-      const params = groupId ? `?group_id=${groupId}` : '';
-      const res = await fetch(`${API_URL}/admin/dashboard${params}`);
+      const params = groupId && groupId !== 'ALL' ? `?group_id=${groupId}` : '';
+      const res = await fetch(`${API_URL}/admin/dashboard${params}`, {
+        headers: {
+          'x-admin-id': JSON.parse(localStorage.getItem('admin_user') || '{}').id || '',
+          'x-admin-role': JSON.parse(localStorage.getItem('admin_user') || '{}').role || ''
+        }
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const json = await res.json();
       setData(json);
       setLastUpdated(new Date());
-      // Nếu chưa có selected group, tự động chọn nhóm đầu tiên
-      if (!groupId && json.group) {
-        setSelectedGroupId(json.group.id);
-      }
     } catch (e) {
       console.log(e);
       setError(e.message);
@@ -153,10 +153,10 @@ export default function DashboardTab() {
     }
   }, []);
 
-  // Initial load
+  // Load when selectedGroupId changes
   useEffect(() => {
     fetchDashboard(selectedGroupId);
-  }, []);
+  }, [selectedGroupId, fetchDashboard]);
 
   // Auto-refresh mỗi 5 phút
   useEffect(() => {
@@ -165,11 +165,6 @@ export default function DashboardTab() {
     }, REFRESH_INTERVAL_MS);
     return () => clearInterval(timerRef.current);
   }, [selectedGroupId, fetchDashboard]);
-
-  const handleGroupChange = (newGroupId) => {
-    setSelectedGroupId(newGroupId);
-    fetchDashboard(newGroupId);
-  };
 
   const handleRefresh = () => {
     fetchDashboard(selectedGroupId, true);
@@ -194,13 +189,6 @@ export default function DashboardTab() {
         </div>
 
         <div className="flex items-center gap-3">
-          {data?.groups?.length > 0 && (
-            <GroupSelector
-              groups={data.groups}
-              selectedId={selectedGroupId}
-              onChange={handleGroupChange}
-            />
-          )}
           <button
             onClick={handleRefresh}
             disabled={refreshing || loading}

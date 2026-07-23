@@ -42,7 +42,7 @@ function getWeekDates(refDate) {
 
 const DAY_NAMES = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'CN'];
 
-export default function ScheduleManagement() {
+export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const [schedules, setSchedules] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +65,7 @@ export default function ScheduleManagement() {
   useEffect(() => {
     fetchSchedules();
     fetchUsers();
-  }, [fromDate]);
+  }, [fromDate, selectedGroupId]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -74,7 +74,8 @@ export default function ScheduleManagement() {
 
   const fetchUsers = async () => {
     try {
-      const res = await axios.get(`${API_URL}/admin/tk-users`);
+      const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${selectedGroupId}` : '';
+      const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
       setAllUsers(res.data);
     } catch (err) { console.error('Lỗi tải users:', err); }
   };
@@ -82,7 +83,11 @@ export default function ScheduleManagement() {
   const fetchSchedules = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/admin/schedules`, { params: { from_date: fromDate, to_date: toDate } });
+      const params = { from_date: fromDate, to_date: toDate };
+      if (selectedGroupId && selectedGroupId !== 'ALL') {
+        params.group_id = selectedGroupId;
+      }
+      const res = await axios.get(`${API_URL}/admin/schedules`, { params });
       setSchedules(res.data);
     } catch (err) {
       console.error('Lỗi tải lịch:', err);

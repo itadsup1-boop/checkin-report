@@ -19,7 +19,10 @@ export default function LoginScreen({ onLogin }) {
       const res = await axios.post(`${API_URL}/admin/login`, { username, password });
       if (res.data.success) {
         localStorage.setItem('admin_token', res.data.token);
-        onLogin();
+        if (res.data.user) {
+          localStorage.setItem('admin_user', JSON.stringify(res.data.user));
+        }
+        onLogin(res.data.user);
       }
     } catch (err) {
       setError(err.response?.data?.message || 'Có lỗi xảy ra khi đăng nhập');

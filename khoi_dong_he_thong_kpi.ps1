@@ -33,13 +33,14 @@ Write-Host "=========================================================="
 
 Write-Host "[1/4] Don dep cac tien trinh cu..."
 pm2 delete kpi-api 2>$null
+pm2 delete timekeep-bot 2>$null
 pm2 delete kpi-bot 2>$null
 Stop-Process -Name "cloudflared" -Force -ErrorAction SilentlyContinue
 Start-Sleep -Seconds 2
 
 Write-Host "[2/4] Khoi dong API Server va Telegram Bot..."
 pm2 start apps/api/index.js --name "kpi-api"
-pm2 start apps/bot/index.js --name "kpi-bot"
+pm2 start apps/bot/timekeep_bot.js --name "timekeep-bot"
 
 Write-Host "[3/4] Khoi dong duong ham Cloudflare..."
 # Xoa log cu, tao lai file moi

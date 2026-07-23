@@ -81,8 +81,8 @@
                 return;
             }
 
-            // Chuyển hướng sang trang đích và truyền lại payload qua query string
-            window.location.href = `${targetPage}?payload=${startParam}`;
+            // Chuyển hướng sang trang đích và truyền lại payload qua query string, ĐỒNG THỜI giữ nguyên hash của Telegram
+            window.location.href = `${targetPage}?payload=${startParam}${window.location.hash}`;
         });
     </script>
 </body>

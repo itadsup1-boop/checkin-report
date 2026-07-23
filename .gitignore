@@ -69,3 +69,4 @@ pgsql/
 # cloudflared Windows binary (tự download qua install.bat)
 scripts/windows/cloudflared.exe
 /logs
+/graphify-out

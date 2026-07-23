@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev:api": "node apps/api/index.js",
-    "dev:bot": "node apps/bot/index.js",
+    "dev:bot": "node apps/bot/timekeep_bot.js",
     "dev:web": "cd apps/web-admin && npm run build",
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:bot\"",
     "test": "echo \"Error: no test specified\" && exit 1"

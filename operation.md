@@ -26,3 +26,6 @@ Sau khi bạn hoàn thành 8 bước này, Telegram sẽ cấp cho bạn đườ
 node scripts/migrate_groups.js
 
 
+& "C:\Program Files\cloudflared\cloudflared.exe" service install "C:\Users\ADMIN\.cloudflared\config.yml"
+
+

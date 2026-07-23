@@ -211,7 +211,7 @@ Write-Ok 'Tat ca kiem tra tien quyet da pass.'
 Write-Step '2/6' 'Don dep tien trinh cu...'
 
 # Xoa PM2 processes cu
-foreach ($name in @('kpi-api', 'kpi-bot', 'timekeep-bot')) {
+foreach ($name in @('kpi-api', 'kpi-bot', 'timekeep-bot', 'cloudflare-tunnel')) {
     $null = & pm2 delete $name 2>&1
 }
 
@@ -263,18 +263,12 @@ if ($pm2Status) {
 }
 
 # ---- STEP 4: Khoi dong Cloudflare Tunnel ----
-Write-Step '4/6' 'Khoi dong Cloudflare Tunnel (tro vao port 3009)...'
+Write-Step '4/6' 'Khoi dong Cloudflare Tunnel (tro vao port 3001)...'
 
-$cfArgs = @('tunnel', '--url', 'http://localhost:3009')
-$cfProc = Start-Process `
-    -FilePath $CF_EXE `
-    -ArgumentList $cfArgs `
-    -RedirectStandardOutput $CF_LOG `
-    -RedirectStandardError  $CF_ERR_LOG `
-    -WindowStyle Hidden `
-    -PassThru
+$cfArgs = @('tunnel', '--url', 'http://localhost:3001')
+# cloudflared is now started and managed by PM2 in ecosystem.config.cjs
 
-Write-Info "cloudflared dang khoi dong (PID: $($cfProc.Id))..."
+Write-Info "cloudflared dang duoc PM2 khoi dong..."
 Write-Host '  Dang cho duong ham ket noi (toi da 20 giay)...' -ForegroundColor Gray
 
 # ---- STEP 5: Doc URL Cloudflare va cap nhat .env ----
@@ -292,8 +286,9 @@ while ($waited -lt $maxWait) {
     $logContent  = (Get-Content $CF_ERR_LOG -Raw -ErrorAction SilentlyContinue) + `
                    (Get-Content $CF_LOG     -Raw -ErrorAction SilentlyContinue)
 
-    if ($logContent -match '(https://[a-z0-9\-]+\.trycloudflare\.com)') {
-        $cloudflareUrl = $Matches[1]
+    $matchesRegex = [regex]::Matches($logContent, 'https://[a-z0-9\-]+\.trycloudflare\.com')
+    if ($matchesRegex.Count -gt 0) {
+        $cloudflareUrl = $matchesRegex[$matchesRegex.Count - 1].Value
         break
     }
 
@@ -316,8 +311,8 @@ if ($cloudflareUrl) {
     [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
     Write-Ok 'MINI_APP_URL da duoc cap nhat trong .env.'
 
-    # Restart PM2 de bot nhan URL moi
-    $null = & pm2 restart all --update-env 2>&1
+    # Restart PM2 de bot nhan URL moi (chi restart kpi-api va timekeep-bot)
+    $null = & pm2 restart kpi-api timekeep-bot --update-env 2>&1
     Write-Ok 'PM2 da duoc restart voi env moi.'
 } else {
     Write-Warn "Khong lay duoc Cloudflare URL sau $maxWait giay."
@@ -344,7 +339,7 @@ Write-Host '   HE THONG KPI DA KHOI CHAY THANH CONG!'               -ForegroundC
 Write-Host '==========================================================' -ForegroundColor Green
 Write-Host ''
 Write-Host '  TELEGRAM MINI APP URL (dan vao BotFather -> /editapp):' -ForegroundColor White
-Write-Host "  $cloudflareUrl" -ForegroundColor Cyan
+Write-Host "  $cloudflareUrl/mini-app/router.html" -ForegroundColor Cyan
 Write-Host ''
 Write-Host '  WEB ADMIN:' -ForegroundColor White
 Write-Host "  http://localhost:$apiPort" -ForegroundColor Cyan

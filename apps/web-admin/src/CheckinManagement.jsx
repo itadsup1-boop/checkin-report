@@ -4,7 +4,7 @@ import { ClipboardCheck, Search, Edit3, Save, X, Plus, Clock, Video, CalendarDay
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-export default function CheckinManagement() {
+export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
   const [checkins, setCheckins] = useState([]);
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -22,12 +22,16 @@ export default function CheckinManagement() {
   useEffect(() => {
     fetchCheckins();
     fetchStaff();
-  }, [selectedDate]);
+  }, [selectedDate, selectedGroupId]);
 
   const fetchCheckins = async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API_URL}/admin/checkins`, { params: { date: selectedDate } });
+      const params = { date: selectedDate };
+      if (selectedGroupId && selectedGroupId !== 'ALL') {
+        params.group_id = selectedGroupId;
+      }
+      const res = await axios.get(`${API_URL}/admin/checkins`, { params });
       setCheckins(res.data);
     } catch (err) {
       console.error('Lỗi tải check-in:', err);

@@ -16,6 +16,8 @@ import { initLogger, loggerMiddleware, setupLogRotation, overrideGlobals } from 
 import { setupKpiBot } from './kpi_features.js';
 import { reportWizard } from './reportWizard.js';
 import { setupWizard } from './setupWizard.js';
+import { requireGroupRole } from './role_guard.js';
+
 // Load environment variables
 dotenv.config({ override: true });
 
@@ -116,16 +118,16 @@ function verifySignedPayload(action, groupId, ts, sig) {
     const dataString = `${action}:${groupId}:${ts}`;
     const expectedSig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
     if (sig.length === expectedSig.length && crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expectedSig))) return true;
-    
+
     return false;
 }
 
 // Middleware xác thực bảo mật cho Mini App API
 async function authenticateTelegramMiniApp(req, res, next) {
     try {
-        const initData = req.headers['x-telegram-init-data'] || 
-                         (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null) ||
-                         req.body?.initData || req.query?.initData;
+        const initData = req.headers['x-telegram-init-data'] ||
+            (req.headers.authorization && req.headers.authorization.startsWith('Bearer ') ? req.headers.authorization.slice(7) : null) ||
+            req.body?.initData || req.query?.initData;
 
         if (!initData) {
             return res.status(401).json({ success: false, message: 'Vui lòng thao tác trực tiếp trên ứng dụng Telegram (Thiếu initData).' });
@@ -179,9 +181,9 @@ async function authenticateTelegramMiniApp(req, res, next) {
                 }
             } catch (err) {
                 console.error('[Security] Membership verification failed (Fail Closed):', err.message);
-                return res.status(403).json({ 
-                    success: false, 
-                    message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message) 
+                return res.status(403).json({
+                    success: false,
+                    message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
                 });
             }
         }
@@ -196,7 +198,7 @@ async function authenticateTelegramMiniApp(req, res, next) {
 const corsOptions = {
     origin: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-telegram-init-data', 'x-admin-id', 'x-admin-role'],
     credentials: true,
     optionsSuccessStatus: 204
 };
@@ -212,6 +214,22 @@ botApp.use('/mini-app', express.static(path.join(__dirname, 'public')));
 
 // Áp dụng middleware bảo mật cho toàn bộ API /api/timekeep
 botApp.use('/api/timekeep', authenticateTelegramMiniApp);
+
+import { getGroupRole } from './role_guard.js';
+
+botApp.use('/api/timekeep', async (req, res, next) => {
+    const groupId = req.body.telegram_group_id || req.body.chat_id || req.query.chat_id || req.query.telegram_group_id;
+    if (groupId) {
+        const role = await getGroupRole(groupId);
+        if (role !== 'timekeep') {
+            return res.status(403).json({
+                success: false,
+                message: 'Nhóm này không được cấu hình chức năng chấm công.'
+            });
+        }
+    }
+    next();
+});
 
 // ==========================================
 // 1. API ĐĂNG KÝ THÔNG TIN NHÂN SỰ
@@ -282,7 +300,7 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
     try {
         const { chat_id, target_user_id } = req.query;
         const telegram_id = req.verifiedTelegramId || req.query.telegram_id;
-        
+
         console.log('[DEBUG /schedule/data] req.query:', req.query, 'verifiedTelegramId:', req.verifiedTelegramId);
 
         if (!telegram_id) {
@@ -294,13 +312,18 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
         let userRes;
         if (chat_id) {
             userRes = await pool.query(
-                `SELECT u.* FROM employees u 
+                `SELECT u.*, g.schedule_registration_open FROM employees u 
                  JOIN telegram_groups g ON u.group_id = g.id 
                  WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
                 [telegram_id, chat_id]
             );
         } else {
-            userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+            userRes = await pool.query(
+                `SELECT u.*, g.schedule_registration_open FROM employees u
+                 LEFT JOIN telegram_groups g ON u.group_id = g.id
+                 WHERE u.telegram_id = $1 LIMIT 1`,
+                [telegram_id]
+            );
         }
 
         if (userRes.rows.length === 0) {
@@ -340,9 +363,8 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
             nextWeekDays.push(moment(startOfNextWeek).add(i, 'days').format('YYYY-MM-DD'));
         }
 
-        // Lock time: Sunday of current week at 20:00
-        const lockTime = moment().endOf('isoWeek').set({ hour: 20, minute: 0, second: 0, millisecond: 0 });
-        const isLocked = moment().isAfter(lockTime);
+        // Lock time is now based on DB toggle
+        const isLocked = !isAdmin && (user.schedule_registration_open === false);
 
         // 3. Fetch user's schedules
         const mySchedulesRes = await pool.query(
@@ -393,7 +415,48 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
 });
 
 // ==========================================
-// 3. API LƯU LỊCH TUẦN & FILE MINH CHỨNG
+// 3. API BẬT/TẮT ĐĂNG KÝ LỊCH (CHO QUẢN LÝ / ADMIN)
+// ==========================================
+botApp.post('/api/timekeep/schedule/toggle', async (req, res) => {
+    try {
+        const { chat_id } = req.body;
+        const telegram_id = req.verifiedTelegramId || req.body.telegram_id;
+
+        if (!telegram_id || !chat_id) {
+            return res.status(400).json({ success: false, message: 'Dữ liệu không hợp lệ!' });
+        }
+
+        const callerRes = await pool.query(
+            `SELECT u.role, g.id as group_id, g.schedule_registration_open 
+             FROM employees u 
+             JOIN telegram_groups g ON u.group_id = g.id 
+             WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
+            [telegram_id, chat_id]
+        );
+
+        if (callerRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại trong nhóm này!' });
+        }
+
+        const caller = callerRes.rows[0];
+        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
+
+        if (!isAdmin && caller.role !== 'Quản lý') {
+            return res.status(403).json({ success: false, message: 'Bạn không có quyền thao tác tính năng này!' });
+        }
+
+        const newState = !caller.schedule_registration_open;
+        await pool.query('UPDATE telegram_groups SET schedule_registration_open = $1 WHERE id = $2', [newState, caller.group_id]);
+
+        res.json({ success: true, message: newState ? 'Đã MỞ đăng ký lịch.' : 'Đã ĐÓNG đăng ký lịch.', new_state: newState });
+    } catch (error) {
+        console.error('[Toggle Schedule Error]:', error);
+        res.status(500).json({ success: false, message: 'Lỗi hệ thống: ' + error.message });
+    }
+});
+
+// ==========================================
+// 4. API LƯU LỊCH TUẦN & FILE MINH CHỨNG
 // ==========================================
 botApp.post('/api/timekeep/schedule/save', async (req, res) => {
     try {
@@ -404,17 +467,21 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dữ liệu không hợp lệ!' });
         }
 
-        // Get caller details
         let callerRes;
         if (chat_id) {
             callerRes = await pool.query(
-                `SELECT u.* FROM employees u 
+                `SELECT u.*, g.schedule_registration_open FROM employees u 
                  JOIN telegram_groups g ON u.group_id = g.id 
                  WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
                 [telegram_id, chat_id]
             );
         } else {
-            callerRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1', [telegram_id]);
+            callerRes = await pool.query(
+                `SELECT u.*, g.schedule_registration_open FROM employees u
+                 LEFT JOIN telegram_groups g ON u.group_id = g.id
+                 WHERE u.telegram_id = $1`,
+                [telegram_id]
+            );
         }
         if (callerRes.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Tài khoản yêu cầu không tồn tại trong nhóm này!' });
@@ -443,8 +510,9 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
 
         // Validation for regular staff
         if (!isAdmin) {
-            const lockTime = moment().endOf('isoWeek').set({ hour: 20, minute: 0, second: 0, millisecond: 0 });
-            const isLocked = moment().isAfter(lockTime);
+            if (caller.schedule_registration_open === false) {
+                return res.status(403).json({ success: false, message: 'Quản lý đã đóng đăng ký lịch!' });
+            }
 
             const startOfNextWeek = moment().add(1, 'week').startOf('isoWeek').format('YYYY-MM-DD');
             const endOfNextWeek = moment().add(1, 'week').endOf('isoWeek').format('YYYY-MM-DD');
@@ -455,11 +523,6 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
                 // Chặn sửa lịch tuần này/cũ
                 if (dayStr < startOfNextWeek) {
                     return res.status(400).json({ success: false, message: 'Bạn không thể thay đổi lịch của tuần này hoặc lịch cũ!' });
-                }
-
-                // Chặn sửa lịch tuần sau nếu đã quá 20:00 Chủ Nhật
-                if (isLocked && dayStr >= startOfNextWeek && dayStr <= endOfNextWeek) {
-                    return res.status(400).json({ success: false, message: 'Hệ thống đã chốt và khóa lịch tuần sau vào lúc 20:00 Chủ Nhật!' });
                 }
             }
 
@@ -897,6 +960,7 @@ botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
             shift_2_time,
             auto_reminder_enabled = true,
             bot_role,
+            schedule_registration_open,
             remind_time_1 = '17:00:00',
             photo_deadline_minutes = 60,
             penalty_missing_kpi = 100000,
@@ -906,9 +970,11 @@ botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
 
         // Cập nhật hoặc tạo mới nhóm và gán bot_role
         await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role) VALUES ($1, $2, $3)
-             ON CONFLICT (telegram_group_id) DO UPDATE SET bot_role = EXCLUDED.bot_role`,
-            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null]
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open) VALUES ($1, $2, $3, COALESCE($4, true))
+             ON CONFLICT (telegram_group_id) DO UPDATE SET 
+             bot_role = EXCLUDED.bot_role, 
+             schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open)`,
+            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open]
         );
 
         const checkRes = await pool.query(
@@ -984,34 +1050,30 @@ async function startHandler(ctx) {
             );
             const botRole = groupRes.rows[0]?.bot_role;
 
-            // Sinh Signed Payload và link t.me/?startapp= để mở WebApp
+            // Sinh Web App URL trực tiếp thay vì startapp
             const botUsername = ctx.botInfo?.username || process.env.BOT_USERNAME || 'bot';
             const appShortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
-
-            const regPayload = createSignedPayload('register', groupId);
-            const schedclientPayload = createSignedPayload('scheduleclient', groupId);
-            const schedPayload = createSignedPayload('schedule', groupId);
-            const leavePayload = createSignedPayload('leave', groupId);
-            const checkinPayload = createSignedPayload('checkin', groupId);
-            const statsPayload = createSignedPayload('stats', groupId);
-            const baocaoPayload = createSignedPayload('baocao', groupId);
-
-            const registerUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${regPayload}`;
-            const scheduleclientUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${schedclientPayload}`;
-            const scheduleUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${schedPayload}`;
-            const leaveUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${leavePayload}`;
-            const checkinUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${checkinPayload}`;
-            const statsUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${statsPayload}`;
-            const baocaoUrl = `https://t.me/${botUsername}/${appShortName}?startapp=${baocaoPayload}`;
-
-            // For report bot 'Điền form báo cáo' and 'Cập nhật báo cáo' URLs, we use dmUrl from kpi_features (which is a standard t.me short link)
             const token = process.env.TELEGRAM_BOT_TOKEN || '';
             const ts = Date.now();
-            const schedDataString = `schedule:${ctx.chat.id}:${ts}`;
-            const schedSig = crypto.createHmac('sha256', token).update(schedDataString).digest('hex');
+
+            const createWebAppUrl = (action, targetPage) => {
+                const dataString = `${action}:${groupId}:${ts}`;
+                const sig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
+                // Bắt buộc dùng deep link (url) vì Telegram chặn web_app trong group chat
+                return `https://t.me/${botUsername}/${appShortName}?startapp=${action}_${groupId}_${ts}_${sig}`;
+            };
+
+            const registerUrl = createWebAppUrl('register', 'register.html');
+            const scheduleclientUrl = createWebAppUrl('scheduleclient', 'schedule_client.html');
+            const scheduleUrl = createWebAppUrl('schedule', 'schedule.html');
+            const leaveUrl = createWebAppUrl('leave', 'urgent_leave.html');
+            const checkinUrl = createWebAppUrl('checkin', 'checkin.html');
+            const statsUrl = createWebAppUrl('stats', 'stats.html');
+            const baocaoUrl = createWebAppUrl('baocao', 'form.html');
+
             const schedclientSig = crypto.createHmac('sha256', token).update(`scheduleclient:${ctx.chat.id}:${ts}`).digest('hex');
             const scheduleclientUrl2 = `https://t.me/${botUsername}/${appShortName}?startapp=scheduleclient_${ctx.chat.id}_${ts}_${schedclientSig}`;
-            
+
             // Generate dmUrl (Direct Message URL) for Report Form
             const dmUrl = `https://t.me/${botUsername}`; // Used for 'Điền Form Báo Cáo' which typically opens PM
 
@@ -1189,89 +1251,12 @@ async function startHandler(ctx) {
 
 bot.start(startHandler);
 bot.command(['app', 'menu', 'setup', 'chamcong', 'form', 'lamviec', 'tienich'], startHandler);
-// bot.command('schedule', startHandler);
-// bot.command('calendar', startHandler);
-
-// bot.command('stats', async (ctx) => {
-//     try {
-//         const isGroup = ctx.chat.type === 'group' || ctx.chat.type === 'supergroup';
-//         if (isGroup) {
-//             const groupId = ctx.chat.id.toString();
-//             const botInfo = await ctx.telegram.getMe();
-//             const statsLink = `https://t.me/${botInfo.username}?start=stats_${groupId}`;
-//             await ctx.reply(
-//                 `📊 Để xem lịch tuần của nhóm và thống kê đi muộn/tiền phạt tháng này của bạn, vui lòng nhấn nút bên dưới để nhận link xem riêng tư:`,
-//                 {
-//                     parse_mode: 'HTML',
-//                     reply_markup: {
-//                         inline_keyboard: [
-//                             [
-//                                 { text: '📊 Xem thống kê cá nhân', url: statsLink }
-//                             ]
-//                         ]
-//                     }
-//                 }
-//             );
-//         } else {
-//             const telegramId = ctx.from.id.toString();
-//             const userGroupsRes = await pool.query(`
-//                 SELECT u.group_id, g.telegram_group_id, g.group_name
-//                 FROM employees u
-//                 JOIN telegram_groups g ON u.group_id = g.id
-//                 WHERE u.telegram_id = $1
-//             `, [telegramId]);
-
-//             if (userGroupsRes.rows.length === 0) {
-//                 await ctx.reply(
-//                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-//                     `Bạn chưa được đăng ký trong bất kỳ nhóm làm việc nào. Vui lòng bấm vào nút đăng ký trong nhóm làm việc của bạn trước.`,
-//                     { parse_mode: 'HTML' }
-//                 );
-//             } else if (userGroupsRes.rows.length === 1) {
-//                 const g = userGroupsRes.rows[0];
-//                 const statsUrl = `${miniAppUrl}/mini-app/stats.html?chat_id=${g.telegram_group_id}`;
-//                 await ctx.reply(
-//                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-//                     `Nhấn nút dưới đây để xem lịch và thống kê đi muộn của bạn tại nhóm <b>${g.group_name}</b>:`,
-//                     {
-//                         parse_mode: 'HTML',
-//                         reply_markup: {
-//                             inline_keyboard: [
-//                                 [
-//                                     { text: '📊 Xem thống kê của tôi', web_app: { url: statsUrl } }
-//                                 ]
-//                             ]
-//                         }
-//                     }
-//                 );
-//             } else {
-//                 const buttons = userGroupsRes.rows.map(g => {
-//                     const statsUrl = `${miniAppUrl}/mini-app/stats.html?chat_id=${g.telegram_group_id}`;
-//                     return [{ text: `📊 Thống kê nhóm ${g.group_name}`, web_app: { url: statsUrl } }];
-//                 });
-
-//                 await ctx.reply(
-//                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-//                     `Bạn đang tham gia nhiều nhóm làm việc. Vui lòng chọn nhóm muốn xem thống kê bên dưới:`,
-//                     {
-//                         parse_mode: 'HTML',
-//                         reply_markup: {
-//                             inline_keyboard: buttons
-//                         }
-//                     }
-//                 );
-//             }
-//         }
-//     } catch (e) {
-//         console.error('Lỗi lệnh stats:', e);
-//         ctx.reply('Đã có lỗi xảy ra khi lấy thông tin thống kê.');
-//     }
-// });
 
 // ==========================================
 // 5. PHÊ DUYỆT YÊU CẦU XIN NGHỈ / ĐI MUỘN QUA BUTTON
 // ==========================================
 bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
+    if (!(await requireGroupRole(ctx, 'timekeep'))) return;
     try {
         const action = ctx.match[1]; // 'approve' or 'reject'
         const requestId = ctx.match[2];
@@ -1392,6 +1377,9 @@ cron.schedule('*/1 * * * *', async () => {
                    COALESCE(gs.shift_2_time, '13:30:00') AS shift_2_time
             FROM telegram_groups g
             LEFT JOIN group_settings gs ON g.telegram_group_id = gs.telegram_group_id
+            WHERE g.bot_role = 'timekeep'
+              AND g.is_active = true
+              AND COALESCE(g.is_deleted, false) = false
         `);
 
         for (const row of groupsSettingsRes.rows) {
@@ -1836,14 +1824,36 @@ botApp.get('/api/export/today', async (req, res) => {
     try {
         const today = new Date();
         const dateStr = req.query.date || today.toISOString().slice(0, 10);
+        const adminId = req.headers['x-admin-id'];
+        const adminRole = req.headers['x-admin-role'];
+
+        if (!adminId || !adminRole) {
+            return res.status(401).json({ success: false, message: 'Thiếu thông tin xác thực admin' });
+        }
+
+        let allowedGroupIds = null;
+        if (adminRole !== 'SUPER_ADMIN') {
+            const mappingRes = await pool.query(
+                'SELECT telegram_group_id FROM admin_group_mappings WHERE admin_id = $1',
+                [adminId]
+            );
+            allowedGroupIds = mappingRes.rows.map(row => row.telegram_group_id);
+        }
 
         // Fetch data for the specified date
-        const userRes = await pool.query(`
-            SELECT u.id, u.full_name, u.group_id, g.telegram_group_id 
+        let userQuery = `
+            SELECT u.id, u.full_name, u.group_id, g.telegram_group_id, g.group_name
             FROM employees u
             LEFT JOIN telegram_groups g ON u.group_id = g.id
-            ORDER BY u.full_name ASC
-        `);
+        `;
+        const userParams = [];
+        if (allowedGroupIds !== null) {
+            userParams.push(allowedGroupIds);
+            userQuery += ` WHERE g.telegram_group_id = ANY($1)`;
+        }
+        userQuery += ` ORDER BY g.group_name ASC, u.full_name ASC`;
+
+        const userRes = await pool.query(userQuery, userParams);
         const scheduleRes = await pool.query('SELECT * FROM tk_schedules WHERE date = $1', [dateStr]);
         const checkinRes = await pool.query('SELECT * FROM tk_check_ins WHERE date = $1', [dateStr]);
         const penaltyRes = await pool.query('SELECT * FROM tk_penalties WHERE date = $1', [dateStr]);
@@ -1863,6 +1873,7 @@ botApp.get('/api/export/today', async (req, res) => {
         // Setup columns
         ws.columns = [
             { header: 'Nhân viên', key: 'employee', width: 25 },
+            { header: 'Tên nhóm', key: 'groupName', width: 25 },
             { header: 'Ca làm', key: 'shift', width: 20 },
             { header: 'Check-in', key: 'checkin', width: 12 },
             { header: 'Check-out', key: 'checkout', width: 12 },
@@ -1874,6 +1885,7 @@ botApp.get('/api/export/today', async (req, res) => {
 
         // Format column alignments & number formats
         ws.getColumn('employee').alignment = { horizontal: 'left', vertical: 'middle' };
+        ws.getColumn('groupName').alignment = { horizontal: 'left', vertical: 'middle' };
         ws.getColumn('shift').alignment = { horizontal: 'center', vertical: 'middle' };
         ws.getColumn('checkin').alignment = { horizontal: 'center', vertical: 'middle' };
         ws.getColumn('checkout').alignment = { horizontal: 'center', vertical: 'middle' };
@@ -1963,6 +1975,7 @@ botApp.get('/api/export/today', async (req, res) => {
 
             ws.addRow({
                 employee: user.full_name,
+                groupName: user.group_name || '',
                 shift: shiftDisplay,
                 checkin: checkInDisplay,
                 checkout: checkOutDisplay,
@@ -1987,7 +2000,7 @@ botApp.get('/api/export/today', async (req, res) => {
         // Add auto-filter to columns
         ws.autoFilter = {
             from: { row: 1, column: 1 },
-            to: { row: userRes.rows.length + 1, column: 8 }
+            to: { row: userRes.rows.length + 1, column: 9 }
         };
 
         const buffer = await workbook.xlsx.writeBuffer();
@@ -1997,6 +2010,22 @@ botApp.get('/api/export/today', async (req, res) => {
     } catch (err) {
         console.error('[Export API Error]', err);
         res.status(500).json({ success: false, message: 'Export failed', error: err.message });
+    }
+});
+
+// Cron: Tự động đóng đăng ký lịch vào lúc 20:00 Chủ Nhật hàng tuần
+cron.schedule('0 20 * * 0', async () => {
+    try {
+        await pool.query(`
+            UPDATE telegram_groups 
+            SET schedule_registration_open = false 
+            WHERE bot_role = 'timekeep' 
+              AND is_active = true 
+              AND COALESCE(is_deleted, false) = false
+        `);
+        console.log('[Cron] Đã tự động đóng đăng ký lịch cho các nhóm chấm công.');
+    } catch (e) {
+        console.error('[Cron Error] Lỗi khi tự động đóng đăng ký lịch:', e);
     }
 });
 
