@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
+import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 
 dotenv.config();
@@ -256,19 +257,21 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
             return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa nhân sự nhóm này' });
         }
 
-        const { full_name, role, leave_quota, is_exempt_checkin, is_active } = req.body;
+        const { full_name, role, leave_quota, is_exempt_checkin, is_active, need_report } = req.body;
 
         // Giữ nguyên is_active hiện tại nếu body không truyền
         const newIsActive = is_active !== undefined ? !!is_active : (currentEmp.is_active !== false);
+        const newNeedReport = need_report !== undefined ? !!need_report : (currentEmp.need_report !== false);
 
         await pool.query(
-            `UPDATE employees SET full_name = $1, role = $2, leave_quota = $3, is_exempt_checkin = $4, is_active = $5 WHERE id = $6`,
+            `UPDATE employees SET full_name = $1, role = $2, leave_quota = $3, is_exempt_checkin = $4, is_active = $5, need_report = $6 WHERE id = $7`,
             [
                 full_name !== undefined ? full_name : currentEmp.full_name,
                 role !== undefined ? role : currentEmp.role,
                 leave_quota !== undefined ? leave_quota : (currentEmp.leave_quota || 12),
                 is_exempt_checkin !== undefined ? !!is_exempt_checkin : !!currentEmp.is_exempt_checkin,
                 newIsActive,
+                newNeedReport,
                 req.params.id
             ]
         );
@@ -341,6 +344,7 @@ app.put('/api/admin/checkins/:id', async (req, res) => {
             `UPDATE tk_check_ins SET check_in_time = $1, status = $2, admin_note = $3 WHERE id = $4`,
             [check_in_time, status || 'APPROVED', admin_note || 'Admin chỉnh sửa', req.params.id]
         );
+        syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -356,6 +360,7 @@ app.post('/api/admin/checkins', async (req, res) => {
              VALUES ($1, $2, $3, $4, 'manual', 'APPROVED', $5) RETURNING *`,
             [user_id, group_id, date, check_in_time, admin_note || 'Admin nhập tay']
         );
+        syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
         res.json({ success: true, data: result.rows[0] });
     } catch (error) {
         res.status(500).json({ error: error.message });

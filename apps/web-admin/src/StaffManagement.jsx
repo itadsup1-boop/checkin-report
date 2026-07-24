@@ -34,6 +34,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
       role: user.role,
       leave_quota: user.leave_quota ?? 12,
       is_exempt_checkin: !!user.is_exempt_checkin,
+      need_report: user.need_report !== undefined ? !!user.need_report : true,
       is_active: user.is_active !== undefined ? !!user.is_active : true,
     });
   };
@@ -163,6 +164,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                 <th className="py-4 px-6 font-medium">Nhóm</th>
                 <th className="py-4 px-6 font-medium text-center">Số phép / năm</th>
                 <th className="py-4 px-6 font-medium text-center">Miễn Check-in</th>
+                <th className="py-4 px-6 font-medium text-center">Báo cáo KPI</th>
                 <th className="py-4 px-6 font-medium text-center">Trạng thái</th>
                 <th className="py-4 px-6 font-medium">Ngày đăng ký</th>
                 <th className="py-4 px-6 font-medium text-right">Hành động</th>
@@ -253,6 +255,24 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                           </span>
                         ) : (
                           <span className="text-slate-500 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
+                        {isEditing ? (
+                          <input
+                            type="checkbox"
+                            className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
+                            checked={editForm.need_report !== false}
+                            onChange={e => setEditForm({ ...editForm, need_report: e.target.checked })}
+                          />
+                        ) : user.need_report !== false ? (
+                          <span className="px-2.5 py-1 bg-cyan-500/15 text-cyan-400 rounded-md text-xs border border-cyan-500/30 font-semibold">
+                            📝 Cần BC
+                          </span>
+                        ) : (
+                          <span className="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-md text-xs border border-amber-500/30 font-semibold">
+                            🚫 Miễn BC
+                          </span>
                         )}
                       </td>
                       <td className="py-4 px-6 text-center">

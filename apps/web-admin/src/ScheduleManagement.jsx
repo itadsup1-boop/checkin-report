@@ -5,16 +5,15 @@ import { CalendarDays, Users, ChevronLeft, ChevronRight, Clock, Coffee, Plus, Pe
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
 const SHIFT_LABELS = {
-  'CA_SANG': { label: 'Ca sớm', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
-  'CA_CHIEU': { label: 'Ca muộn', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+  'CA_SANG': { label: 'Ca 8:30', color: 'text-cyan-400', bg: 'bg-cyan-500/10', border: 'border-cyan-500/20' },
+  'CA_CHIEU': { label: 'Ca 9:30', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
   'FULL_DAY': { label: 'Cả ngày', color: 'text-warning', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
   'OFF': { label: 'Nghỉ', color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
 };
 
 const SHIFT_OPTIONS = [
-  { value: 'CA_SANG', label: 'Ca sớm' },
-  { value: 'CA_CHIEU', label: 'Ca muộn' },
-  { value: 'FULL_DAY', label: 'Cả ngày' },
+  { value: 'CA_SANG', label: 'Ca 8:30' },
+  { value: 'CA_CHIEU', label: 'Ca 9:30' },
   { value: 'OFF', label: 'Nghỉ' },
 ];
 
@@ -183,6 +182,20 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
     setShowAddModal(true);
   };
 
+  const handleSyncSheet = async () => {
+    try {
+      showToast('⏳ Đang đồng bộ Google Sheet...');
+      const res = await axios.post(`${API_URL}/admin/timekeep/sync-sheet`);
+      if (res.data.success) {
+        showToast('✅ ' + res.data.message);
+      } else {
+        showToast('❌ ' + res.data.message);
+      }
+    } catch (err) {
+      showToast('❌ Lỗi: ' + (err.response?.data?.message || err.message));
+    }
+  };
+
   return (
     <>
       {/* Header */}
@@ -191,12 +204,20 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
           <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Lịch Làm Việc</h2>
           <p className="text-slate-400 text-sm">Tổng quan lịch trực theo tuần — Admin có thể chỉnh sửa thủ công</p>
         </div>
-        <button
-          onClick={() => { setAddForm({ user_id: '', date: weekDates[0], shift_type: 'CA_SANG' }); setShowAddModal(true); }}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
-        >
-          <Plus className="w-4 h-4" /> Thêm lịch trực
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSyncSheet}
+            className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-xl shadow-lg shadow-emerald-600/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
+          >
+            📊 Đồng bộ Google Sheet
+          </button>
+          <button
+            onClick={() => { setAddForm({ user_id: '', date: weekDates[0], shift_type: 'CA_SANG' }); setShowAddModal(true); }}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <Plus className="w-4 h-4" /> Thêm lịch trực
+          </button>
+        </div>
       </div>
 
       {/* Week Navigation */}

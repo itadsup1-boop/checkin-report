@@ -18,6 +18,7 @@ import { reportWizard } from './reportWizard.js';
 import { setupWizard } from './setupWizard.js';
 import { requireGroupRole, sendMessageToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
 import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
+import { syncAllTimekeepSheets } from './syncTimekeepSheets.js';
 import multer from 'multer';
 
 // Load environment variables
@@ -752,6 +753,7 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
             }
         }
 
+        syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
         res.json({ success: true, message: 'Lưu lịch tuần thành công!' });
 
     } catch (error) {
@@ -991,6 +993,7 @@ botApp.post('/api/timekeep/checkin/save', uploadCheckin.single('video_file'), as
                  VALUES ($1, $2, $3, $4, $5, 'APPROVED')`,
             [groupId, user.id, currentDate, checkInTime, videoUrl]
         );
+        syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
 
         // 5. Trả về kết quả ngay lập tức để WebApp đóng nhanh chóng
         res.json({ success: true, message: 'Điểm danh thành công!' });
@@ -2256,10 +2259,21 @@ botApp.delete('/api/admin/schedules/:id', async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Không tìm thấy lịch' });
         }
+        syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
         res.json({ success: true });
     } catch (error) {
         console.error('[Admin Schedule DELETE Error]', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Admin đồng bộ Google Sheet Chấm công & Lịch
+botApp.post('/api/admin/timekeep/sync-sheet', async (req, res) => {
+    try {
+        const result = await syncAllTimekeepSheets();
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ success: false, message: e.message });
     }
 });
 
@@ -2330,6 +2344,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
              VALUES ($1, $2, $3, $4, $5, 'APPROVED')`,
             [user.group_id, user.id, currentDate, checkInTime, fileId]
         );
+        syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
 
         // 3. Phản hồi xác nhận điểm danh thành công
         const timestampStr = moment().utcOffset(7).format('HH:mm:ss - DD/MM/YYYY');
