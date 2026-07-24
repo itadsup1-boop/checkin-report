@@ -2277,6 +2277,10 @@ botApp.post('/api/admin/timekeep/sync-sheet', async (req, res) => {
     }
 });
 
+// Cache lưu video gần nhất của từng user để hỗ trợ check-in bằng cách gửi video trước, nhắn tin "checkin" sau
+const recentUserVideos = new Map();
+const VIDEO_CACHE_TTL = 2 * 60 * 1000; // 2 phút
+
 // Handler nhận video check-in trực tiếp hoặc khi trả lời (reply) video cũ kèm text chứa chữ "check"
 bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
     try {
@@ -2284,8 +2288,18 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
             return next();
         }
 
+        const telegram_id = ctx.message.from.id.toString();
         let videoObj = ctx.message.video || ctx.message.video_note;
         let isReplyCheck = false;
+        let isCachedCheck = false;
+
+        // Nếu tin nhắn hiện tại chứa video trực tiếp, lưu vào cache của user
+        if (videoObj) {
+            recentUserVideos.set(telegram_id, {
+                videoObj: videoObj,
+                timestamp: Date.now()
+            });
+        }
 
         // Trường hợp tin nhắn chữ reply lại một video/video_note đã gửi trước đó
         if (!videoObj && ctx.message.reply_to_message) {
@@ -2296,7 +2310,16 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
             }
         }
 
-        // Nếu không có video trực tiếp hoặc video được reply thì bỏ qua
+        // Nếu không có video trực tiếp/reply, kiểm tra cache video gần đây của user
+        if (!videoObj) {
+            const cached = recentUserVideos.get(telegram_id);
+            if (cached && (Date.now() - cached.timestamp) <= VIDEO_CACHE_TTL) {
+                videoObj = cached.videoObj;
+                isCachedCheck = true;
+            }
+        }
+
+        // Nếu không có video trực tiếp, video được reply hay video trong cache thì bỏ qua
         if (!videoObj) {
             return next();
         }
@@ -2306,7 +2329,6 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
             return next();
         }
 
-        const telegram_id = ctx.message.from.id.toString();
         const chat_id = ctx.chat.id.toString();
 
         // 1. Tìm thông tin nhân sự trong nhóm
@@ -2346,9 +2368,18 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         );
         syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
 
+        // Xóa cache video của user sau khi đã ghi nhận check-in
+        recentUserVideos.delete(telegram_id);
+
         // 3. Phản hồi xác nhận điểm danh thành công
         const timestampStr = moment().utcOffset(7).format('HH:mm:ss - DD/MM/YYYY');
-        const replyNote = isReplyCheck ? ' (Xác nhận từ video được trả lời)' : '';
+        let replyNote = '';
+        if (isReplyCheck) {
+            replyNote = ' (Xác nhận từ video được trả lời)';
+        } else if (isCachedCheck) {
+            replyNote = ' (Xác nhận từ video gửi trước đó)';
+        }
+
         await ctx.reply(
             `📸 <b>ĐÃ GHI NHẬN CHECK-IN VIDEO THÀNH CÔNG</b> 📸\n\n` +
             `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
