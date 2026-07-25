@@ -654,7 +654,7 @@
             fetch('/api/schedules/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, cancel_reason: reason })
+                body: JSON.stringify({ id: id, cancel_reason: reason, groupId: getGroupId() })
             })
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
@@ -693,7 +693,8 @@
                     customer_name: name,
                     appointment_time: time,
                     phone: document.getElementById('searchPhone').value,
-                    service: '', sessions: ''
+                    service: '', sessions: '',
+                    groupId: getGroupId()
                 })
             })
                 .then(function (res) { return res.json(); })

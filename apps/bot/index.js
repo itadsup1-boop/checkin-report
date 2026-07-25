@@ -1706,13 +1706,16 @@ botApp.get('/schedule', (req, res) => {
 // SCHEDULE APIs
 botApp.get('/api/schedules', async (req, res) => {
     try {
-        const { date } = req.query; // YYYY-MM-DD
+        const { date, groupId } = req.query; // YYYY-MM-DD
+        if (!groupId) {
+            return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+        }
         const result = await pool.query(
             `SELECT id, employee_name, customer_name, phone, service, appointment_time, status, cancel_reason
              FROM customer_appointments 
-             WHERE DATE(appointment_time) = $1 AND status = 'ACTIVE'
+             WHERE DATE(appointment_time) = $1 AND status = 'ACTIVE' AND group_id = $2
              ORDER BY appointment_time ASC`,
-            [date]
+            [date, groupId]
         );
         res.json({ success: true, data: result.rows });
     } catch (e) {
@@ -1723,13 +1726,16 @@ botApp.get('/api/schedules', async (req, res) => {
 
 botApp.get('/api/schedules/search', async (req, res) => {
     try {
-        const { phone } = req.query;
+        const { phone, groupId } = req.query;
+        if (!groupId) {
+            return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+        }
         const result = await pool.query(
             `SELECT id, employee_name, customer_name, phone, service, sessions, appointment_time, status, cancel_reason 
              FROM customer_appointments 
-             WHERE phone ILIKE $1
+             WHERE phone ILIKE $1 AND group_id = $2
              ORDER BY appointment_time DESC LIMIT 20`,
-            [`%${phone}%`]
+            [`%${phone}%`, groupId]
         );
         res.json({ success: true, data: result.rows });
     } catch (e) {
@@ -1738,17 +1744,18 @@ botApp.get('/api/schedules/search', async (req, res) => {
     }
 });
 
-// Check if a schedule overlaps within 1 hour
-async function checkOverlap(appointmentTimeStr, excludeId = null) {
+// Check if a schedule overlaps within 1 hour (scoped to group)
+async function checkOverlap(appointmentTimeStr, groupId, excludeId = null) {
     const query = `
         SELECT id, employee_name, customer_name, appointment_time 
         FROM customer_appointments 
         WHERE status = 'ACTIVE' 
+        AND group_id = $2
         AND appointment_time BETWEEN ($1::timestamp - INTERVAL '59 minutes') AND ($1::timestamp + INTERVAL '59 minutes')
-        ${excludeId ? 'AND id != $2' : ''}
+        ${excludeId ? 'AND id != $3' : ''}
         LIMIT 1
     `;
-    const params = excludeId ? [appointmentTimeStr, excludeId] : [appointmentTimeStr];
+    const params = excludeId ? [appointmentTimeStr, groupId, excludeId] : [appointmentTimeStr, groupId];
     const res = await pool.query(query, params);
     return res.rows.length > 0 ? res.rows[0] : null;
 }
@@ -1795,7 +1802,7 @@ botApp.post('/api/schedules/add', async (req, res) => {
 
         // Check overlap
         if (!is_urgent) {
-            const overlap = await checkOverlap(appointment_time);
+            const overlap = await checkOverlap(appointment_time, groupId);
             if (overlap) {
                 const timeOverlap = new Date(overlap.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 return res.json({
@@ -1805,7 +1812,13 @@ botApp.post('/api/schedules/add', async (req, res) => {
             }
         }
 
-        const eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUser.id.toString()]);
+        let eRes;
+        if (groupId && groupId !== 'MINI_APP') {
+            eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1', [tgUser.id.toString(), groupId.toString()]);
+        }
+        if (!eRes || eRes.rows.length === 0) {
+            eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUser.id.toString()]);
+        }
         const employeeName = eRes.rows.length > 0 ? eRes.rows[0].full_name : tgUser.first_name;
         const employeeCode = eRes.rows.length > 0 && eRes.rows[0].employee_code ? eRes.rows[0].employee_code : '';
 
@@ -1897,10 +1910,23 @@ botApp.post('/api/schedules/add', async (req, res) => {
 
 botApp.post('/api/schedules/edit', async (req, res) => {
     try {
-        const { id, customer_name, phone, service, sessions, appointment_time } = req.body;
+        const { id, customer_name, phone, service, sessions, appointment_time, groupId } = req.body;
 
-        // Check overlap excluding this id
-        const overlap = await checkOverlap(appointment_time, id);
+        // Lấy group_id từ bản ghi hiện tại để kiểm tra
+        const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
+        if (existingRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
+        }
+        const recordGroupId = existingRes.rows[0]?.group_id;
+
+        if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+            return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền sửa!' });
+        }
+
+        const editGroupId = recordGroupId || groupId || 'MINI_APP';
+
+        // Check overlap excluding this id (scoped to group)
+        const overlap = await checkOverlap(appointment_time, editGroupId, id);
         if (overlap) {
             const timeOverlap = new Date(overlap.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
             return res.json({
@@ -1945,7 +1971,18 @@ botApp.post('/api/schedules/edit', async (req, res) => {
 
 botApp.post('/api/schedules/cancel', async (req, res) => {
     try {
-        const { id, cancel_reason } = req.body;
+        const { id, cancel_reason, groupId } = req.body;
+
+        const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
+        if (existingRes.rows.length === 0) {
+            return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
+        }
+        const recordGroupId = existingRes.rows[0]?.group_id;
+
+        if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+            return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền hủy!' });
+        }
+
         const dbRes = await pool.query(
             `UPDATE customer_appointments SET status = 'CANCELLED', cancel_reason = $1 WHERE id = $2 RETURNING sheet_row_index, employee_name`,
             [cancel_reason, id]

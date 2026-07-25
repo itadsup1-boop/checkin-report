@@ -483,14 +483,16 @@ export function setupKpiBot(bot, botApp) {
         }
 
         try {
+            const chatGroupId = ctx.chat.id.toString();
+
             // Kiểm tra nếu người dùng nhập một con số (Mã ID)
             if (/^\d+$/.test(text)) {
                 const res = await pool.query(
                     `UPDATE customer_appointments 
                  SET status = 'CANCELLED', cancel_reason = 'Xóa qua Telegram'
-                 WHERE id = $1 AND DATE(appointment_time) = CURRENT_DATE 
+                 WHERE id = $1 AND DATE(appointment_time) = CURRENT_DATE AND group_id = $2
                  RETURNING customer_name`,
-                    [parseInt(text)]
+                    [parseInt(text), chatGroupId]
                 );
                 if (res.rowCount > 0) {
                     return ctx.reply(`✅ Đã xóa/hủy thành công lịch của khách: ${res.rows[0].customer_name}`);
@@ -503,8 +505,8 @@ export function setupKpiBot(bot, botApp) {
             const searchRes = await pool.query(
                 `SELECT id, customer_name, phone, appointment_time, employee_name 
              FROM customer_appointments 
-             WHERE customer_name ILIKE $1 AND DATE(appointment_time) = CURRENT_DATE AND status = 'ACTIVE'`,
-                [`%${text}%`]
+             WHERE customer_name ILIKE $1 AND DATE(appointment_time) = CURRENT_DATE AND status = 'ACTIVE' AND group_id = $2`,
+                [`%${text}%`, chatGroupId]
             );
 
             if (searchRes.rowCount === 0) {
@@ -1712,13 +1714,16 @@ export function setupKpiBot(bot, botApp) {
     // SCHEDULE APIs
     botApp.get('/api/schedules', async (req, res) => {
         try {
-            const { date } = req.query; // YYYY-MM-DD
+            const { date, groupId } = req.query; // YYYY-MM-DD
+            if (!groupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+            }
             const result = await pool.query(
                 `SELECT id, employee_name, customer_name, phone, service, appointment_time, status, cancel_reason
              FROM customer_appointments 
-             WHERE DATE(appointment_time) = $1 AND status = 'ACTIVE'
+             WHERE DATE(appointment_time) = $1 AND status = 'ACTIVE' AND group_id = $2
              ORDER BY appointment_time ASC`,
-                [date]
+                [date, groupId]
             );
             res.json({ success: true, data: result.rows });
         } catch (e) {
@@ -1729,13 +1734,16 @@ export function setupKpiBot(bot, botApp) {
 
     botApp.get('/api/schedules/search', async (req, res) => {
         try {
-            const { phone } = req.query;
+            const { phone, groupId } = req.query;
+            if (!groupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+            }
             const result = await pool.query(
                 `SELECT id, employee_name, customer_name, phone, service, sessions, appointment_time, status, cancel_reason 
              FROM customer_appointments 
-             WHERE phone ILIKE $1
+             WHERE phone ILIKE $1 AND group_id = $2
              ORDER BY appointment_time DESC LIMIT 20`,
-                [`%${phone}%`]
+                [`%${phone}%`, groupId]
             );
             res.json({ success: true, data: result.rows });
         } catch (e) {
@@ -1744,17 +1752,18 @@ export function setupKpiBot(bot, botApp) {
         }
     });
 
-    // Check if a schedule overlaps within 1 hour
-    async function checkOverlap(appointmentTimeStr, excludeId = null) {
+    // Check if a schedule overlaps within 1 hour (scoped to group)
+    async function checkOverlap(appointmentTimeStr, groupId, excludeId = null) {
         const query = `
         SELECT id, employee_name, customer_name, appointment_time 
         FROM customer_appointments 
         WHERE status = 'ACTIVE' 
+        AND group_id = $2
         AND appointment_time BETWEEN ($1::timestamp - INTERVAL '59 minutes') AND ($1::timestamp + INTERVAL '59 minutes')
-        ${excludeId ? 'AND id != $2' : ''}
+        ${excludeId ? 'AND id != $3' : ''}
         LIMIT 1
     `;
-        const params = excludeId ? [appointmentTimeStr, excludeId] : [appointmentTimeStr];
+        const params = excludeId ? [appointmentTimeStr, groupId, excludeId] : [appointmentTimeStr, groupId];
         const res = await pool.query(query, params);
         return res.rows.length > 0 ? res.rows[0] : null;
     }
@@ -1795,13 +1804,23 @@ export function setupKpiBot(bot, botApp) {
                 const parts = startParam.split('_');
                 if (parts.length >= 3) groupId = parts[1];
             }
+            // Fallback: nếu vẫn là MINI_APP, thử lấy group từ employee
+            if (groupId === 'MINI_APP' && userStr) {
+                try {
+                    const tgUserTmp = JSON.parse(decodeURIComponent(userStr));
+                    const empGroupRes = await pool.query('SELECT telegram_group_id FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUserTmp.id.toString()]);
+                    if (empGroupRes.rows.length > 0 && empGroupRes.rows[0].telegram_group_id) {
+                        groupId = empGroupRes.rows[0].telegram_group_id;
+                    }
+                } catch (e) { /* ignore parse error */ }
+            }
 
             if (!userStr) return res.status(401).json({ success: false, error: "Unauthorized" });
             const tgUser = JSON.parse(decodeURIComponent(userStr));
 
             // Check overlap
             if (!is_urgent) {
-                const overlap = await checkOverlap(appointment_time);
+                const overlap = await checkOverlap(appointment_time, groupId);
                 if (overlap) {
                     const timeOverlap = new Date(overlap.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                     return res.json({
@@ -1811,7 +1830,13 @@ export function setupKpiBot(bot, botApp) {
                 }
             }
 
-            const eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUser.id.toString()]);
+            let eRes;
+            if (groupId && groupId !== 'MINI_APP') {
+                eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1', [tgUser.id.toString(), groupId.toString()]);
+            }
+            if (!eRes || eRes.rows.length === 0) {
+                eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUser.id.toString()]);
+            }
             const employeeName = eRes.rows.length > 0 ? eRes.rows[0].full_name : tgUser.first_name;
             const employeeCode = eRes.rows.length > 0 && eRes.rows[0].employee_code ? eRes.rows[0].employee_code : '';
 
@@ -1911,10 +1936,24 @@ export function setupKpiBot(bot, botApp) {
 
     botApp.post('/api/schedules/edit', async (req, res) => {
         try {
-            const { id, customer_name, phone, service, sessions, appointment_time } = req.body;
+            const { id, customer_name, phone, service, sessions, appointment_time, groupId } = req.body;
 
-            // Check overlap excluding this id
-            const overlap = await checkOverlap(appointment_time, id);
+            // Lấy group_id từ bản ghi hiện tại để kiểm tra
+            const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
+            if (existingRes.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
+            }
+            const recordGroupId = existingRes.rows[0]?.group_id;
+
+            // Kiểm tra phân quyền group nếu truyền groupId từ client
+            if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+                return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền sửa!' });
+            }
+
+            const editGroupId = recordGroupId || groupId || 'MINI_APP';
+
+            // Check overlap excluding this id (scoped to group)
+            const overlap = await checkOverlap(appointment_time, editGroupId, id);
             if (overlap) {
                 const timeOverlap = new Date(overlap.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 return res.json({
@@ -1959,7 +1998,18 @@ export function setupKpiBot(bot, botApp) {
 
     botApp.post('/api/schedules/cancel', async (req, res) => {
         try {
-            const { id, cancel_reason } = req.body;
+            const { id, cancel_reason, groupId } = req.body;
+
+            const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
+            if (existingRes.rows.length === 0) {
+                return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
+            }
+            const recordGroupId = existingRes.rows[0]?.group_id;
+
+            if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+                return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền hủy!' });
+            }
+
             const dbRes = await pool.query(
                 `UPDATE customer_appointments SET status = 'CANCELLED', cancel_reason = $1 WHERE id = $2 RETURNING sheet_row_index, employee_name`,
                 [cancel_reason, id]
@@ -2286,23 +2336,25 @@ ${lichKhach}`;
             if (groupsRes.rows.length === 0) return;
 
             const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('vi-VN');
-            const apsRes = await pool.query(
-                `SELECT * 
-             FROM customer_appointments 
-             WHERE DATE(appointment_time) = CURRENT_DATE + INTERVAL '1 day' AND status = 'ACTIVE'
-             ORDER BY appointment_time ASC`
-            );
-            if (apsRes.rows.length === 0) return;
-
-            let msg = `🌅 <b>BÁO CÁO LỊCH KHÁCH HÀNG NGÀY MAI (${tomorrowStr})</b>\n\n`;
-            apsRes.rows.forEach(a => {
-                const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
-                msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})\n`;
-                msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
-            });
 
             for (const g of groupsRes.rows) {
+                const apsRes = await pool.query(
+                    `SELECT * 
+                 FROM customer_appointments 
+                 WHERE DATE(appointment_time) = CURRENT_DATE + INTERVAL '1 day' AND status = 'ACTIVE' AND group_id = $1
+                 ORDER BY appointment_time ASC`,
+                    [g.group_id]
+                );
+                if (apsRes.rows.length === 0) continue;
+
+                let msg = `🌅 <b>BÁO CÁO LỊCH KHÁCH HÀNG NGÀY MAI (${tomorrowStr})</b>\n\n`;
+                apsRes.rows.forEach(a => {
+                    const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                    msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})\n`;
+                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+                });
+
                 await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_tomorrow_report');
             }
         } catch (e) {
@@ -2321,28 +2373,29 @@ ${lichKhach}`;
         `);
             if (groupsRes.rows.length === 0) return;
 
-            const apsRes = await pool.query(
-                `SELECT * 
-             FROM customer_appointments 
-             WHERE DATE(appointment_time) = CURRENT_DATE
-             ORDER BY appointment_time ASC`
-            );
-            if (apsRes.rows.length === 0) return;
-
-            let msg = `🌙 <b>TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY (${new Date().toLocaleDateString('vi-VN')})</b>\n\n`;
-            apsRes.rows.forEach(a => {
-                const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-                const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
-                let statusText = '';
-                if (a.status === 'ACTIVE') statusText = ' (Chờ khách)';
-                else if (a.status === 'ARRIVED') statusText = ' (Đã đến)';
-                else if (a.status === 'CANCELLED') statusText = ' (Đã hủy)';
-
-                msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})${statusText}\n`;
-                msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
-            });
-
             for (const g of groupsRes.rows) {
+                const apsRes = await pool.query(
+                    `SELECT * 
+                 FROM customer_appointments 
+                 WHERE DATE(appointment_time) = CURRENT_DATE AND group_id = $1
+                 ORDER BY appointment_time ASC`,
+                    [g.group_id]
+                );
+                if (apsRes.rows.length === 0) continue;
+
+                let msg = `🌙 <b>TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY (${new Date().toLocaleDateString('vi-VN')})</b>\n\n`;
+                apsRes.rows.forEach(a => {
+                    const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                    let statusText = '';
+                    if (a.status === 'ACTIVE') statusText = ' (Chờ khách)';
+                    else if (a.status === 'ARRIVED') statusText = ' (Đã đến)';
+                    else if (a.status === 'CANCELLED') statusText = ' (Đã hủy)';
+
+                    msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})${statusText}\n`;
+                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+                });
+
                 await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_daily_summary');
             }
         } catch (e) {

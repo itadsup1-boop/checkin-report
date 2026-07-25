@@ -2277,7 +2277,7 @@ botApp.post('/api/admin/timekeep/sync-sheet', async (req, res) => {
     }
 });
 
-// Cache lưu video gần nhất của từng user để hỗ trợ check-in bằng cách gửi video trước, nhắn tin "checkin" sau
+// Cache lưu video gần nhất của từng user để hỗ trợ check-in bằng cách gửi video trước, nhắn tin "checkin" sau (Chỉ áp dụng cho chính user đó, chống check-in hộ)
 const recentUserVideos = new Map();
 const VIDEO_CACHE_TTL = 2 * 60 * 1000; // 2 phút
 
@@ -2293,7 +2293,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         let isReplyCheck = false;
         let isCachedCheck = false;
 
-        // Nếu tin nhắn hiện tại chứa video trực tiếp, lưu vào cache của user
+        // Nếu tin nhắn hiện tại chứa video trực tiếp từ chính user này, lưu vào cache cá nhân của user đó
         if (videoObj) {
             recentUserVideos.set(telegram_id, {
                 videoObj: videoObj,
@@ -2301,16 +2301,19 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
             });
         }
 
-        // Trường hợp tin nhắn chữ reply lại một video/video_note đã gửi trước đó
+        // Trường hợp tin nhắn chữ reply lại một video/video_note đã gửi trước đó từ CHÍNH USER ĐÓ
         if (!videoObj && ctx.message.reply_to_message) {
             const repliedMsg = ctx.message.reply_to_message;
-            videoObj = repliedMsg.video || repliedMsg.video_note;
-            if (videoObj) {
-                isReplyCheck = true;
+            // Chỉ chấp nhận nếu người được reply chính là người đang nhắn tin (chống reply video của người khác để check-in hộ)
+            if (repliedMsg.from && repliedMsg.from.id.toString() === telegram_id) {
+                videoObj = repliedMsg.video || repliedMsg.video_note;
+                if (videoObj) {
+                    isReplyCheck = true;
+                }
             }
         }
 
-        // Nếu không có video trực tiếp/reply, kiểm tra cache video gần đây của user
+        // Nếu không có video trực tiếp/reply chính chủ, kiểm tra cache video cá nhân gần đây của CHÍNH USER ĐÓ
         if (!videoObj) {
             const cached = recentUserVideos.get(telegram_id);
             if (cached && (Date.now() - cached.timestamp) <= VIDEO_CACHE_TTL) {
@@ -2319,7 +2322,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
             }
         }
 
-        // Nếu không có video trực tiếp, video được reply hay video trong cache thì bỏ qua
+        // Nếu không tìm thấy video hợp lệ của chính user này thì bỏ qua (tuyệt đối không cho điểm danh hộ)
         if (!videoObj) {
             return next();
         }
@@ -2328,8 +2331,6 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         if (!textOrCaption.toLowerCase().includes('check')) {
             return next();
         }
-
-        const chat_id = ctx.chat.id.toString();
 
         // 1. Tìm thông tin nhân sự trong nhóm
         let userRes = await pool.query(

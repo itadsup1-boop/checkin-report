@@ -81,7 +81,7 @@ async function syncMasterSheet(doc, todayStr) {
             e.full_name,
             e.role,
             g.group_name,
-            COALESCE(s.date, c.date, $1::date)::text AS date,
+            d.date::date::text AS date,
             s.shift_type,
             s.updated_by,
             c.check_in_time,
@@ -89,13 +89,14 @@ async function syncMasterSheet(doc, todayStr) {
             c.admin_note
         FROM employees e
         LEFT JOIN telegram_groups g ON e.telegram_group_id = g.telegram_group_id
-        LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = $1::date
-        LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = $1::date
+        CROSS JOIN generate_series('2026-07-23'::date, $1::date, '1 day'::interval) d(date)
+        LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
+        LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
         WHERE e.is_active = true 
           AND e.full_name NOT LIKE '/%' 
           AND e.full_name != 'tester'
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
-        ORDER BY g.group_name ASC, e.full_name ASC
+        ORDER BY d.date::date ASC, g.group_name ASC, e.full_name ASC
     `;
     const res = await pool.query(query, [todayStr]);
 
@@ -164,16 +165,18 @@ async function syncIndividualSheets(doc, todayStr) {
 
             const detailQuery = `
                 SELECT 
-                    COALESCE(s.date, c.date, $2::date)::text AS date,
+                    d.date::date::text AS date,
                     s.shift_type, 
                     s.updated_by,
                     c.check_in_time, 
                     c.status AS checkin_status, 
                     c.admin_note
                 FROM employees e
-                LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = $2::date
-                LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = $2::date
+                CROSS JOIN generate_series('2026-07-23'::date, $2::date, '1 day'::interval) d(date)
+                LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
+                LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
                 WHERE e.id = $1
+                ORDER BY d.date::date ASC
             `;
             const detailRes = await pool.query(detailQuery, [emp.id, todayStr]);
 
