@@ -62,6 +62,20 @@ export async function requireGroupRole(ctx, requiredRole) {
  * @returns {Promise<object|null>} Trả về message object nếu gửi thành công, hoặc null nếu bị chặn/lỗi
  */
 export async function sendMessageToRoleGroup(bot, groupId, requiredRole, message, options = {}, source = 'unknown') {
+    if (requiredRole === 'report' && process.env.LOG_KPI_REPORT_GROUP_ID) {
+        const logGroupId = String(process.env.LOG_KPI_REPORT_GROUP_ID);
+        if (logGroupId && logGroupId !== String(groupId)) {
+            try {
+                const tg = bot.telegram || bot;
+                tg.sendMessage(logGroupId, message, options).catch(err => {
+                    console.error(`[LOG_GROUP_FORWARD_ERR] source=${source}:`, err.message);
+                });
+            } catch (e) {
+                console.error(`[LOG_GROUP_FORWARD_EXC] source=${source}:`, e.message);
+            }
+        }
+    }
+
     if (!groupId) {
         console.warn(`[Telegram Send] source=${source} group_id=null required_role=${requiredRole} status=blocked reason=no_group_id`);
         return null;

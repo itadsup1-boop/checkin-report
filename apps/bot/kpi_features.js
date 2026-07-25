@@ -1715,16 +1715,19 @@ export function setupKpiBot(bot, botApp) {
     botApp.get('/api/schedules', async (req, res) => {
         try {
             const { date, groupId } = req.query; // YYYY-MM-DD
-            if (!groupId) {
-                return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+            let query = `SELECT id, employee_name, customer_name, phone, service, sessions, session_type, today_incurred, revenue, appointment_time, status, cancel_reason
+                         FROM customer_appointments 
+                         WHERE (DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = $1::date OR DATE(appointment_time) = $1::date)`;
+            const params = [date];
+
+            if (groupId && groupId !== 'MINI_APP') {
+                query += ` AND (group_id = $2 OR group_id = 'MINI_APP' OR group_id IS NULL)`;
+                params.push(groupId);
             }
-            const result = await pool.query(
-                `SELECT id, employee_name, customer_name, phone, service, appointment_time, status, cancel_reason
-             FROM customer_appointments 
-             WHERE DATE(appointment_time) = $1 AND status = 'ACTIVE' AND group_id = $2
-             ORDER BY appointment_time ASC`,
-                [date, groupId]
-            );
+
+            query += ` ORDER BY appointment_time ASC`;
+
+            const result = await pool.query(query, params);
             res.json({ success: true, data: result.rows });
         } catch (e) {
             console.error(e);
@@ -1787,7 +1790,7 @@ export function setupKpiBot(bot, botApp) {
 
     botApp.post('/api/schedules/add', async (req, res) => {
         try {
-            const { initData, customer_name, phone, service, sessions, revenue, appointment_time, is_urgent } = req.body;
+            const { initData, customer_name, phone, service, sessions, session_type, revenue, today_incurred, appointment_time, is_urgent } = req.body;
 
             if (sessions && !isValidSessions(sessions)) {
                 return res.json({
@@ -1841,12 +1844,13 @@ export function setupKpiBot(bot, botApp) {
             const employeeCode = eRes.rows.length > 0 && eRes.rows[0].employee_code ? eRes.rows[0].employee_code : '';
 
             const isRemindedVal = is_urgent ? true : false;
+            const sessionTypeVal = session_type || 'Bán';
 
             // Insert
             const insertRes = await pool.query(
-                `INSERT INTO customer_appointments (telegram_id, employee_name, group_id, customer_name, phone, service, sessions, revenue, appointment_time, is_reminded, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'ACTIVE') RETURNING id`,
-                [tgUser.id.toString(), employeeName, groupId, customer_name, phone, service, sessions, revenue, appointment_time, isRemindedVal]
+                `INSERT INTO customer_appointments (telegram_id, employee_name, group_id, customer_name, phone, service, sessions, session_type, revenue, today_incurred, appointment_time, is_reminded, status)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'ACTIVE') RETURNING id`,
+                [tgUser.id.toString(), employeeName, groupId, customer_name, phone, service, sessions, sessionTypeVal, revenue, today_incurred || null, appointment_time, isRemindedVal]
             );
             const newId = insertRes.rows[0].id;
 
@@ -1855,11 +1859,6 @@ export function setupKpiBot(bot, botApp) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
                     await customerDoc.loadInfo();
                     const headers = ['Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền'];
-                    // --- OLD CODE COMMENTED OUT B/C SEPARATE TABS FOR EACH EMP ---
-                    // let sheet = customerDoc.sheetsByTitle['Lịch Khách Hàng'];
-                    // if (!sheet) sheet = await customerDoc.addSheet({ headerValues: headers, title: 'Lịch Khách Hàng' });
-                    // else await sheet.setHeaderRow(headers);
-
                     let sheet = customerDoc.sheetsByTitle[employeeName];
                     if (!sheet) sheet = await customerDoc.addSheet({ headerValues: headers, title: employeeName });
                     else await sheet.setHeaderRow(headers);
@@ -1901,10 +1900,14 @@ export function setupKpiBot(bot, botApp) {
                     }
                     const timeStr = new Date(appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                     const revenueLine = revenue ? `💰 Thu tiền: ${revenue}\n` : '';
+                    const sessionTypeLine = sessionTypeVal ? `🏷 Dạng buổi: <b>${sessionTypeVal}</b>\n` : '';
+                    const incurredLine = today_incurred ? `📝 Phát sinh: ${today_incurred}\n` : '';
                     const msg = `🚨 <b>BÁO ĐỘNG LỊCH KHÁCH ĐI LUÔN</b> 🚨\n\n` +
                         `⏰ Giờ hẹn: <b>${timeStr}</b>\n` +
                         `👤 Khách hàng: <b>${customer_name}</b> (SĐT: ${phone})\n` +
                         `💇 Dịch vụ: ${service || ''} - Buổi: ${sessions || ''}\n` +
+                        sessionTypeLine +
+                        incurredLine +
                         revenueLine +
                         `💼 Nhân viên chốt: <b>${employeeName}</b>\n\n` +
                         `👉 <i>KTV vui lòng chuẩn bị đón khách</i>`;
@@ -2351,8 +2354,10 @@ ${lichKhach}`;
                 apsRes.rows.forEach(a => {
                     const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                     const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                    const sessionTypeStr = a.session_type ? ` - Dạng buổi: ${a.session_type}` : '';
+                    const incurredStr = a.today_incurred ? `\n   └ 📝 Phát sinh: ${a.today_incurred}` : '';
                     msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})\n`;
-                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${sessionTypeStr}${revenueStr}${incurredStr}\n\n`;
                 });
 
                 await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_tomorrow_report');
@@ -2387,19 +2392,112 @@ ${lichKhach}`;
                 apsRes.rows.forEach(a => {
                     const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                     const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                    const sessionTypeStr = a.session_type ? ` - Dạng buổi: ${a.session_type}` : '';
+                    const incurredStr = a.today_incurred ? `\n   └ 📝 Phát sinh: ${a.today_incurred}` : '';
                     let statusText = '';
                     if (a.status === 'ACTIVE') statusText = ' (Chờ khách)';
                     else if (a.status === 'ARRIVED') statusText = ' (Đã đến)';
                     else if (a.status === 'CANCELLED') statusText = ' (Đã hủy)';
 
                     msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})${statusText}\n`;
-                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${sessionTypeStr}${revenueStr}${incurredStr}\n\n`;
                 });
 
                 await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_daily_summary');
             }
         } catch (e) {
             console.error('Lỗi cron 22h đêm lịch khách:', e);
+        }
+    });
+
+    // CRON: 24h đêm (00:00) tổng hợp báo cáo vào nhóm LOG_KPI_REPORT_GROUP_ID và kiểm tra công tour
+    cron.schedule('0 0 * * *', async () => {
+        try {
+            const logGroupId = process.env.LOG_KPI_REPORT_GROUP_ID;
+            if (!logGroupId) return;
+
+            const apsRes = await pool.query(
+                `SELECT * 
+                 FROM customer_appointments 
+                 WHERE (DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day'
+                    OR DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day')
+                 ORDER BY id ASC`
+            );
+
+            const dailyReportsRes = await pool.query(
+                `SELECT dr.*, e.full_name, e.employee_code
+                 FROM daily_reports dr
+                 LEFT JOIN employees e ON dr.employee_id = e.id
+                 WHERE dr.report_date = CURRENT_DATE - INTERVAL '1 day'
+                 ORDER BY dr.id ASC`
+            );
+
+            const items = apsRes.rows;
+            const dailyReports = dailyReportsRes.rows;
+            const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('vi-VN');
+            let summaryMsg = `📋 <b>TỔNG HỢP BÁO CÁO TOÀN BỘ TRONG NGÀY ${yesterdayStr} (CHỐT 24H)</b>\n\n`;
+            let incompleteCount = 0;
+
+            if (items.length === 0 && dailyReports.length === 0) {
+                summaryMsg += `<i>Hôm nay không có báo cáo nào trên hệ thống.</i>`;
+            } else {
+                if (items.length > 0) {
+                    summaryMsg += `📅 <b>DẠNG LỊCH KHÁCH HÀNG:</b>\n`;
+                    items.forEach((item, index) => {
+                        const missingFields = [];
+                        if (!item.customer_name || !String(item.customer_name).trim()) missingFields.push('Tên khách');
+                        if (!item.phone || !String(item.phone).trim()) missingFields.push('SĐT');
+                        if (!item.service || !String(item.service).trim()) missingFields.push('Dịch vụ');
+                        if (!item.sessions || !String(item.sessions).trim()) missingFields.push('Buổi làm');
+                        if (!item.revenue || !String(item.revenue).trim()) missingFields.push('Thu tiền');
+                        if (!item.session_type || !String(item.session_type).trim()) missingFields.push('Dạng buổi');
+                        
+                        // Kiểm tra thiếu ảnh chứng thực (is_photo_debt = true hoặc không có proof_image/proof_url)
+                        if (item.is_photo_debt === true || (!item.proof_image && !item.proof_url)) {
+                            missingFields.push('Ảnh chứng thực');
+                        }
+
+                        const isIncomplete = missingFields.length > 0;
+                        if (isIncomplete) incompleteCount++;
+
+                        const statusBadge = isIncomplete 
+                            ? `❌ <b>Chưa đủ công tour</b> (Thiếu: ${missingFields.join(', ')})` 
+                            : `✅ Đầy đủ thông tin`;
+
+                        const sessionTypeStr = item.session_type ? ` - Dạng buổi: <b>${item.session_type}</b>` : '';
+                        const incurredStr = item.today_incurred ? `\n   └ 📝 Phát sinh: ${item.today_incurred}` : '';
+
+                        summaryMsg += `${index + 1}. Khách: <b>${item.customer_name || 'N/A'}</b> (${item.phone || 'N/A'}) | NV: <b>${item.employee_name || 'N/A'}</b>\n`;
+                        summaryMsg += `   └ DV: ${item.service || 'N/A'} - Ca: ${item.sessions || 'N/A'}${sessionTypeStr} - Thu tiền: ${item.revenue || 'N/A'}${incurredStr}\n`;
+                        summaryMsg += `   └ 📌 Kết quả: ${statusBadge}\n\n`;
+                    });
+                }
+
+                if (dailyReports.length > 0) {
+                    summaryMsg += `📝 <b>DẠNG BÁO CÁO KPI HÀNG NGÀY:</b>\n`;
+                    dailyReports.forEach((dr, index) => {
+                        let meta = {};
+                        try { meta = typeof dr.metadata === 'string' ? JSON.parse(dr.metadata) : (dr.metadata || {}); } catch(e) {}
+                        
+                        let statusBadge = '✅ Đã gửi báo cáo';
+                        if (dr.status === 'OFF') {
+                            statusBadge = '🛌 Xin nghỉ phép';
+                        } else if (meta.debt_photos && meta.debt_photos > 0) {
+                            statusBadge = `🚨 Nợ ${meta.debt_photos} ảnh minh chứng`;
+                        }
+
+                        summaryMsg += `${index + 1}. NV: <b>${dr.full_name || 'N/A'}</b> (Mã: ${dr.employee_code || 'N/A'})\n`;
+                        summaryMsg += `   └ KPI nộp: ${dr.kpi_actual}/${dr.kpi_required} | Trạng thái: ${statusBadge}\n\n`;
+                    });
+                }
+
+                summaryMsg += `📊 <b>Tổng số lịch khách:</b> ${items.length} | ❌ <b>Chưa đủ công tour:</b> ${incompleteCount}`;
+            }
+
+            const tg = bot.telegram || bot;
+            await tg.sendMessage(String(logGroupId), summaryMsg, { parse_mode: 'HTML' });
+        } catch (e) {
+            console.error('Lỗi cron 24h chốt công tour nhóm log:', e);
         }
     });
 
@@ -2425,10 +2523,14 @@ ${lichKhach}`;
             for (const a of apsRes.rows) {
                 const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                 const revenueLine = a.revenue ? `💰 Thu tiền: ${a.revenue}\n` : '';
+                const sessionTypeLine = a.session_type ? `🏷 Dạng buổi: <b>${a.session_type}</b>\n` : '';
+                const incurredLine = a.today_incurred ? `📝 Phát sinh: ${a.today_incurred}\n` : '';
                 const msg = `🚨 <b>BÁO ĐỘNG LỊCH KHÁCH HÀNG ĐẾN GIỜ</b> 🚨\n\n` +
                     `⏰ Giờ hẹn: <b>${timeStr}</b>\n` +
                     `👤 Khách hàng: <b>${a.customer_name}</b> (SĐT: ${a.phone})\n` +
                     `💇 Dịch vụ: ${a.service} - Buổi: ${a.sessions}\n` +
+                    sessionTypeLine +
+                    incurredLine +
                     revenueLine +
                     `💼 Nhân viên phụ trách: <b>${a.employee_name}</b>\n\n` +
                     `👉 <i>Vui lòng chuẩn bị đón khách!</i>`;
