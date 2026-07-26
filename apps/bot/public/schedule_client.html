@@ -419,9 +419,30 @@
     <!-- Load Telegram SDK AFTER body content, non-blocking -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
+        function getSchedulePayload() {
+            var urlParams = new URLSearchParams(window.location.search);
+            var payload = urlParams.get('payload') || '';
+
+            if (!payload && window.Telegram && window.Telegram.WebApp) {
+                payload = window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.start_param
+                    ? window.Telegram.WebApp.initDataUnsafe.start_param
+                    : '';
+            }
+
+            return payload;
+        }
+
         function getGroupId() {
             var urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('chat_id') || '';
+            var directGroupId = urlParams.get('chat_id');
+            if (directGroupId) return directGroupId;
+
+            var parts = getSchedulePayload().split('_');
+            if (parts.length >= 2 && (parts[0] === 'scheduleclient' || parts[0] === 'schedule')) {
+                return parts[1];
+            }
+
+            return '';
         }
 
         // ===== SAFE TELEGRAM INIT =====
@@ -465,7 +486,7 @@
               loader.style.display = 'block';
   
               var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-              fetch('/api/schedules?date=' + date + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+              fetch('/api/schedules?date=' + date + '&groupId=' + encodeURIComponent(getGroupId()) + '&telegram_id=' + tgId)
                   .then(function (res) { return res.json(); })
                 .then(function (data) {
                     loader.style.display = 'none';
@@ -606,7 +627,7 @@
             container.innerHTML = 'Đang tìm...';
 
             var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + encodeURIComponent(getGroupId()) + '&telegram_id=' + tgId)
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
                     if (!data.data || data.data.length === 0) {

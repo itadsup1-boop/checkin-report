@@ -810,6 +810,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
                     <option value="">(Không xác định)</option>
                     <option value="timekeep">Bot chấm công</option>
                     <option value="report">Bot báo cáo</option>
+                    <option value="report_tour">Bot lịch khách (Tour)</option>
                   </select>
                 </div>
                 <div className="flex flex-col">

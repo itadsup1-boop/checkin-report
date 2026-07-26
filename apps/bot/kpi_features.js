@@ -75,7 +75,7 @@ export function setupKpiBot(bot, botApp) {
     const kpiComposer = new Composer();
 
     kpiComposer.use(async (ctx, next) => {
-        if (!(await requireGroupRole(ctx, 'report'))) return;
+        if (!(await requireGroupRole(ctx, ['report', 'report_tour']))) return;
         return next();
     });
 
@@ -317,12 +317,20 @@ export function setupKpiBot(bot, botApp) {
                 if (remindTime === currentTimeString) {
                     console.log(`⏰ Đến giờ nhắc nhở cho nhóm: ${group.group_name}`);
 
-                    const todayStr = new Date().toISOString().split('T')[0];
+                    const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                     const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
-                    const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
-                    const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
+                    
+                    const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE report_date = $1`, [todayStr]);
+                    const offRes = await pool.query(`SELECT user_id FROM tk_schedules WHERE date = $1 AND UPPER(shift_type) = 'OFF'`, [todayStr]);
+                    const leaveRes = await pool.query(`SELECT user_id FROM tk_leave_requests WHERE date = $1 AND status IN ('approved', 'pending')`, [todayStr]);
 
-                    const missing = empRes.rows.filter(e => !reportedIds.has(e.id));
+                    const exemptedOrReportedIds = new Set([
+                        ...repRes.rows.map(r => r.employee_id),
+                        ...offRes.rows.map(r => r.user_id),
+                        ...leaveRes.rows.map(r => r.user_id)
+                    ]);
+
+                    const missing = empRes.rows.filter(e => !exemptedOrReportedIds.has(e.id));
                     if (missing.length > 0) {
                         const names = missing.map(m => m.full_name).join(', ');
                         await sendMessageToRoleGroup(bot, group.telegram_group_id, 'report', `⚠️ ĐÃ ĐẾN GIỜ BÁO CÁO KPI!\nDanh sách chưa nộp: ${names}\n⏰ Các bạn có đúng 2 tiếng nữa để nộp trước khi hệ thống chốt phạt tiền!`, {}, 'kpi_daily_reminder');
@@ -342,12 +350,20 @@ export function setupKpiBot(bot, botApp) {
                     const penaltyTimeString = `${penaltyHour}:${penaltyMinute}:00`;
 
                     if (currentTimeString === penaltyTimeString) {
-                        const todayStr = new Date().toISOString().split('T')[0];
+                        const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                         const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
-                        const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
-                        const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
+                        
+                        const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE report_date = $1`, [todayStr]);
+                        const offRes = await pool.query(`SELECT user_id FROM tk_schedules WHERE date = $1 AND UPPER(shift_type) = 'OFF'`, [todayStr]);
+                        const leaveRes = await pool.query(`SELECT user_id FROM tk_leave_requests WHERE date = $1 AND status IN ('approved', 'pending')`, [todayStr]);
 
-                        const missing = empRes.rows.filter(e => !reportedIds.has(e.id));
+                        const exemptedOrReportedIds = new Set([
+                            ...repRes.rows.map(r => r.employee_id),
+                            ...offRes.rows.map(r => r.user_id),
+                            ...leaveRes.rows.map(r => r.user_id)
+                        ]);
+
+                        const missing = empRes.rows.filter(e => !exemptedOrReportedIds.has(e.id));
                         if (missing.length > 0) {
                             const parsedAmount = parseFloat(group.penalty_missing_report);
                             const amount = isNaN(parsedAmount) ? 100000 : parsedAmount;
@@ -1715,19 +1731,17 @@ export function setupKpiBot(bot, botApp) {
     botApp.get('/api/schedules', async (req, res) => {
         try {
             const { date, groupId } = req.query; // YYYY-MM-DD
-            let query = `SELECT id, employee_name, customer_name, phone, service, sessions, session_type, today_incurred, revenue, appointment_time, status, cancel_reason
-                         FROM customer_appointments 
-                         WHERE (DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = $1::date OR DATE(appointment_time) = $1::date)`;
-            const params = [date];
-
-            if (groupId && groupId !== 'MINI_APP') {
-                query += ` AND (group_id = $2 OR group_id = 'MINI_APP' OR group_id IS NULL)`;
-                params.push(groupId);
+            if (!groupId || groupId === 'MINI_APP') {
+                return res.status(400).json({ success: false, error: 'Missing valid groupId' });
             }
-
-            query += ` ORDER BY appointment_time ASC`;
-
-            const result = await pool.query(query, params);
+            const result = await pool.query(
+                `SELECT id, employee_name, customer_name, phone, service, sessions, session_type, today_incurred, revenue, appointment_time, status, cancel_reason
+                 FROM customer_appointments
+                 WHERE (DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = $1::date OR DATE(appointment_time) = $1::date)
+                   AND group_id = $2
+                 ORDER BY appointment_time ASC`,
+                [date, groupId.toString()]
+            );
             res.json({ success: true, data: result.rows });
         } catch (e) {
             console.error(e);
@@ -1790,7 +1804,7 @@ export function setupKpiBot(bot, botApp) {
 
     botApp.post('/api/schedules/add', async (req, res) => {
         try {
-            const { initData, customer_name, phone, service, sessions, session_type, revenue, today_incurred, appointment_time, is_urgent } = req.body;
+            const { initData, customer_name, phone, service, sessions, session_type, revenue, today_incurred, appointment_time, is_urgent, groupId: requestedGroupId } = req.body;
 
             if (sessions && !isValidSessions(sessions)) {
                 return res.json({
@@ -1802,20 +1816,20 @@ export function setupKpiBot(bot, botApp) {
             const parsedData = new URLSearchParams(initData);
             let userStr = parsedData.get('user');
             const startParam = parsedData.get('start_param') || '';
-            let groupId = 'MINI_APP';
-            if (startParam.startsWith('schedule_')) {
+            let groupId = '';
+            if (startParam.startsWith('schedule_') || startParam.startsWith('scheduleclient_')) {
                 const parts = startParam.split('_');
-                if (parts.length >= 3) groupId = parts[1];
+                if (parts.length >= 2) groupId = parts[1];
             }
             // Fallback: nếu vẫn là MINI_APP, thử lấy group từ employee
-            if (groupId === 'MINI_APP' && userStr) {
-                try {
-                    const tgUserTmp = JSON.parse(decodeURIComponent(userStr));
-                    const empGroupRes = await pool.query('SELECT telegram_group_id FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUserTmp.id.toString()]);
-                    if (empGroupRes.rows.length > 0 && empGroupRes.rows[0].telegram_group_id) {
-                        groupId = empGroupRes.rows[0].telegram_group_id;
-                    }
-                } catch (e) { /* ignore parse error */ }
+            if (!groupId && requestedGroupId) {
+                groupId = requestedGroupId.toString();
+            }
+            if (!groupId || groupId === 'MINI_APP') {
+                return res.status(400).json({ success: false, error: 'Cannot determine schedule group' });
+            }
+            if (requestedGroupId && requestedGroupId.toString() !== groupId) {
+                return res.status(403).json({ success: false, error: 'Schedule group does not match context' });
             }
 
             if (!userStr) return res.status(401).json({ success: false, error: "Unauthorized" });
@@ -1833,12 +1847,12 @@ export function setupKpiBot(bot, botApp) {
                 }
             }
 
-            let eRes;
-            if (groupId && groupId !== 'MINI_APP') {
-                eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1', [tgUser.id.toString(), groupId.toString()]);
-            }
-            if (!eRes || eRes.rows.length === 0) {
-                eRes = await pool.query('SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 LIMIT 1', [tgUser.id.toString()]);
+            const eRes = await pool.query(
+                'SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1',
+                [tgUser.id.toString(), groupId]
+            );
+            if (eRes.rows.length === 0) {
+                return res.status(403).json({ success: false, error: 'Your account does not belong to this schedule group' });
             }
             const employeeName = eRes.rows.length > 0 ? eRes.rows[0].full_name : tgUser.first_name;
             const employeeCode = eRes.rows.length > 0 && eRes.rows[0].employee_code ? eRes.rows[0].employee_code : '';
@@ -1854,49 +1868,56 @@ export function setupKpiBot(bot, botApp) {
             );
             const newId = insertRes.rows[0].id;
 
-            // Sync to Sheet
+            // Sync to Sheet — dùng suffix [Tour] nếu nhóm là report_tour
             if (customerDoc) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    const headers = ['Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền'];
-                    let sheet = customerDoc.sheetsByTitle[employeeName];
-                    if (!sheet) sheet = await customerDoc.addSheet({ headerValues: headers, title: employeeName });
-                    else await sheet.setHeaderRow(headers);
+                    try {
+                        const groupRoleForSheet = groupId && groupId !== 'MINI_APP' ? await getGroupRole(groupId) : null;
+                        const sheetSuffix = groupRoleForSheet === 'report_tour' ? ' [Tour]' : '';
+                        const sheetName = (employeeName + sheetSuffix).substring(0, 100);
+                        await customerDoc.loadInfo();
+                        const headers = ['Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền'];
+                        let sheet = customerDoc.sheetsByTitle[sheetName];
+                        if (!sheet) sheet = await customerDoc.addSheet({ headerValues: headers, title: sheetName });
+                        else await sheet.setHeaderRow(headers);
 
-                    const row = await sheet.addRow({
-                        'Ngày': new Date().toLocaleString('vi-VN'),
-                        'Nhân Viên': employeeName,
-                        'Mã NV': employeeCode,
-                        'Khách Hàng': customer_name,
-                        'SĐT': phone,
-                        'Dịch Vụ': service || '',
-                        'Buổi Làm': sessions || '',
-                        'Thời Gian': new Date(appointment_time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }),
-                        'Trạng Thái': 'Chờ khách',
-                        'Lý Do Hủy': '',
-                        'Thu Tiền': revenue || ''
-                    });
-                    await pool.query('UPDATE customer_appointments SET sheet_row_index = $1 WHERE id = $2', [row.rowNumber, newId]);
-                }).catch(err => console.error("Lỗi sync Google Sheet add:", err));
+                        const row = await sheet.addRow({
+                            'Ngày': new Date().toLocaleString('vi-VN'),
+                            'Nhân Viên': employeeName,
+                            'Mã NV': employeeCode,
+                            'Khách Hàng': customer_name,
+                            'SĐT': phone,
+                            'Dịch Vụ': service || '',
+                            'Buổi Làm': sessions || '',
+                            'Thời Gian': new Date(appointment_time).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric' }),
+                            'Trạng Thái': 'Chờ khách',
+                            'Lý Do Hủy': '',
+                            'Thu Tiền': revenue || ''
+                        });
+                        await pool.query('UPDATE customer_appointments SET sheet_row_index = $1 WHERE id = $2', [row.rowNumber, newId]);
+                    } catch (sheetErr) {
+                        console.error("Lỗi sync Google Sheet add:", sheetErr);
+                    }
+                }).catch(err => console.error("Lỗi sync Google Sheet add (queue):", err));
             }
 
             // Send immediate alert if is_urgent is true
             if (is_urgent) {
                 try {
-                    let targetGroups = [];
+                    let targetGroupsWithRole = [];
                     if (groupId && groupId !== 'MINI_APP') {
                         const role = await getGroupRole(groupId);
-                        if (role === 'report') {
-                            targetGroups.push(groupId);
+                        if (role === 'report' || role === 'report_tour') {
+                            targetGroupsWithRole.push({ gId: groupId, role });
                         }
                     } else {
                         const groupsRes = await pool.query(`
-            SELECT s.group_id 
+            SELECT s.group_id, g.bot_role
             FROM schedule_notification_groups s
             JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role = 'report' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
         `);
-                        for (const g of groupsRes.rows) targetGroups.push(g.group_id);
+                        for (const g of groupsRes.rows) targetGroupsWithRole.push({ gId: g.group_id, role: g.bot_role });
                     }
                     const timeStr = new Date(appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
                     const revenueLine = revenue ? `💰 Thu tiền: ${revenue}\n` : '';
@@ -1912,8 +1933,8 @@ export function setupKpiBot(bot, botApp) {
                         `💼 Nhân viên chốt: <b>${employeeName}</b>\n\n` +
                         `👉 <i>KTV vui lòng chuẩn bị đón khách</i>`;
 
-                    for (const gId of targetGroups) {
-                        await sendMessageToRoleGroup(bot, gId, 'report', msg, {
+                    for (const { gId, role } of targetGroupsWithRole) {
+                        await sendMessageToRoleGroup(bot, gId, role, msg, {
                             parse_mode: 'HTML',
                             reply_markup: {
                                 inline_keyboard: [
@@ -1941,6 +1962,10 @@ export function setupKpiBot(bot, botApp) {
         try {
             const { id, customer_name, phone, service, sessions, appointment_time, groupId } = req.body;
 
+            if (!groupId || groupId === 'MINI_APP') {
+                return res.status(400).json({ success: false, error: 'Missing valid groupId' });
+            }
+
             // Lấy group_id từ bản ghi hiện tại để kiểm tra
             const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
             if (existingRes.rows.length === 0) {
@@ -1949,11 +1974,11 @@ export function setupKpiBot(bot, botApp) {
             const recordGroupId = existingRes.rows[0]?.group_id;
 
             // Kiểm tra phân quyền group nếu truyền groupId từ client
-            if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+            if (recordGroupId !== groupId.toString()) {
                 return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền sửa!' });
             }
 
-            const editGroupId = recordGroupId || groupId || 'MINI_APP';
+            const editGroupId = recordGroupId;
 
             // Check overlap excluding this id (scoped to group)
             const overlap = await checkOverlap(appointment_time, editGroupId, id);
@@ -1968,8 +1993,8 @@ export function setupKpiBot(bot, botApp) {
             const dbRes = await pool.query(
                 `UPDATE customer_appointments 
              SET customer_name = $1, phone = $2, appointment_time = $3, is_reminded = FALSE, status = 'ACTIVE'
-             WHERE id = $4 RETURNING sheet_row_index, employee_name`,
-                [customer_name, phone, appointment_time, id]
+             WHERE id = $4 AND group_id = $5 RETURNING sheet_row_index, employee_name`,
+                [customer_name, phone, appointment_time, id, groupId.toString()]
             );
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
@@ -2003,19 +2028,23 @@ export function setupKpiBot(bot, botApp) {
         try {
             const { id, cancel_reason, groupId } = req.body;
 
+            if (!groupId || groupId === 'MINI_APP') {
+                return res.status(400).json({ success: false, error: 'Missing valid groupId' });
+            }
+
             const existingRes = await pool.query('SELECT group_id FROM customer_appointments WHERE id = $1', [id]);
             if (existingRes.rows.length === 0) {
                 return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
             }
             const recordGroupId = existingRes.rows[0]?.group_id;
 
-            if (groupId && groupId !== 'MINI_APP' && recordGroupId && recordGroupId !== 'MINI_APP' && recordGroupId !== groupId.toString()) {
+            if (recordGroupId !== groupId.toString()) {
                 return res.status(403).json({ success: false, error: 'Lịch hẹn thuộc nhóm khác, bạn không có quyền hủy!' });
             }
 
             const dbRes = await pool.query(
-                `UPDATE customer_appointments SET status = 'CANCELLED', cancel_reason = $1 WHERE id = $2 RETURNING sheet_row_index, employee_name`,
-                [cancel_reason, id]
+                `UPDATE customer_appointments SET status = 'CANCELLED', cancel_reason = $1 WHERE id = $2 AND group_id = $3 RETURNING sheet_row_index, employee_name`,
+                [cancel_reason, id, groupId.toString()]
             );
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
@@ -2331,10 +2360,10 @@ ${lichKhach}`;
     cron.schedule('2 20 * * *', async () => {
         try {
             const groupsRes = await pool.query(`
-            SELECT s.group_id 
+            SELECT s.group_id, g.bot_role
             FROM schedule_notification_groups s
             JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role = 'report' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
         `);
             if (groupsRes.rows.length === 0) return;
 
@@ -2360,7 +2389,7 @@ ${lichKhach}`;
                     msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${sessionTypeStr}${revenueStr}${incurredStr}\n\n`;
                 });
 
-                await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_tomorrow_report');
+                await sendMessageToRoleGroup(bot, g.group_id, g.bot_role, msg, { parse_mode: 'HTML' }, 'schedule_tomorrow_report');
             }
         } catch (e) {
             console.error('Lỗi cron 20h02 lịch ngày mai:', e);
@@ -2371,10 +2400,10 @@ ${lichKhach}`;
     cron.schedule('0 22 * * *', async () => {
         try {
             const groupsRes = await pool.query(`
-            SELECT s.group_id 
+            SELECT s.group_id, g.bot_role
             FROM schedule_notification_groups s
             JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role = 'report' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
         `);
             if (groupsRes.rows.length === 0) return;
 
@@ -2403,115 +2432,136 @@ ${lichKhach}`;
                     msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${sessionTypeStr}${revenueStr}${incurredStr}\n\n`;
                 });
 
-                await sendMessageToRoleGroup(bot, g.group_id, 'report', msg, { parse_mode: 'HTML' }, 'schedule_daily_summary');
+                await sendMessageToRoleGroup(bot, g.group_id, g.bot_role, msg, { parse_mode: 'HTML' }, 'schedule_daily_summary');
             }
         } catch (e) {
             console.error('Lỗi cron 22h đêm lịch khách:', e);
         }
     });
 
-    // CRON: 24h đêm (00:00) tổng hợp báo cáo vào nhóm LOG_KPI_REPORT_GROUP_ID và kiểm tra công tour
+    // CRON: 00:00 đêm — Tổng hợp công tour cho nhóm report_tour
     cron.schedule('0 0 * * *', async () => {
         try {
-            const logGroupId = process.env.LOG_KPI_REPORT_GROUP_ID;
-            if (!logGroupId) return;
+            // Hàm parse doanh thu từ text tự do: "500,000đ" → 500000
+            const parseRevenue = (str) => {
+                if (!str) return 0;
+                const cleaned = String(str).replace(/[^\d]/g, '');
+                const num = parseInt(cleaned, 10);
+                return isNaN(num) ? 0 : num;
+            };
 
-            const apsRes = await pool.query(
-                `SELECT * 
-                 FROM customer_appointments 
-                 WHERE (DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day'
-                    OR DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day')
-                 ORDER BY id ASC`
-            );
+            const groupsRes = await pool.query(`
+                SELECT s.group_id
+                FROM schedule_notification_groups s
+                JOIN telegram_groups g ON s.group_id = g.telegram_group_id
+                WHERE g.bot_role = 'report_tour' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+            `);
+            if (groupsRes.rows.length === 0) return;
 
-            const dailyReportsRes = await pool.query(
-                `SELECT dr.*, e.full_name, e.employee_code
-                 FROM daily_reports dr
-                 LEFT JOIN employees e ON dr.employee_id = e.id
-                 WHERE dr.report_date = CURRENT_DATE - INTERVAL '1 day'
-                 ORDER BY dr.id ASC`
-            );
-
-            const items = apsRes.rows;
-            const dailyReports = dailyReportsRes.rows;
             const yesterdayStr = new Date(Date.now() - 86400000).toLocaleDateString('vi-VN');
-            let summaryMsg = `📋 <b>TỔNG HỢP BÁO CÁO TOÀN BỘ TRONG NGÀY ${yesterdayStr} (CHỐT 24H)</b>\n\n`;
-            let incompleteCount = 0;
 
-            if (items.length === 0 && dailyReports.length === 0) {
-                summaryMsg += `<i>Hôm nay không có báo cáo nào trên hệ thống.</i>`;
-            } else {
-                if (items.length > 0) {
-                    summaryMsg += `📅 <b>DẠNG LỊCH KHÁCH HÀNG:</b>\n`;
-                    items.forEach((item, index) => {
-                        const missingFields = [];
-                        if (!item.customer_name || !String(item.customer_name).trim()) missingFields.push('Tên khách');
-                        if (!item.phone || !String(item.phone).trim()) missingFields.push('SĐT');
-                        if (!item.service || !String(item.service).trim()) missingFields.push('Dịch vụ');
-                        if (!item.sessions || !String(item.sessions).trim()) missingFields.push('Buổi làm');
-                        if (!item.revenue || !String(item.revenue).trim()) missingFields.push('Thu tiền');
-                        if (!item.session_type || !String(item.session_type).trim()) missingFields.push('Dạng buổi');
-                        
-                        // Kiểm tra thiếu ảnh chứng thực (is_photo_debt = true hoặc không có proof_image/proof_url)
-                        if (item.is_photo_debt === true || (!item.proof_image && !item.proof_url)) {
-                            missingFields.push('Ảnh chứng thực');
+            for (const g of groupsRes.rows) {
+                const apsRes = await pool.query(
+                    `SELECT * FROM customer_appointments
+                     WHERE (DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day'
+                        OR DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day')
+                     AND group_id = $1
+                     ORDER BY appointment_time ASC`,
+                    [g.group_id]
+                );
+                if (apsRes.rows.length === 0) continue;
+
+                const incompleteItems = [];
+                const validItems = [];
+                let totalRevenue = 0;
+
+                for (const item of apsRes.rows) {
+                    // Bỏ qua lịch đã hủy
+                    if (item.status === 'CANCELLED') continue;
+
+                    const missingFields = [];
+                    if (!item.customer_name || !String(item.customer_name).trim()) missingFields.push('Tên khách');
+                    if (!item.phone || !String(item.phone).trim()) missingFields.push('SĐT');
+                    if (!item.service || !String(item.service).trim()) missingFields.push('Dịch vụ');
+                    if (!item.sessions || !String(item.sessions).trim()) missingFields.push('Buổi làm');
+                    if (!item.revenue || !String(item.revenue).trim()) missingFields.push('Thu tiền');
+                    if (!item.session_type || !String(item.session_type).trim()) missingFields.push('Dạng buổi');
+
+                    // Ảnh chứng thực: bắt buộc nếu khách đã đến (ARRIVED)
+                    if (item.status === 'ARRIVED' && (item.is_photo_debt === true || !item.proof_image)) {
+                        missingFields.push('Ảnh chứng thực');
+                    }
+
+                    // Lịch ACTIVE đến 00:00 = chưa xác nhận đến/hủy → Chưa đủ công tour
+                    if (item.status === 'ACTIVE') {
+                        missingFields.push('Chưa xác nhận khách đến hoặc hủy lịch');
+                    }
+
+                    if (missingFields.length > 0) {
+                        incompleteItems.push({ item, missingFields });
+                    } else {
+                        // ARRIVED + đủ tất cả trường + có ảnh → hợp lệ
+                        const revenueNum = parseRevenue(item.revenue);
+                        totalRevenue += revenueNum;
+                        // Chuẩn hóa revenue thành số nguyên
+                        if (revenueNum > 0 && item.revenue !== String(revenueNum)) {
+                            await pool.query('UPDATE customer_appointments SET revenue = $1 WHERE id = $2', [String(revenueNum), item.id]).catch(() => {});
                         }
+                        validItems.push(item);
+                    }
+                }
 
-                        const isIncomplete = missingFields.length > 0;
-                        if (isIncomplete) incompleteCount++;
+                // Gửi thông báo "Chưa đủ công tour" nếu có lịch thiếu
+                if (incompleteItems.length > 0) {
+                    let incompleteMsg = `⚠️ <b>THÔNG BÁO CHƯA ĐỦ CÔNG TOUR — ${yesterdayStr}</b>\n\n`;
+                    incompleteMsg += `Có <b>${incompleteItems.length}</b> lịch khách thiếu thông tin:\n\n`;
+                    incompleteItems.forEach(({ item, missingFields }, idx) => {
+                        const timeStr = new Date(item.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        incompleteMsg += `${idx + 1}. ❌ <b>Chưa đủ công tour</b>\n`;
+                        incompleteMsg += `   Khách: <b>${item.customer_name || 'N/A'}</b> (${item.phone || 'N/A'}) — ${timeStr}\n`;
+                        incompleteMsg += `   NV: ${item.employee_name || 'N/A'}\n`;
+                        incompleteMsg += `   Thiếu: ${missingFields.join(', ')}\n\n`;
+                    });
+                    await sendMessageToRoleGroup(bot, g.group_id, 'report_tour', incompleteMsg, { parse_mode: 'HTML' }, 'tour_cong_tour_incomplete');
+                }
 
-                        const statusBadge = isIncomplete 
-                            ? `❌ <b>Chưa đủ công tour</b> (Thiếu: ${missingFields.join(', ')})` 
-                            : `✅ Đầy đủ thông tin`;
-
-                        const sessionTypeStr = item.session_type ? ` - Dạng buổi: <b>${item.session_type}</b>` : '';
+                // Gửi thông báo tổng kết hợp lệ + doanh thu
+                if (validItems.length > 0) {
+                    let validMsg = `✅ <b>TỔNG KẾT LỊCH HỢP LỆ — ${yesterdayStr}</b>\n\n`;
+                    validItems.forEach((item, idx) => {
+                        const timeStr = new Date(item.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                        const sessionTypeStr = item.session_type ? ` | Dạng: ${item.session_type}` : '';
                         const incurredStr = item.today_incurred ? `\n   └ 📝 Phát sinh: ${item.today_incurred}` : '';
-
-                        summaryMsg += `${index + 1}. Khách: <b>${item.customer_name || 'N/A'}</b> (${item.phone || 'N/A'}) | NV: <b>${item.employee_name || 'N/A'}</b>\n`;
-                        summaryMsg += `   └ DV: ${item.service || 'N/A'} - Ca: ${item.sessions || 'N/A'}${sessionTypeStr} - Thu tiền: ${item.revenue || 'N/A'}${incurredStr}\n`;
-                        summaryMsg += `   └ 📌 Kết quả: ${statusBadge}\n\n`;
+                        validMsg += `${idx + 1}. ✅ <b>${item.customer_name}</b> (${item.phone}) — ${timeStr}\n`;
+                        validMsg += `   NV: ${item.employee_name} | DV: ${item.service} | Buổi: ${item.sessions}${sessionTypeStr}${incurredStr}\n`;
+                        validMsg += `   💰 Thu tiền: ${parseRevenue(item.revenue).toLocaleString('vi-VN')}đ\n\n`;
                     });
+                    validMsg += `━━━━━━━━━━━━━━━━\n`;
+                    validMsg += `📊 Tổng số lịch đầy đủ: <b>${validItems.length}</b>\n`;
+                    validMsg += `💵 Tổng doanh thu ngày: <b>${totalRevenue.toLocaleString('vi-VN')}đ</b>`;
+                    await sendMessageToRoleGroup(bot, g.group_id, 'report_tour', validMsg, { parse_mode: 'HTML' }, 'tour_cong_tour_valid_summary');
+                } else if (incompleteItems.length === 0) {
+                    await sendMessageToRoleGroup(bot, g.group_id, 'report_tour', `📋 <i>Hôm qua không có lịch khách nào được ghi nhận.</i>`, { parse_mode: 'HTML' }, 'tour_cong_tour_empty');
                 }
-
-                if (dailyReports.length > 0) {
-                    summaryMsg += `📝 <b>DẠNG BÁO CÁO KPI HÀNG NGÀY:</b>\n`;
-                    dailyReports.forEach((dr, index) => {
-                        let meta = {};
-                        try { meta = typeof dr.metadata === 'string' ? JSON.parse(dr.metadata) : (dr.metadata || {}); } catch(e) {}
-                        
-                        let statusBadge = '✅ Đã gửi báo cáo';
-                        if (dr.status === 'OFF') {
-                            statusBadge = '🛌 Xin nghỉ phép';
-                        } else if (meta.debt_photos && meta.debt_photos > 0) {
-                            statusBadge = `🚨 Nợ ${meta.debt_photos} ảnh minh chứng`;
-                        }
-
-                        summaryMsg += `${index + 1}. NV: <b>${dr.full_name || 'N/A'}</b> (Mã: ${dr.employee_code || 'N/A'})\n`;
-                        summaryMsg += `   └ KPI nộp: ${dr.kpi_actual}/${dr.kpi_required} | Trạng thái: ${statusBadge}\n\n`;
-                    });
-                }
-
-                summaryMsg += `📊 <b>Tổng số lịch khách:</b> ${items.length} | ❌ <b>Chưa đủ công tour:</b> ${incompleteCount}`;
             }
-
-            const tg = bot.telegram || bot;
-            await tg.sendMessage(String(logGroupId), summaryMsg, { parse_mode: 'HTML' });
         } catch (e) {
-            console.error('Lỗi cron 24h chốt công tour nhóm log:', e);
+            console.error('Lỗi cron 00:00 tổng hợp công tour report_tour:', e);
         }
     });
+
+
 
     // CRON: Nhắc nhở khi tới giờ (quét mỗi phút)
     cron.schedule('* * * * *', async () => {
         try {
             const groupsRes = await pool.query(`
-            SELECT s.group_id 
+            SELECT s.group_id, g.bot_role
             FROM schedule_notification_groups s
             JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role = 'report' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
         `);
-            const defaultGroups = groupsRes.rows.map(g => g.group_id);
-            if (defaultGroups.length === 0) return;
+            const defaultGroupsWithRole = groupsRes.rows.map(g => ({ gId: g.group_id, role: g.bot_role }));
+            if (defaultGroupsWithRole.length === 0) return;
 
             const apsRes = await pool.query(
                 `SELECT * 
@@ -2535,20 +2585,20 @@ ${lichKhach}`;
                     `💼 Nhân viên phụ trách: <b>${a.employee_name}</b>\n\n` +
                     `👉 <i>Vui lòng chuẩn bị đón khách!</i>`;
 
-                let targetGroups = [];
+                let targetGroupsWithRole = [];
                 if (!a.group_id || a.group_id === 'MINI_APP') {
-                    targetGroups = defaultGroups;
+                    targetGroupsWithRole = defaultGroupsWithRole;
                 } else {
                     const role = await getGroupRole(a.group_id);
-                    if (role === 'report') {
-                        targetGroups.push(a.group_id);
+                    if (role === 'report' || role === 'report_tour') {
+                        targetGroupsWithRole.push({ gId: a.group_id, role });
                     } else {
-                        console.log(`[Cảnh báo] Lịch khách có group_id ${a.group_id} nhưng không phải nhóm report, bỏ qua gửi thông báo.`);
+                        console.log(`[Cảnh báo] Lịch khách có group_id ${a.group_id} nhưng không phải nhóm report/report_tour, bỏ qua.`);
                     }
                 }
 
-                for (const gId of targetGroups) {
-                    await sendMessageToRoleGroup(bot, gId, 'report', msg, {
+                for (const { gId, role } of targetGroupsWithRole) {
+                    await sendMessageToRoleGroup(bot, gId, role, msg, {
                         parse_mode: 'HTML',
                         reply_markup: {
                             inline_keyboard: [
@@ -2682,15 +2732,19 @@ ${lichKhach}`;
             if (type === 'tien') reason = 'Chưa đủ tài chính / Chê đắt';
             if (type === 'khacspa') reason = 'Đã qua cơ sở khác làm';
 
-            const dbRes = await pool.query('UPDATE customer_appointments SET status = $1, cancel_reason = $2 WHERE id = $3 RETURNING sheet_row_index, employee_name', ['CANCELLED', reason, id]);
+            const dbRes = await pool.query('UPDATE customer_appointments SET status = $1, cancel_reason = $2 WHERE id = $3 RETURNING sheet_row_index, employee_name, group_id', ['CANCELLED', reason, id]);
 
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
+            const cancelGroupId = dbRes.rows[0]?.group_id;
 
             if (rowIndex && customerDoc) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
                     await customerDoc.loadInfo();
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const cancelGroupRole = cancelGroupId && cancelGroupId !== 'MINI_APP' ? await getGroupRole(cancelGroupId) : null;
+                    const sheetSuffix = cancelGroupRole === 'report_tour' ? ' [Tour]' : '';
+                    const sheetName = (empName + sheetSuffix).substring(0, 100);
+                    const sheet = customerDoc.sheetsByTitle[sheetName] || customerDoc.sheetsByTitle[empName];
                     if (sheet) {
                         await sheet.loadCells(`I${rowIndex}:J${rowIndex}`);
                         sheet.getCell(rowIndex - 1, 8).value = 'Đã hủy';
@@ -2895,13 +2949,16 @@ ${lichKhach}`;
                 [proofUrl, aptId]
             );
 
-            // Cập nhật Google Sheet
+            // Cập nhật Google Sheet — dùng suffix [Tour] cho nhóm report_tour
             const rowIndex = apt.sheet_row_index;
             const empName = apt.employee_name;
             if (rowIndex && customerDoc) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
                     await customerDoc.loadInfo();
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const aptGroupRole = apt.group_id && apt.group_id !== 'MINI_APP' ? await getGroupRole(apt.group_id) : null;
+                    const sheetSuffix = aptGroupRole === 'report_tour' ? ' [Tour]' : '';
+                    const sheetName = (empName + sheetSuffix).substring(0, 100);
+                    const sheet = customerDoc.sheetsByTitle[sheetName] || customerDoc.sheetsByTitle[empName];
                     if (sheet) {
                         await sheet.loadCells(`L${rowIndex}:L${rowIndex}`);
                         sheet.getCell(rowIndex - 1, 11).value = proofUrl;

@@ -1237,6 +1237,24 @@ async function startHandler(ctx) {
                         }
                     }
                 );
+            } else if (botRole === 'report_tour') {
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `Vui lòng chọn chức năng:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' }
+                                ],
+                                [
+                                    { text: '📅 Đặt Lịch / Check Lịch', url: scheduleclientUrl2 }
+                                ]
+                            ]
+                        }
+                    }
+                );
             }
         } else {
             // Private Chat Flow
@@ -2289,6 +2307,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         }
 
         const telegram_id = ctx.message.from.id.toString();
+        const telegramGroupId = ctx.chat.id.toString();
         let videoObj = ctx.message.video || ctx.message.video_note;
         let isReplyCheck = false;
         let isCachedCheck = false;
@@ -2338,7 +2357,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
              FROM employees u 
              JOIN telegram_groups g ON u.group_id = g.id 
              WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-            [telegram_id, chat_id]
+            [telegram_id, telegramGroupId]
         );
 
         if (userRes.rows.length === 0) {
@@ -2391,7 +2410,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         );
 
     } catch (err) {
-        console.error('[Video Checkin Message Handler Error]', err);
+        console.error('[Video Checkin Message Handler Error]', err?.stack || err?.message || err);
     }
     return next();
 });

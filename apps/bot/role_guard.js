@@ -31,7 +31,11 @@ export async function requireGroupRole(ctx, requiredRole) {
 
     const role = await getGroupRole(ctx.chat.id);
 
-    if (role !== requiredRole) {
+    const isMatch = Array.isArray(requiredRole)
+        ? requiredRole.includes(role)
+        : role === requiredRole;
+
+    if (!isMatch) {
         if (ctx.callbackQuery) {
             await ctx.answerCbQuery(
                 'Chức năng này không được bật trong nhóm này.',
@@ -55,27 +59,13 @@ export async function requireGroupRole(ctx, requiredRole) {
  * Gửi tin nhắn Telegram chỉ khi nhóm khớp role và active
  * @param {object} bot Telegram Bot instance (Telegraf or bot.telegram)
  * @param {string|number} groupId ID nhóm Telegram
- * @param {string} requiredRole Role yêu cầu ('report' hoặc 'timekeep')
+ * @param {string|string[]} requiredRole Role yêu cầu ('report', 'report_tour' hoặc 'timekeep')
  * @param {string} message Nội dung tin nhắn
  * @param {object} [options] Các tùy chọn khác (parse_mode, reply_to_message_id, ...)
  * @param {string} [source='unknown'] Tên nguồn gọi để ghi log
  * @returns {Promise<object|null>} Trả về message object nếu gửi thành công, hoặc null nếu bị chặn/lỗi
  */
 export async function sendMessageToRoleGroup(bot, groupId, requiredRole, message, options = {}, source = 'unknown') {
-    if (requiredRole === 'report' && process.env.LOG_KPI_REPORT_GROUP_ID) {
-        const logGroupId = String(process.env.LOG_KPI_REPORT_GROUP_ID);
-        if (logGroupId && logGroupId !== String(groupId)) {
-            try {
-                const tg = bot.telegram || bot;
-                tg.sendMessage(logGroupId, message, options).catch(err => {
-                    console.error(`[LOG_GROUP_FORWARD_ERR] source=${source}:`, err.message);
-                });
-            } catch (e) {
-                console.error(`[LOG_GROUP_FORWARD_EXC] source=${source}:`, e.message);
-            }
-        }
-    }
-
     if (!groupId) {
         console.warn(`[Telegram Send] source=${source} group_id=null required_role=${requiredRole} status=blocked reason=no_group_id`);
         return null;
@@ -89,7 +79,11 @@ export async function sendMessageToRoleGroup(bot, groupId, requiredRole, message
         return null;
     }
 
-    if (actualRole !== requiredRole) {
+    const isMatch = Array.isArray(requiredRole)
+        ? requiredRole.includes(actualRole)
+        : actualRole === requiredRole;
+
+    if (!isMatch) {
         console.warn(`[Telegram Send] source=${source} group_id=${strGroupId} required_role=${requiredRole} actual_role=${actualRole} status=blocked reason=role_mismatch`);
         return null;
     }
@@ -122,7 +116,11 @@ export async function sendPhotoToRoleGroup(bot, groupId, requiredRole, photo, op
         return null;
     }
 
-    if (actualRole !== requiredRole) {
+    const isMatch = Array.isArray(requiredRole)
+        ? requiredRole.includes(actualRole)
+        : actualRole === requiredRole;
+
+    if (!isMatch) {
         console.warn(`[Telegram Send Photo] source=${source} group_id=${strGroupId} required_role=${requiredRole} actual_role=${actualRole} status=blocked reason=role_mismatch`);
         return null;
     }
@@ -155,7 +153,11 @@ export async function sendMediaGroupToRoleGroup(bot, groupId, requiredRole, medi
         return null;
     }
 
-    if (actualRole !== requiredRole) {
+    const isMatch = Array.isArray(requiredRole)
+        ? requiredRole.includes(actualRole)
+        : actualRole === requiredRole;
+
+    if (!isMatch) {
         console.warn(`[Telegram Send MediaGroup] source=${source} group_id=${strGroupId} required_role=${requiredRole} actual_role=${actualRole} status=blocked reason=role_mismatch`);
         return null;
     }
@@ -188,7 +190,11 @@ export async function sendVideoToRoleGroup(bot, groupId, requiredRole, video, op
         return null;
     }
 
-    if (actualRole !== requiredRole) {
+    const isMatch = Array.isArray(requiredRole)
+        ? requiredRole.includes(actualRole)
+        : actualRole === requiredRole;
+
+    if (!isMatch) {
         console.warn(`[Telegram Send Video] source=${source} group_id=${strGroupId} required_role=${requiredRole} actual_role=${actualRole} status=blocked reason=role_mismatch`);
         return null;
     }
