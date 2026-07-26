@@ -298,13 +298,13 @@ export function setupKpiBot(bot, botApp) {
             const currentMinute = String(now.getMinutes()).padStart(2, '0');
             const currentTimeString = `${currentHour}:${currentMinute}:00`;
 
-            // Lấy danh sách nhóm và cài đặt thời gian (Chỉ áp dụng cho các nhóm có bot_role = 'report' và auto_reminder_enabled = true)
+            // Lấy danh sách nhóm và cài đặt thời gian (Chỉ áp dụng cho các nhóm có bot_role = 'report' hoặc 'report_tour' và auto_reminder_enabled = true)
             const query = `
             SELECT tg.telegram_group_id, tg.group_name, gs.remind_time_1, gs.deadline_time, gs.penalty_missing_report, gs.auto_reminder_enabled
             FROM telegram_groups tg
             LEFT JOIN group_settings gs ON tg.telegram_group_id = gs.telegram_group_id
             WHERE tg.is_active = true
-              AND tg.bot_role = 'report'
+              AND tg.bot_role IN ('report', 'report_tour')
               AND COALESCE(tg.is_deleted, false) = false
               AND COALESCE(gs.auto_reminder_enabled, true) = true
         `;
@@ -333,9 +333,9 @@ export function setupKpiBot(bot, botApp) {
                     const missing = empRes.rows.filter(e => !exemptedOrReportedIds.has(e.id));
                     if (missing.length > 0) {
                         const names = missing.map(m => m.full_name).join(', ');
-                        await sendMessageToRoleGroup(bot, group.telegram_group_id, 'report', `⚠️ ĐÃ ĐẾN GIỜ BÁO CÁO KPI!\nDanh sách chưa nộp: ${names}\n⏰ Các bạn có đúng 2 tiếng nữa để nộp trước khi hệ thống chốt phạt tiền!`, {}, 'kpi_daily_reminder');
+                        await sendMessageToRoleGroup(bot, group.telegram_group_id, ['report', 'report_tour'], `⚠️ ĐÃ ĐẾN GIỜ BÁO CÁO KPI!\nDanh sách chưa nộp: ${names}\n⏰ Các bạn có đúng 2 tiếng nữa để nộp trước khi hệ thống chốt phạt tiền!`, {}, 'kpi_daily_reminder');
                     } else {
-                        await sendMessageToRoleGroup(bot, group.telegram_group_id, 'report', `🎉 Tuyệt vời! Tất cả nhân sự đã nộp báo cáo đúng hạn ngày hôm nay.`, {}, 'kpi_all_reported');
+                        await sendMessageToRoleGroup(bot, group.telegram_group_id, ['report', 'report_tour'], `🎉 Tuyệt vời! Tất cả nhân sự đã nộp báo cáo đúng hạn ngày hôm nay.`, {}, 'kpi_all_reported');
                     }
                 }
 
@@ -370,7 +370,7 @@ export function setupKpiBot(bot, botApp) {
                             let penaltyMsg = amount > 0 ? `\n💸 Phạt: -${amount.toLocaleString('vi-VN')}đ / người` : '';
                             const names = missing.map(m => m.full_name).join(', ');
 
-                            await sendMessageToRoleGroup(bot, group.telegram_group_id, 'report', `⛔ ĐÃ HẾT THỜI GIAN ÂN HẠN!\nDanh sách KHÔNG nộp báo cáo: ${names}${penaltyMsg}\n📋 Hệ thống đã lưu vào sổ đen cuối tháng!`, {}, 'kpi_grace_period_expired');
+                            await sendMessageToRoleGroup(bot, group.telegram_group_id, ['report', 'report_tour'], `⛔ ĐÃ HẾT THỜI GIAN ÂN HẠN!\nDanh sách KHÔNG nộp báo cáo: ${names}${penaltyMsg}\n📋 Hệ thống đã lưu vào sổ đen cuối tháng!`, {}, 'kpi_grace_period_expired');
 
                             if (amount > 0) {
                                 for (const e of missing) {
@@ -708,6 +708,8 @@ export function setupKpiBot(bot, botApp) {
 
             const kpiMsg = kpiTarget > 0 ? `\n🎯 Chỉ tiêu: ${kpiTarget} | ✅ Thực tế: ${parsedJSON.kpi_actual}` : `\n✅ Thực tế: ${parsedJSON.kpi_actual}`;
 
+            const reportRoles = ['report', 'report_tour'];
+
             if (debt_info) {
                 let debtMsg = `🚨 BÁO CÁO GHI NỢ ẢNH!\nĐã lưu báo cáo của ${user.full_name} lên hệ thống.\n⚠️ Tình trạng: Thiếu ${debt_info.missing} ảnh minh chứng (Nộp ${debt_info.received}/${debt_info.required}).${penaltyKpiMsg}`;
                 if (total_penalty > 0) {
@@ -717,17 +719,17 @@ export function setupKpiBot(bot, botApp) {
 
                 const tgBot = botInstance || ctx;
                 if (tgBot) {
-                    await sendMessageToRoleGroup(tgBot, group_id, 'report', debtMsg, {}, 'report_debt_photos');
+                    await sendMessageToRoleGroup(tgBot, group_id, reportRoles, debtMsg, {}, 'report_debt_photos');
                 }
             } else if (text === 'XIN NGHỈ') {
                 const tgBot = botInstance || ctx;
                 if (tgBot) {
-                    await sendMessageToRoleGroup(tgBot, group_id, 'report', `✅ Đã ghi nhận: ${user.full_name} xin nghỉ phép hôm nay!\nHệ thống sẽ miễn báo cáo cho bạn.`, {}, 'report_leave_notice');
+                    await sendMessageToRoleGroup(tgBot, group_id, reportRoles, `✅ Đã ghi nhận: ${user.full_name} xin nghỉ phép hôm nay!\nHệ thống sẽ miễn báo cáo cho bạn.`, {}, 'report_leave_notice');
                 }
             } else {
                 const tgBot = botInstance || ctx;
                 if (tgBot) {
-                    await sendMessageToRoleGroup(tgBot, group_id, 'report', `✅ Đã nhận đủ ảnh minh chứng!\nĐã lưu báo cáo của ${user.full_name}.${kpiMsg}${penaltyKpiMsg}\n💾 Hệ thống đã ghi nhận thành công!`, {}, 'report_complete_notice');
+                    await sendMessageToRoleGroup(tgBot, group_id, reportRoles, `✅ Đã nhận đủ ảnh minh chứng!\nĐã lưu báo cáo của ${user.full_name}.${kpiMsg}${penaltyKpiMsg}\n💾 Hệ thống đã ghi nhận thành công!`, {}, 'report_complete_notice');
                 }
             }
             console.log(`[LOG] Đã lưu báo cáo của ${user.full_name} vào DB và đưa vào hàng đợi Sheet.`);
@@ -778,8 +780,8 @@ export function setupKpiBot(bot, botApp) {
                                 warnMsg += `⚠️ Ảnh gửi lên giống ${dup.similarity}% với ảnh của <b>${dup.old_employee}</b> nộp lúc ${dateStr}.\n`;
                                 warnMsg += `<i>👇 Mời Sếp xem đối chiếu (Bên trái: Cũ, Bên phải: Mới):</i>`;
 
-                                await sendMessageToRoleGroup(bot, ctx.chat.id, 'report', warnMsg, { parse_mode: 'HTML' }, 'direct_duplicate_photo_warning_msg');
-                                await sendMediaGroupToRoleGroup(bot, ctx.chat.id, 'report', [
+                                await sendMessageToRoleGroup(bot, ctx.chat.id, ['report', 'report_tour'], warnMsg, { parse_mode: 'HTML' }, 'direct_duplicate_photo_warning_msg');
+                                await sendMediaGroupToRoleGroup(bot, ctx.chat.id, ['report', 'report_tour'], [
                                     { type: 'photo', media: dup.old_file_id, caption: `BẢN GỐC của ${dup.old_employee} nộp ${dateStr}` },
                                     { type: 'photo', media: dup.new_file_id, caption: `BẢN MỚI do ${user.full_name} gửi lên` }
                                 ], {}, 'direct_duplicate_photo_warning_media');
@@ -1397,7 +1399,7 @@ export function setupKpiBot(bot, botApp) {
             JOIN telegram_groups tg ON tg.telegram_group_id = pr.group_id
             JOIN employees e ON e.telegram_id = pr.telegram_id
             WHERE pr.status = 'WAITING_PHOTOS'
-              AND tg.bot_role = 'report'
+              AND tg.bot_role IN ('report', 'report_tour')
               AND tg.is_active = true
               AND COALESCE(tg.is_deleted, false) = false
               AND COALESCE(e.is_active, true) = true
@@ -1438,7 +1440,7 @@ export function setupKpiBot(bot, botApp) {
                     const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
                     await pool.query(`UPDATE pending_reports SET last_reminder_stage = 2 WHERE telegram_id = $1`, [report.telegram_id]);
-                    await sendMessageToRoleGroup(bot, report.group_id, 'report', `🚨 CẢNH BÁO CHÓT: ${fullName} ơi, còn đúng ${diffMinutes} phút nữa là hết hạn nộp ảnh! Bạn đang thiếu ${report.required_photos - report.received_photos} ảnh nữa.`, {}, 'photo_deadline_stage_2');
+                    await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `🚨 CẢNH BÁO CHÓT: ${fullName} ơi, còn đúng ${diffMinutes} phút nữa là hết hạn nộp ảnh! Bạn đang thiếu ${report.required_photos - report.received_photos} ảnh nữa.`, {}, 'photo_deadline_stage_2');
                 }
                 // Nếu còn <= 15 phút (Nhắc nhở giữa kỳ) - Chỉ nhắc 1 lần (stage < 1)
                 else if (diffMinutes <= 15 && report.last_reminder_stage < 1) {
@@ -1446,7 +1448,7 @@ export function setupKpiBot(bot, botApp) {
                     const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
                     await pool.query(`UPDATE pending_reports SET last_reminder_stage = 1 WHERE telegram_id = $1`, [report.telegram_id]);
-                    await sendMessageToRoleGroup(bot, report.group_id, 'report', `⚠️ Nhắc nhở: ${fullName} mới tải lên được ${report.received_photos}/${report.required_photos} ảnh. Bạn còn ${diffMinutes} phút để hoàn thành nhé.`, {}, 'photo_deadline_stage_1');
+                    await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `⚠️ Nhắc nhở: ${fullName} mới tải lên được ${report.received_photos}/${report.required_photos} ảnh. Bạn còn ${diffMinutes} phút để hoàn thành nhé.`, {}, 'photo_deadline_stage_1');
                 }
                 // Nhắc nhở nếu đã nộp ảnh nhưng im lặng 5 phút
                 else if (report.received_photos > 0 && report.received_photos < report.required_photos && !report.inactivity_reminded && report.last_photo_received_at) {
@@ -1457,7 +1459,7 @@ export function setupKpiBot(bot, botApp) {
                         const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
                         await pool.query(`UPDATE pending_reports SET inactivity_reminded = true WHERE telegram_id = $1`, [report.telegram_id]);
-                        await sendMessageToRoleGroup(bot, report.group_id, 'report', `⚠️ Nhắc nhở: ${fullName} ơi, hệ thống đã ghi nhận ${report.received_photos}/${report.required_photos} ảnh. Còn thiếu ${report.required_photos - report.received_photos} ảnh nữa nhưng đã 5 phút không thấy bạn nộp thêm. Vui lòng gửi nốt để hoàn thành báo cáo nhé!`, {}, 'photo_inactivity_reminder');
+                        await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `⚠️ Nhắc nhở: ${fullName} ơi, hệ thống đã ghi nhận ${report.received_photos}/${report.required_photos} ảnh. Còn thiếu ${report.required_photos - report.received_photos} ảnh nữa nhưng đã 5 phút không thấy bạn nộp thêm. Vui lòng gửi nốt để hoàn thành báo cáo nhé!`, {}, 'photo_inactivity_reminder');
                     }
                 }
             }
