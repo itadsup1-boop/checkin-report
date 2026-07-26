@@ -298,21 +298,20 @@ export function setupKpiBot(bot, botApp) {
             const currentMinute = String(now.getMinutes()).padStart(2, '0');
             const currentTimeString = `${currentHour}:${currentMinute}:00`;
 
-            // Lấy danh sách nhóm và cài đặt thời gian (Chỉ áp dụng cho các nhóm có bot_role = 'report' hoặc 'report_tour' và auto_reminder_enabled = true)
+            // Chỉ áp dụng cho các nhóm role = 'report' (không áp dụng cho report_tour)
             const query = `
-            SELECT tg.telegram_group_id, tg.group_name, gs.remind_time_1, gs.deadline_time, gs.penalty_missing_report, gs.auto_reminder_enabled
+            SELECT tg.telegram_group_id, tg.group_name, gs.remind_time_1, gs.deadline_time, gs.penalty_missing_report
             FROM telegram_groups tg
             LEFT JOIN group_settings gs ON tg.telegram_group_id = gs.telegram_group_id
             WHERE tg.is_active = true
-              AND tg.bot_role IN ('report', 'report_tour')
+              AND tg.bot_role = 'report'
               AND COALESCE(tg.is_deleted, false) = false
-              AND COALESCE(gs.auto_reminder_enabled, true) = true
         `;
             const res = await pool.query(query);
             const groups = res.rows;
 
             for (const group of groups) {
-                // 1. Nhắc nhở nộp báo cáo & Điểm danh
+                // 1. Nhắc nhở nộp báo cáo
                 const remindTime = group.remind_time_1 || '17:00:00';
                 if (remindTime === currentTimeString) {
                     console.log(`⏰ Đến giờ nhắc nhở cho nhóm: ${group.group_name}`);
@@ -343,7 +342,7 @@ export function setupKpiBot(bot, botApp) {
                 if (group.remind_time_1) {
                     const [h, m, s] = group.remind_time_1.split(':').map(Number);
                     let penaltyDate = new Date();
-                    penaltyDate.setHours(h, m + 120, 0, 0); // Cộng 120 phút
+                    penaltyDate.setHours(h, m + 120, 0, 0);
 
                     const penaltyHour = String(penaltyDate.getHours()).padStart(2, '0');
                     const penaltyMinute = String(penaltyDate.getMinutes()).padStart(2, '0');
