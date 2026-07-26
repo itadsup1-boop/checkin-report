@@ -133,16 +133,25 @@
         // Nếu Web App được mở ra, có thể lấy thông tin user
         const user = tg.initDataUnsafe?.user;
         let selectedImagesBase64 = []; // Mảng chứa ảnh Base64 đã nén
+        let payloadAction = 'baocao';
+        let payloadTs = '';
+        let payloadSig = '';
 
         window.addEventListener('DOMContentLoaded', async () => {
             if (user) {
                 const urlParams = new URLSearchParams(window.location.search);
                 let chatId = urlParams.get('chat_id');
-                let payloadAction = urlParams.get('action') || 'baocao';
-                let payloadTs = urlParams.get('ts') || '';
-                let payloadSig = urlParams.get('sig') || '';
+                payloadAction = urlParams.get('action') || 'baocao';
+                payloadTs = urlParams.get('ts') || '';
+                payloadSig = urlParams.get('sig') || '';
                 
-                const startParam = tg.initDataUnsafe?.start_param || '';
+                // Ưu tiên start_param từ Telegram context
+                let startParam = tg.initDataUnsafe?.start_param || '';
+                
+                // Fallback: nếu không có start_param, thử lấy từ URL payload (từ router.html redirect)
+                if (!startParam && urlParams.get('payload')) {
+                    startParam = urlParams.get('payload');
+                }
                 
                 if (startParam) {
                     const parts = startParam.split('_');
@@ -160,7 +169,7 @@
                         'register': 'register.html',
                         'schedule': 'schedule.html',
                         'leave': 'urgent_leave.html',
-                        'checkin': 'checkin.html',
+                        'checkin': 'checkin_upload.html',
                         'stats': 'stats.html'
                     };
                     
@@ -306,9 +315,20 @@
             const urlParams = new URLSearchParams(window.location.search);
             let chatId = urlParams.get('chat_id');
             
-            // Hỗ trợ Direct Link Mini App (lấy chatId từ startapp parameter)
-            if (!chatId && tg.initDataUnsafe?.start_param?.startsWith('baocao_')) {
-                chatId = tg.initDataUnsafe.start_param.replace('baocao_', '');
+            // Hỗ trợ Direct Link Mini App (lấy chatId từ startapp parameter hoặc URL payload)
+            if (!chatId) {
+                let sp = tg.initDataUnsafe?.start_param || urlParams.get('payload') || '';
+                if (sp) {
+                    const parts = sp.split('_');
+                    if (parts.length >= 4) {
+                        payloadAction = parts[0];
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else if (sp.startsWith('baocao_')) {
+                        chatId = sp.replace('baocao_', '');
+                    }
+                }
             }
 
             // Chuẩn bị dữ liệu gửi về API

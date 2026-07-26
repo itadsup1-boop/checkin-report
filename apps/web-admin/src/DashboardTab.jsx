@@ -364,7 +364,7 @@ export default function DashboardTab({ selectedGroupId = 'ALL' }) {
                               emp.shift_type === 'OFF' ? 'bg-slate-500/10  text-slate-400  border-slate-500/20' :
                                 'bg-white/5       text-slate-300  border-white/10'
                             }`}>
-                            {emp.shift_type === 'CA_1' ? '☀️ Ca 1' : emp.shift_type === 'CA_2' ? '🌙 Ca 2' : emp.shift_type === 'OFF' ? '🏖 Nghỉ' : emp.shift_type}
+                            {emp.shift_type === 'CA_1' || emp.shift_type === 'CA_SANG' ? '☀️ Ca sớm' : emp.shift_type === 'CA_2' || emp.shift_type === 'CA_CHIEU' ? '🌙 Ca muộn' : emp.shift_type === 'OFF' ? '🏖 Nghỉ' : emp.shift_type}
                           </span>
                         ) : (
                           <span className="text-slate-500 text-xs italic">Chưa xếp ca</span>

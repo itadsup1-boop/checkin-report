@@ -29,3 +29,4 @@ node scripts/migrate_groups.js
 & "C:\Program Files\cloudflared\cloudflared.exe" service install "C:\Users\ADMIN\.cloudflared\config.yml"
 
 
+& "C:\Program Files\cloudflared\cloudflared.exe" --config "C:\Users\ADMIN\.cloudflared\config.yml" tunnel run adsup

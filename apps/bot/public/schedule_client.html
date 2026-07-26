@@ -313,9 +313,21 @@
                     <input type="text" id="addSessions" class="form-control" placeholder="VD: 2/10 hoặc 1/Tái khám">
                 </div>
                 <div style="flex: 1;">
-                    <label>Thu Tiền</label>
-                    <input type="text" id="addRevenue" class="form-control" placeholder="VD: 500k">
+                    <label>Dạng Buổi *</label>
+                    <select id="addSessionType" class="form-control">
+                        <option value="Bán">Bán</option>
+                        <option value="Bảo hành">Bảo hành</option>
+                        <option value="Tặng">Tặng</option>
+                    </select>
                 </div>
+            </div>
+            <div class="form-group">
+                <label>Thu Tiền</label>
+                <input type="text" id="addRevenue" class="form-control" placeholder="VD: 500k">
+            </div>
+            <div class="form-group">
+                <label>Danh sách phát sinh hôm nay</label>
+                <input type="text" id="addTodayIncurred" class="form-control" placeholder="Nhập danh sách phát sinh (nếu có)">
             </div>
             <div class="form-group">
                 <label>Ngày Giờ Hẹn (Cách nhau >= 1 tiếng) *</label>
@@ -407,9 +419,30 @@
     <!-- Load Telegram SDK AFTER body content, non-blocking -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
+        function getSchedulePayload() {
+            var urlParams = new URLSearchParams(window.location.search);
+            var payload = urlParams.get('payload') || '';
+
+            if (!payload && window.Telegram && window.Telegram.WebApp) {
+                payload = window.Telegram.WebApp.initDataUnsafe && window.Telegram.WebApp.initDataUnsafe.start_param
+                    ? window.Telegram.WebApp.initDataUnsafe.start_param
+                    : '';
+            }
+
+            return payload;
+        }
+
         function getGroupId() {
             var urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get('chat_id') || '';
+            var directGroupId = urlParams.get('chat_id');
+            if (directGroupId) return directGroupId;
+
+            var parts = getSchedulePayload().split('_');
+            if (parts.length >= 2 && (parts[0] === 'scheduleclient' || parts[0] === 'schedule')) {
+                return parts[1];
+            }
+
+            return '';
         }
 
         // ===== SAFE TELEGRAM INIT =====
@@ -453,7 +486,7 @@
               loader.style.display = 'block';
   
               var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-              fetch('/api/schedules?date=' + date + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+              fetch('/api/schedules?date=' + date + '&groupId=' + encodeURIComponent(getGroupId()) + '&telegram_id=' + tgId)
                   .then(function (res) { return res.json(); })
                 .then(function (data) {
                     loader.style.display = 'none';
@@ -467,13 +500,16 @@
                         var isCancelled = item.status !== 'ACTIVE';
                         var opacity = isCancelled ? '0.5' : '1';
                         var cancelTag = isCancelled ? ' <span style="color:red; font-size:11px;">(ĐÃ HỦY)</span>' : '';
+                        var sessionTypeTag = item.session_type ? ' | Dạng buổi: <b>' + item.session_type + '</b>' : '';
+                        var incurredTag = item.today_incurred ? '<br><small style="color:#d97706;">Phát sinh: ' + item.today_incurred + '</small>' : '';
 
                         html += '<div class="timeline-item" style="opacity: ' + opacity + '">' +
                             '<div class="time">' + time + '</div>' +
                             '<div class="details">' +
                             '<strong style="' + (isCancelled ? 'text-decoration: line-through;' : '') + '">' + item.customer_name + cancelTag + '</strong>' +
-                            '<small>NV Phụ trách: <b>' + item.employee_name + '</b></small><br>' +
+                            '<small>NV Phụ trách: <b>' + item.employee_name + '</b>' + sessionTypeTag + '</small><br>' +
                             '<small>SĐT: ' + item.phone + ' | Dịch vụ: ' + (item.service || '') + '</small>' +
+                            incurredTag +
                             '</div></div>';
                     });
                     container.innerHTML = html;
@@ -512,7 +548,11 @@
             var phone = document.getElementById('addPhone').value;
             var service = document.getElementById('addService').value;
             var sessions = document.getElementById('addSessions').value;
+            var sessionTypeEl = document.getElementById('addSessionType');
+            var sessionType = sessionTypeEl ? sessionTypeEl.value : 'Bán';
             var revenue = document.getElementById('addRevenue').value;
+            var todayIncurredEl = document.getElementById('addTodayIncurred');
+            var todayIncurred = todayIncurredEl ? todayIncurredEl.value : '';
             var time = document.getElementById('addTime').value;
             var isUrgent = document.getElementById('addIsUrgent').checked;
 
@@ -537,7 +577,9 @@
                     phone: phone,
                     service: service,
                     sessions: sessions,
+                    session_type: sessionType,
                     revenue: revenue,
+                    today_incurred: todayIncurred,
                     appointment_time: time,
                     is_urgent: isUrgent,
                     groupId: getGroupId()
@@ -551,7 +593,9 @@
                         document.getElementById('addPhone').value = '';
                         document.getElementById('addService').value = '';
                         document.getElementById('addSessions').value = '';
+                        if (document.getElementById('addSessionType')) document.getElementById('addSessionType').value = 'Bán';
                         document.getElementById('addRevenue').value = '';
+                        if (document.getElementById('addTodayIncurred')) document.getElementById('addTodayIncurred').value = '';
                         document.getElementById('addTime').value = '';
                         document.getElementById('addIsUrgent').checked = false;
                         var checkDate = document.getElementById('checkDate').value;
@@ -583,7 +627,7 @@
             container.innerHTML = 'Đang tìm...';
 
             var tgId = tg && tg.initDataUnsafe && tg.initDataUnsafe.user ? tg.initDataUnsafe.user.id : '';
-            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + getGroupId() + '&telegram_id=' + tgId)
+            fetch('/api/schedules/search?phone=' + encodeURIComponent(phone) + '&groupId=' + encodeURIComponent(getGroupId()) + '&telegram_id=' + tgId)
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
                     if (!data.data || data.data.length === 0) {
@@ -654,7 +698,7 @@
             fetch('/api/schedules/cancel', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id: id, cancel_reason: reason })
+                body: JSON.stringify({ id: id, cancel_reason: reason, groupId: getGroupId() })
             })
                 .then(function (res) { return res.json(); })
                 .then(function (data) {
@@ -693,7 +737,8 @@
                     customer_name: name,
                     appointment_time: time,
                     phone: document.getElementById('searchPhone').value,
-                    service: '', sessions: ''
+                    service: '', sessions: '',
+                    groupId: getGroupId()
                 })
             })
                 .then(function (res) { return res.json(); })
