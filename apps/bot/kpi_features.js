@@ -2178,6 +2178,7 @@ ${lichKhach}`;
             // Xử lý gửi ảnh từ form lên Group
             let sentPhotos = 0;
             let hashedImages = [];
+            const reportRoles = ['report', 'report_tour'];
 
             if (images && Array.isArray(images) && images.length > 0) {
                 try {
@@ -2198,7 +2199,7 @@ ${lichKhach}`;
                         let sentMessages = null;
                         while (!successChunk && retries < 3) {
                             try {
-                                sentMessages = await sendMediaGroupToRoleGroup(bot, chatId.toString(), 'report', mediaGroup, {}, 'submit_report_photos');
+                                sentMessages = await sendMediaGroupToRoleGroup(bot, chatId.toString(), reportRoles, mediaGroup, {}, 'submit_report_photos');
                                 if (sentMessages) {
                                     successChunk = true;
                                 } else {
@@ -2252,16 +2253,16 @@ ${lichKhach}`;
                             const mediaWarnGroup = [];
                             for (const dup of duplicates) {
                                 const dateStr = new Date(dup.old_date).toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
-                                warnMsg += `⚠️ Ảnh thứ ${dup.new_index} giống ${dup.similarity}% với ảnh của <b>${dup.old_employee}</b> nộp lúc ${dateStr}.\n`;
+                                warnMsg += `⚠️ Ảnh thứ ${dup.new_index} giống ${dup.similarity}% với ảnh của <b>${dup.old_employee}</b> nộp lúc ${dateStr}\n`;
 
                                 mediaWarnGroup.push({ type: 'photo', media: dup.old_file_id, caption: `BẢN GỐC của ${dup.old_employee} nộp ${dateStr}` });
                                 mediaWarnGroup.push({ type: 'photo', media: dup.new_file_id, caption: `BẢN MỚI do ${user.full_name} nộp hôm nay` });
                             }
                             warnMsg += `\n<i>👇 Mời Sếp xem đối chiếu ảnh bên dưới:</i>`;
 
-                            await sendMessageToRoleGroup(bot, chatId.toString(), 'report', warnMsg, { parse_mode: 'HTML' }, 'report_duplicate_photo_warning');
+                            await sendMessageToRoleGroup(bot, chatId.toString(), reportRoles, warnMsg, { parse_mode: 'HTML' }, 'report_duplicate_photo_warning');
                             if (mediaWarnGroup.length > 0) {
-                                await sendMediaGroupToRoleGroup(bot, chatId.toString(), 'report', mediaWarnGroup.slice(0, 10), {}, 'report_duplicate_photo_media');
+                                await sendMediaGroupToRoleGroup(bot, chatId.toString(), reportRoles, mediaWarnGroup.slice(0, 10), {}, 'report_duplicate_photo_media');
                             }
                         }
                         // Lưu dữ liệu vân tay mới vào DB
@@ -2280,7 +2281,7 @@ ${lichKhach}`;
                 await processReport(user, parsedJSON, kpiTarget, telegramId.toString(), chatId.toString(), finalReportText, null, bot);
                 // Đã đủ ảnh -> Đẩy sang Sheet Khách Hàng
                 await pushCustomersToSheet(customersData, user);
-                const completionMessage = await sendMessageToRoleGroup(bot, chatId.toString(), 'report',
+                const completionMessage = await sendMessageToRoleGroup(bot, chatId.toString(), reportRoles,
                     `👤 <b>Cập nhật báo cáo: ${user.full_name} ngày ${formattedDate}</b>\n` +
                     `💬 Số tin: ${tinNhan}\n` +
                     `💰 Doanh thu: ${parsedJSON.doanh_thu.toLocaleString('vi-VN')}đ\n` +
@@ -2329,7 +2330,7 @@ ${lichKhach}`;
 
                 const formattedDate = new Date().toLocaleDateString('vi-VN');
                 const strReceived = sentPhotos > 0 ? `(Đã tải lên form: ${sentPhotos} ảnh) ` : '';
-                const pendingMessage = await sendMessageToRoleGroup(bot, chatId.toString(), 'report',
+                const pendingMessage = await sendMessageToRoleGroup(bot, chatId.toString(), reportRoles,
                     `👤 <b>Cập nhật báo cáo: ${user.full_name} ngày ${formattedDate}</b>\n` +
                     `💬 Số tin nhắn: ${tinNhan}\n` +
                     `💰 Doanh thu: ${parsedJSON.doanh_thu.toLocaleString('vi-VN')}đ\n` +
