@@ -40,9 +40,12 @@ export async function getKpiDocForGroup(telegram_group_id) {
 
 export async function getCustomerDocForGroup(telegram_group_id) {
     if (telegram_group_id) {
-        const res = await pool.query('SELECT customer_sheet_id FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
+        const res = await pool.query('SELECT customer_sheet_id, bot_role FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
         if (res.rows.length > 0 && res.rows[0].customer_sheet_id) {
             return await getDocById(res.rows[0].customer_sheet_id);
+        }
+        if (res.rows[0]?.bot_role === 'report_tour') {
+            return await getDocById(process.env.TOUR_SPREADSHEET_ID);
         }
     }
     return await getDocById(process.env.CUSTOMER_SPREADSHEET_ID);

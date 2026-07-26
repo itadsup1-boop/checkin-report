@@ -63,9 +63,14 @@ const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || 'SPREADSHEET_ID_CHUA
 const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
 
 const CUSTOMER_SPREADSHEET_ID = process.env.CUSTOMER_SPREADSHEET_ID;
+const TOUR_SPREADSHEET_ID = process.env.TOUR_SPREADSHEET_ID;
 let customerDoc = null;
 if (CUSTOMER_SPREADSHEET_ID) {
     customerDoc = new GoogleSpreadsheet(CUSTOMER_SPREADSHEET_ID, serviceAccountAuth);
+}
+let tourDoc = null;
+if (TOUR_SPREADSHEET_ID) {
+    tourDoc = new GoogleSpreadsheet(TOUR_SPREADSHEET_ID, serviceAccountAuth);
 }
 let customerSheetQueue = Promise.resolve();
 
@@ -73,6 +78,18 @@ let sheetQueue = Promise.resolve();
 
 export function setupKpiBot(bot, botApp) {
     const kpiComposer = new Composer();
+
+    async function getCustomerSheetTarget(groupId, employeeName) {
+        const role = groupId && groupId !== 'MINI_APP' ? await getGroupRole(groupId) : null;
+        const isTour = role === 'report_tour';
+        const targetDoc = isTour ? tourDoc : customerDoc;
+        const sheetSuffix = isTour ? ' [Tour]' : '';
+        return {
+            doc: targetDoc,
+            role,
+            sheetName: `${employeeName}${sheetSuffix}`.substring(0, 100)
+        };
+    }
 
     kpiComposer.use(async (ctx, next) => {
         if (!(await requireGroupRole(ctx, ['report', 'report_tour']))) return;
@@ -318,7 +335,7 @@ export function setupKpiBot(bot, botApp) {
 
                     const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                     const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
-                    
+
                     const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE report_date = $1`, [todayStr]);
                     const offRes = await pool.query(`SELECT user_id FROM tk_schedules WHERE date = $1 AND UPPER(shift_type) = 'OFF'`, [todayStr]);
                     const leaveRes = await pool.query(`SELECT user_id FROM tk_leave_requests WHERE date = $1 AND status IN ('approved', 'pending')`, [todayStr]);
@@ -351,7 +368,7 @@ export function setupKpiBot(bot, botApp) {
                     if (currentTimeString === penaltyTimeString) {
                         const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                         const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
-                        
+
                         const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE report_date = $1`, [todayStr]);
                         const offRes = await pool.query(`SELECT user_id FROM tk_schedules WHERE date = $1 AND UPPER(shift_type) = 'OFF'`, [todayStr]);
                         const leaveRes = await pool.query(`SELECT user_id FROM tk_leave_requests WHERE date = $1 AND status IN ('approved', 'pending')`, [todayStr]);
@@ -1870,16 +1887,18 @@ export function setupKpiBot(bot, botApp) {
             const newId = insertRes.rows[0].id;
 
             // Sync to Sheet — dùng suffix [Tour] nếu nhóm là report_tour
-            if (customerDoc) {
+            if (customerDoc || tourDoc) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
                     try {
-                        const groupRoleForSheet = groupId && groupId !== 'MINI_APP' ? await getGroupRole(groupId) : null;
-                        const sheetSuffix = groupRoleForSheet === 'report_tour' ? ' [Tour]' : '';
-                        const sheetName = (employeeName + sheetSuffix).substring(0, 100);
-                        await customerDoc.loadInfo();
+                        const target = await getCustomerSheetTarget(groupId, employeeName);
+                        if (!target.doc) {
+                            console.warn(`[Customer Sheet] group_id=${groupId} role=${target.role || 'unknown'} status=skipped reason=spreadsheet_not_configured`);
+                            return;
+                        }
+                        await target.doc.loadInfo();
                         const headers = ['Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền'];
-                        let sheet = customerDoc.sheetsByTitle[sheetName];
-                        if (!sheet) sheet = await customerDoc.addSheet({ headerValues: headers, title: sheetName });
+                        let sheet = target.doc.sheetsByTitle[target.sheetName];
+                        if (!sheet) sheet = await target.doc.addSheet({ headerValues: headers, title: target.sheetName });
                         else await sheet.setHeaderRow(headers);
 
                         const row = await sheet.addRow({
@@ -2000,11 +2019,12 @@ export function setupKpiBot(bot, botApp) {
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
 
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    // const sheet = customerDoc.sheetsByTitle['Lịch Khách Hàng'];
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(groupId, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`D${rowIndex}:E${rowIndex}`); // Only load D and E
                         await sheet.loadCells(`H${rowIndex}:H${rowIndex}`); // And H (time)
@@ -2050,11 +2070,12 @@ export function setupKpiBot(bot, botApp) {
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
 
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    // const sheet = customerDoc.sheetsByTitle['Lịch Khách Hàng'];
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(groupId, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`I${rowIndex}:J${rowIndex}`);
                         sheet.getCell(rowIndex - 1, 8).value = 'Đã hủy';   // 8 = I
@@ -2453,10 +2474,11 @@ ${lichKhach}`;
             };
 
             const groupsRes = await pool.query(`
-                SELECT s.group_id
-                FROM schedule_notification_groups s
-                JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-                WHERE g.bot_role = 'report_tour' AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+                SELECT g.telegram_group_id AS group_id
+                FROM telegram_groups g
+                WHERE g.bot_role = 'report_tour'
+                  AND g.is_active = true
+                  AND COALESCE(g.is_deleted, false) = false
             `);
             if (groupsRes.rows.length === 0) return;
 
@@ -2507,7 +2529,7 @@ ${lichKhach}`;
                         totalRevenue += revenueNum;
                         // Chuẩn hóa revenue thành số nguyên
                         if (revenueNum > 0 && item.revenue !== String(revenueNum)) {
-                            await pool.query('UPDATE customer_appointments SET revenue = $1 WHERE id = $2', [String(revenueNum), item.id]).catch(() => {});
+                            await pool.query('UPDATE customer_appointments SET revenue = $1 WHERE id = $2', [String(revenueNum), item.id]).catch(() => { });
                         }
                         validItems.push(item);
                     }
@@ -2635,16 +2657,18 @@ ${lichKhach}`;
                 return ctx.answerCbQuery('Chỉ người đăng ký lịch này mới được ấn xác nhận Đã đến!', { show_alert: true });
             }
 
-            const dbRes = await pool.query('UPDATE customer_appointments SET status = $1, is_photo_debt = TRUE WHERE id = $2 RETURNING sheet_row_index, employee_name', ['ARRIVED', id]);
+            const dbRes = await pool.query('UPDATE customer_appointments SET status = $1, is_photo_debt = TRUE WHERE id = $2 RETURNING sheet_row_index, employee_name, group_id', ['ARRIVED', id]);
 
             const rowIndex = dbRes.rows[0]?.sheet_row_index;
             const empName = dbRes.rows[0]?.employee_name;
+            const arrivalGroupId = dbRes.rows[0]?.group_id;
 
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    // const sheet = customerDoc.sheetsByTitle['Lịch Khách Hàng'];
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(arrivalGroupId, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`I${rowIndex}:I${rowIndex}`); // Trạng Thái column
                         sheet.getCell(rowIndex - 1, 8).value = 'Đã đến';
@@ -2740,13 +2764,12 @@ ${lichKhach}`;
             const empName = dbRes.rows[0]?.employee_name;
             const cancelGroupId = dbRes.rows[0]?.group_id;
 
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    const cancelGroupRole = cancelGroupId && cancelGroupId !== 'MINI_APP' ? await getGroupRole(cancelGroupId) : null;
-                    const sheetSuffix = cancelGroupRole === 'report_tour' ? ' [Tour]' : '';
-                    const sheetName = (empName + sheetSuffix).substring(0, 100);
-                    const sheet = customerDoc.sheetsByTitle[sheetName] || customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(cancelGroupId, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`I${rowIndex}:J${rowIndex}`);
                         sheet.getCell(rowIndex - 1, 8).value = 'Đã hủy';
@@ -2840,10 +2863,12 @@ ${lichKhach}`;
             // Cập nhật Google Sheet
             const rowIndex = apt.sheet_row_index;
             const empName = apt.employee_name;
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    const sheet = customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(apt.group_id, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`L${rowIndex}:L${rowIndex}`); // Giả sử cột L (cột thứ 12) là Ảnh Chứng Thực
                         sheet.getCell(rowIndex - 1, 11).value = proofUrl; // Index 11 là cột L
@@ -2861,7 +2886,7 @@ ${lichKhach}`;
                     SELECT s.group_id
                     FROM schedule_notification_groups s
                     JOIN telegram_groups tg ON tg.telegram_group_id = s.group_id
-                    WHERE tg.bot_role = 'report' AND tg.is_active = true AND COALESCE(tg.is_deleted, false) = false
+                    WHERE tg.bot_role IN ('report', 'report_tour') AND tg.is_active = true AND COALESCE(tg.is_deleted, false) = false
                     LIMIT 1
                 `);
                     if (groupsRes.rows.length > 0) targetGroup = groupsRes.rows[0].group_id;
@@ -2871,7 +2896,7 @@ ${lichKhach}`;
                         `👤 Khách hàng: <b>${apt.customer_name}</b> (Lúc ${timeStr})\n` +
                         `💼 KTV: <b>${apt.employee_name}</b>\n\n` +
                         `✅ <i>Đã lưu ảnh vào hệ thống thành công!</i>`;
-                    await sendPhotoToRoleGroup(bot, targetGroup, 'report', { source: buffer }, { caption: caption, parse_mode: 'HTML' }, 'upload_proof_api');
+                    await sendPhotoToRoleGroup(bot, targetGroup, ['report', 'report_tour'], { source: buffer }, { caption: caption, parse_mode: 'HTML' }, 'upload_proof_api');
                 }
             } catch (tgErr) {
                 console.error('Lỗi gửi ảnh chứng thực lên Telegram:', tgErr);
@@ -2954,13 +2979,12 @@ ${lichKhach}`;
             // Cập nhật Google Sheet — dùng suffix [Tour] cho nhóm report_tour
             const rowIndex = apt.sheet_row_index;
             const empName = apt.employee_name;
-            if (rowIndex && customerDoc) {
+            if (rowIndex && (customerDoc || tourDoc)) {
                 customerSheetQueue = customerSheetQueue.then(async () => {
-                    await customerDoc.loadInfo();
-                    const aptGroupRole = apt.group_id && apt.group_id !== 'MINI_APP' ? await getGroupRole(apt.group_id) : null;
-                    const sheetSuffix = aptGroupRole === 'report_tour' ? ' [Tour]' : '';
-                    const sheetName = (empName + sheetSuffix).substring(0, 100);
-                    const sheet = customerDoc.sheetsByTitle[sheetName] || customerDoc.sheetsByTitle[empName];
+                    const target = await getCustomerSheetTarget(apt.group_id, empName);
+                    if (!target.doc) return;
+                    await target.doc.loadInfo();
+                    const sheet = target.doc.sheetsByTitle[target.sheetName];
                     if (sheet) {
                         await sheet.loadCells(`L${rowIndex}:L${rowIndex}`);
                         sheet.getCell(rowIndex - 1, 11).value = proofUrl;
