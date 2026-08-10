@@ -887,6 +887,45 @@ ALTER TABLE ONLY public.tk_users
 
 
 --
+-- Name: tour_makeup_requests; Type: TABLE; Schema: public; Owner: -
+--
+CREATE TABLE IF NOT EXISTS public.tour_makeup_requests (
+    id uuid DEFAULT public.uuid_generate_v4() NOT NULL PRIMARY KEY,
+    telegram_group_id character varying REFERENCES public.telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    telegram_id character varying NOT NULL,
+    employee_name character varying NOT NULL,
+    request_type character varying(50) NOT NULL CHECK (request_type IN ('EXISTING_APPOINTMENT', 'MISSING_APPOINTMENT')),
+    original_appointment_id integer REFERENCES public.customer_appointments(id) ON DELETE SET NULL,
+    work_date date NOT NULL,
+    appointment_time timestamp without time zone NOT NULL,
+    customer_name character varying(255) NOT NULL,
+    customer_phone character varying(50) NOT NULL,
+    service character varying(255) NOT NULL,
+    sessions character varying(50) NOT NULL,
+    session_type character varying(50) NOT NULL DEFAULT 'Bán'::character varying,
+    revenue character varying(50) NOT NULL,
+    reason text NOT NULL,
+    proof_image text NOT NULL,
+    status character varying(50) NOT NULL CHECK (status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'REJECTED', 'NOTIFICATION_FAILED')),
+    sheet_sync_status character varying(50) DEFAULT 'NOT_STARTED'::character varying,
+    sheet_sync_error text,
+    submitted_at timestamp with time zone DEFAULT now(),
+    reviewed_at timestamp with time zone,
+    reviewed_by character varying(255),
+    review_note text,
+    approved_appointment_id integer REFERENCES public.customer_appointments(id) ON DELETE SET NULL,
+    created_at timestamp with time zone DEFAULT now(),
+    updated_at timestamp with time zone DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_group ON public.tour_makeup_requests(telegram_group_id);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_employee ON public.tour_makeup_requests(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_status ON public.tour_makeup_requests(status);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_work_date ON public.tour_makeup_requests(work_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tour_makeup_dedupe ON public.tour_makeup_requests(telegram_id, telegram_group_id, work_date, customer_phone) WHERE status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'NOTIFICATION_FAILED');
+
+
+--
 -- PostgreSQL database dump complete
 --
 

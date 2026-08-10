@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(()=>c.query('SELECT full_name, is_exempt_checkin FROM employees WHERE full_name LIKE ''%Do?n Trung ?nh%''')).then(r=>{console.log(r.rows); c.end()});

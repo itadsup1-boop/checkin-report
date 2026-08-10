@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📊 Báo Cáo Tồn Kho Thực Tế</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #06b6d4;
+            --primary-hover: #0891b2;
+            --primary-glow: rgba(6, 182, 212, 0.35);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(255, 255, 255, 0.08);
+            --input-focus: #22d3ee;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(6, 182, 212, 0.1);
+            border: 1px solid rgba(6, 182, 212, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            color: var(--primary);
+            box-shadow: 0 8px 24px -4px rgba(6, 182, 212, 0.3);
+            font-size: 28px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #ffffff, #cffafe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Search input */
+        .search-container {
+            margin-bottom: 20px;
+            position: relative;
+        }
+
+        .search-input {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .search-input:focus {
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.15);
+        }
+
+        /* Inventory List */
+        .inventory-list {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            overflow-y: auto;
+            max-height: 400px;
+            padding-right: 4px;
+        }
+
+        /* Custom scrollbar */
+        .inventory-list::-webkit-scrollbar {
+            width: 4px;
+        }
+        .inventory-list::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .inventory-list::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        .inventory-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 14px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: all 0.2s ease;
+        }
+
+        .inventory-item:hover {
+            border-color: rgba(6, 182, 212, 0.15);
+            background: rgba(6, 182, 212, 0.02);
+        }
+
+        .item-details {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-width: 70%;
+        }
+
+        .item-name {
+            font-weight: 600;
+            font-size: 15px;
+            color: var(--text-primary);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .item-barcode {
+            font-family: monospace;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+
+        .item-time {
+            font-size: 10px;
+            color: rgba(148, 163, 184, 0.6);
+        }
+
+        .stock-badge {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            gap: 4px;
+        }
+
+        .stock-count {
+            font-size: 20px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stock-status {
+            font-size: 10px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 2px 6px;
+            border-radius: 6px;
+        }
+
+        /* Color classes */
+        .status-plenty {
+            color: var(--success);
+        }
+        .bg-plenty {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.25);
+        }
+
+        .status-low {
+            color: var(--warning);
+        }
+        .bg-low {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--warning);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+
+        .status-empty {
+            color: var(--danger);
+        }
+        .bg-empty {
+            background: rgba(244, 63, 94, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(244, 63, 94, 0.25);
+        }
+
+        /* Empty state */
+        .empty-state {
+            text-align: center;
+            padding: 40px 20px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        /* Footer buttons */
+        .footer-actions {
+            margin-top: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .btn-close {
+            background: #475569;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            width: 100%;
+            transition: all 0.2s ease;
+        }
+
+        .btn-close:active {
+            transform: scale(0.98);
+        }
+
+        /* Loading */
+        .loading-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 0;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid rgba(6, 182, 212, 0.1);
+            border-top: 3px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">📊</div>
+                <h1>TỒN KHO THỰC TẾ</h1>
+                <p>Xem danh sách số lượng sản phẩm tồn hiện tại</p>
+            </div>
+
+            <!-- Search -->
+            <div class="search-container">
+                <input type="text" id="searchInput" class="search-input" placeholder="Tìm tên sản phẩm hoặc mã vạch..." oninput="filterInventory(this.value)">
+            </div>
+
+            <!-- Inventory List Container -->
+            <div id="inventoryContainer">
+                <div class="loading-container">
+                    <div class="spinner"></div>
+                    <div>Đang tải dữ liệu tồn kho...</div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer-actions">
+                <button class="btn-close" onclick="closeWebApp()">❌ ĐÓNG ỨNG DỤNG</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
+        let initData = "";
+        let inventoryData = [];
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                initData = tg.initData || "";
+            }
+
+            // Fetch inventory data
+            loadInventory();
+        });
+
+        async function loadInventory() {
+            try {
+                const response = await fetch(`/api/warehouse/inventory?initData=${encodeURIComponent(initData)}`, {
+                    headers: { 'x-telegram-init-data': initData }
+                });
+                const res = await response.json();
+                
+                if (res.success && res.inventory) {
+                    inventoryData = res.inventory;
+                    renderInventory(inventoryData);
+                } else {
+                    document.getElementById('inventoryContainer').innerHTML = `
+                        <div class="empty-state">
+                            Lỗi: Không thể lấy dữ liệu tồn kho.
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                console.error("Lỗi khi tải tồn kho:", e);
+                document.getElementById('inventoryContainer').innerHTML = `
+                    <div class="empty-state">
+                        Lỗi kết nối máy chủ!
+                    </div>
+                `;
+            }
+        }
+
+        function renderInventory(items) {
+            const container = document.getElementById('inventoryContainer');
+            
+            if (!items || items.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        📭 Chưa có sản phẩm nào trong kho!
+                    </div>
+                `;
+                return;
+            }
+
+            let html = '<div class="inventory-list">';
+            
+            items.forEach(item => {
+                const qty = item.quantity;
+                let colorClass = 'status-plenty';
+                let bgClass = 'bg-plenty';
+                let statusText = 'Đủ hàng';
+
+                if (qty === 0) {
+                    colorClass = 'status-empty';
+                    bgClass = 'bg-empty';
+                    statusText = 'Hết hàng';
+                } else if (qty <= 10) {
+                    colorClass = 'status-low';
+                    bgClass = 'bg-low';
+                    statusText = 'Sắp hết';
+                }
+
+                const updatedTime = item.updated_at 
+                    ? new Date(item.updated_at).toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' })
+                    : 'Chưa cập nhật';
+
+                html += `
+                    <div class="inventory-item">
+                        <div class="item-details">
+                            <span class="item-name" title="${escapeHtml(item.product_name)}">${escapeHtml(item.product_name)}</span>
+                            <span class="item-barcode">⚡ ${escapeHtml(item.barcode)}</span>
+                            <span class="item-time">🕒 Cập nhật: ${updatedTime}</span>
+                        </div>
+                        <div class="stock-badge">
+                            <span class="stock-count ${colorClass}">${qty}</span>
+                            <span class="stock-status ${bgClass}">${statusText}</span>
+                        </div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            container.innerHTML = html;
+        }
+
+        function filterInventory(keyword) {
+            if (!keyword || keyword.trim() === '') {
+                renderInventory(inventoryData);
+                return;
+            }
+
+            const cleanKeyword = keyword.toLowerCase().trim();
+            const filtered = inventoryData.filter(item => 
+                item.product_name.toLowerCase().includes(cleanKeyword) || 
+                item.barcode.toLowerCase().includes(cleanKeyword)
+            );
+
+            renderInventory(filtered);
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return str
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            } else {
+                window.close();
+            }
+        }
+    </script>
+</body>
+
+</html>

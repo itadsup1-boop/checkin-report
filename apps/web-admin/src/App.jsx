@@ -622,6 +622,13 @@ function Dashboard({ user, onLogout }) {
 }
 
 function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSettings, handleDeleteGroup }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopyEmail = () => {
+    navigator.clipboard.writeText('bot-ghi-sheet@hybrid-flame-499905-r2.iam.gserviceaccount.com');
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   const [times, setTimes] = useState({});
   const [shift1Times, setShift1Times] = useState({});
   const [shift2Times, setShift2Times] = useState({});
@@ -631,6 +638,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
   const [scheduleOpen, setScheduleOpen] = useState({});
   const [kpiSheetIds, setKpiSheetIds] = useState({});
   const [customerSheetIds, setCustomerSheetIds] = useState({});
+  const [customerDriveFolderIds, setCustomerDriveFolderIds] = useState({});
 
   const displayedGroups = selectedGroupId && selectedGroupId !== 'ALL'
     ? groups.filter(g => g.telegram_group_id === selectedGroupId)
@@ -645,6 +653,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     const initialScheduleOpen = {};
     const initialKpiSheets = {};
     const initialCustomerSheets = {};
+    const initialCustomerDriveFolders = {};
 
     displayedGroups.forEach(g => {
       initialTimes[g.telegram_group_id] = (g.remind_time_1 || '17:00:00').substring(0, 5);
@@ -660,6 +669,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
       initialScheduleOpen[g.telegram_group_id] = g.schedule_registration_open !== false; // default true
       initialKpiSheets[g.telegram_group_id] = g.kpi_sheet_id || '';
       initialCustomerSheets[g.telegram_group_id] = g.customer_sheet_id || '';
+      initialCustomerDriveFolders[g.telegram_group_id] = g.customer_drive_folder_id || '';
     });
 
     setTimes(initialTimes);
@@ -670,6 +680,7 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     setScheduleOpen(initialScheduleOpen);
     setKpiSheetIds(initialKpiSheets);
     setCustomerSheetIds(initialCustomerSheets);
+    setCustomerDriveFolderIds(initialCustomerDriveFolders);
   }, [displayedGroups]);
 
   const handleTimeChange = (groupId, value) => setTimes(prev => ({ ...prev, [groupId]: value }));
@@ -684,6 +695,9 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
   };
 
   const handleBotRoleChange = (groupId, value) => setBotRoles(prev => ({ ...prev, [groupId]: value }));
+  const handleCustomerSheetChange = (groupId, value) => setCustomerSheetIds(prev => ({ ...prev, [groupId]: value }));
+  const handleCustomerDriveFolderChange = (groupId, value) => setCustomerDriveFolderIds(prev => ({ ...prev, [groupId]: value }));
+  const handleKpiSheetChange = (groupId, value) => setKpiSheetIds(prev => ({ ...prev, [groupId]: value }));
 
   const handleSave = (groupId) => {
     const shift1Value = shift1Times[groupId] || '08:00';
@@ -694,6 +708,9 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
     const over90 = parseInt(penalties.over90) || 0;
     const roleValue = botRoles[groupId] || null;
     const isScheduleOpen = scheduleOpen[groupId] !== false;
+    const customerSheetVal = customerSheetIds[groupId] || null;
+    const customerDriveFolderVal = customerDriveFolderIds[groupId] || null;
+    const kpiSheetVal = kpiSheetIds[groupId] || null;
 
     handleUpdateGroupSettings(groupId, {
       penalty_under_15: under15,
@@ -703,6 +720,9 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
       shift_2_time: shift2Value.length === 5 ? `${shift2Value}:00` : shift2Value,
       bot_role: roleValue,
       schedule_registration_open: isScheduleOpen,
+      customer_sheet_id: customerSheetVal,
+      customer_drive_folder_id: customerDriveFolderVal,
+      kpi_sheet_id: kpiSheetVal,
       auto_reminder_enabled: true
     });
   };
@@ -717,115 +737,195 @@ function SettingsTab({ groups, selectedGroupId = 'ALL', handleUpdateGroupSetting
         </p>
       </div>
 
+      <div className="mb-6 bg-cyan-950/20 border border-cyan-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider block mb-1">Cấu hình Google Sheets & Drive</span>
+          <p className="text-slate-300 text-sm">
+            Để ghi dữ liệu và lưu ảnh/video, vui lòng chia sẻ quyền <b>Người chỉnh sửa (Editor)</b> cho email Service Account sau:
+          </p>
+          <code className="text-xs font-mono text-cyan-300 bg-black/40 px-2 py-1 rounded inline-block mt-2 select-all select-text cursor-pointer hover:bg-black/60 transition-colors" title="Nhấp đúp chuột để chọn hết">
+            bot-ghi-sheet@hybrid-flame-499905-r2.iam.gserviceaccount.com
+          </code>
+        </div>
+        <button
+          onClick={handleCopyEmail}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all border shrink-0 ${copied ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/30 hover:bg-cyan-500/20 active:scale-95'}`}
+        >
+          <ClipboardCheck className="w-4 h-4" />
+          {copied ? 'Đã sao chép!' : 'Sao chép Email'}
+        </button>
+      </div>
+
       {displayedGroups.length === 0 ? (
         <p className="text-slate-400">Chưa có nhóm nào kết nối hoặc được phân quyền.</p>
       ) : (
         <div className="space-y-6">
-          {displayedGroups.map(group => (
-            <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col gap-5">
-              <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 border-b border-white/10 pb-4">
-                <div>
-                  <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
-                  <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
-                </div>
-                <div className="flex gap-2 self-start md:self-auto">
-                  <button
-                    onClick={() => handleSave(group.telegram_group_id)}
-                    className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center gap-2"
-                  >
-                    <Save className="w-4 h-4" /> Lưu cài đặt
-                  </button>
-                  <button
-                    onClick={() => handleDeleteGroup(group.telegram_group_id)}
-                    className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-bold transition-all border border-red-500/30 active:scale-95"
-                    title="Xóa nhóm"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
+          {displayedGroups.map(group => {
+            const groupRole = botRoles[group.telegram_group_id] || '';
+            const showCustomerSheet = groupRole === '' || ['customer', 'report', 'report_tour', 'warehouse'].includes(groupRole);
+            const showKpiSheet = groupRole === '' || ['timekeep', 'report', 'report_tour'].includes(groupRole);
+            const showDriveFolder = groupRole === '' || groupRole === 'customer' || groupRole === 'warehouse';
+            const showTimekeepConfig = groupRole === '' || groupRole === 'timekeep';
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca sớm</label>
-                  <input
-                    type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
-                    value={shift1Times[group.telegram_group_id] || ''}
-                    onChange={(e) => handleShift1Change(group.telegram_group_id, e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca muộn</label>
-                  <input
-                    type="time"
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
-                    value={shift2Times[group.telegram_group_id] || ''}
-                    onChange={(e) => handleShift2Change(group.telegram_group_id, e.target.value)}
-                  />
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
-                  <div className="relative">
-                    <input
-                      type="number" min="0" step="1000"
-                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
-                      value={latePenalties[group.telegram_group_id]?.under15 || ''}
-                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+            return (
+              <div key={group.telegram_group_id} className="p-5 border border-white/10 rounded-xl bg-white/5 flex flex-col gap-5">
+                <div className="flex flex-col md:flex-row justify-between md:items-start gap-4 border-b border-white/10 pb-4">
+                  <div>
+                    <h4 className="font-bold text-white text-lg">{group.group_name}</h4>
+                    <p className="text-slate-400 text-sm mt-1">ID: {group.telegram_group_id}</p>
+                  </div>
+                  <div className="flex gap-2 self-start md:self-auto">
+                    <button
+                      onClick={() => handleSave(group.telegram_group_id)}
+                      className="px-5 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 text-white rounded-lg text-sm font-bold transition-all shadow-lg shadow-cyan-500/20 active:scale-95 flex items-center gap-2"
+                    >
+                      <Save className="w-4 h-4" /> Lưu cài đặt
+                    </button>
+                    <button
+                      onClick={() => handleDeleteGroup(group.telegram_group_id)}
+                      className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-400 rounded-lg text-sm font-bold transition-all border border-red-500/30 active:scale-95"
+                      title="Xóa nhóm"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 90 phút</label>
-                  <div className="relative">
-                    <input
-                      type="number" min="0" step="1000"
-                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
-                      value={latePenalties[group.telegram_group_id]?.under90 || ''}
-                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                  {showCustomerSheet && (
+                    <div className="flex flex-col xl:col-span-2">
+                      <label className="text-xs font-medium text-slate-400 mb-1">
+                        {groupRole === 'warehouse' ? 'ID GG Sheet (Báo Cáo Kho)' : 'ID GG Sheet (Lịch Khách)'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="VD: 1f3beRFKB6TRHhOOdJZ54Df..."
+                        className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full font-mono text-sm"
+                        value={customerSheetIds[group.telegram_group_id] || ''}
+                        onChange={(e) => handleCustomerSheetChange(group.telegram_group_id, e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {showKpiSheet && (
+                    <div className="flex flex-col xl:col-span-2">
+                      <label className="text-xs font-medium text-slate-400 mb-1">ID GG Sheet (Chấm Công)</label>
+                      <input
+                        type="text"
+                        placeholder="VD: 1f3beRFKB6TRHhOOdJZ54Df..."
+                        className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full font-mono text-sm"
+                        value={kpiSheetIds[group.telegram_group_id] || ''}
+                        onChange={(e) => handleKpiSheetChange(group.telegram_group_id, e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  {showDriveFolder && (
+                    <div className="flex flex-col xl:col-span-4">
+                      <label className="text-xs font-medium text-slate-400 mb-1">
+                        {groupRole === 'warehouse' ? 'ID Thư mục Google Drive cha (Lưu ảnh/video nhập kho)' : 'ID Thư mục Google Drive cha (Lưu ảnh/video khách hàng)'}
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="VD: 1efnVoB6tQXrHKAeTcm3lcqzJqBoGg3QF (Để trống sẽ dùng thư mục mặc định của hệ thống)"
+                        className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full font-mono text-sm"
+                        value={customerDriveFolderIds[group.telegram_group_id] || ''}
+                        onChange={(e) => handleCustomerDriveFolderChange(group.telegram_group_id, e.target.value)}
+                      />
+                    </div>
+                  )}
+                  
+                  {showTimekeepConfig && (
+                    <>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca sớm</label>
+                        <input
+                          type="time"
+                          className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
+                          value={shift1Times[group.telegram_group_id] || ''}
+                          onChange={(e) => handleShift1Change(group.telegram_group_id, e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-slate-400 mb-1">Giờ bắt đầu Ca muộn</label>
+                        <input
+                          type="time"
+                          className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
+                          value={shift2Times[group.telegram_group_id] || ''}
+                          onChange={(e) => handleShift2Change(group.telegram_group_id, e.target.value)}
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 15 phút</label>
+                        <div className="relative">
+                          <input
+                            type="number" min="0" step="1000"
+                            className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                            value={latePenalties[group.telegram_group_id]?.under15 || ''}
+                            onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under15', e.target.value)}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn dưới 90 phút</label>
+                        <div className="relative">
+                          <input
+                            type="number" min="0" step="1000"
+                            className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                            value={latePenalties[group.telegram_group_id]?.under90 || ''}
+                            onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'under90', e.target.value)}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col">
+                        <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn {'>'} 90 phút</label>
+                        <div className="relative">
+                          <input
+                            type="number" min="0" step="1000"
+                            className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
+                            value={latePenalties[group.telegram_group_id]?.over90 || ''}
+                            onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="flex flex-col">
+                    <label className="text-xs font-medium text-slate-400 mb-1">Vai trò của Bot</label>
+                    <select
+                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
+                      value={botRoles[group.telegram_group_id] || ''}
+                      onChange={(e) => handleBotRoleChange(group.telegram_group_id, e.target.value)}
+                    >
+                      <option value="">(Không xác định)</option>
+                      <option value="timekeep">Bot chấm công</option>
+                      <option value="report">Bot báo cáo</option>
+                      <option value="report_tour">Bot lịch khách (Tour)</option>
+                      <option value="customer">Lưu thông tin khách hàng</option>
+                      <option value="warehouse">Quản lý kho hàng</option>
+                    </select>
                   </div>
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Phạt muộn {'>'} 90 phút</label>
-                  <div className="relative">
-                    <input
-                      type="number" min="0" step="1000"
-                      className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-red-500/50 w-full pr-10"
-                      value={latePenalties[group.telegram_group_id]?.over90 || ''}
-                      onChange={(e) => handleLatePenaltyChange(group.telegram_group_id, 'over90', e.target.value)}
-                    />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-500">₫</span>
-                  </div>
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Vai trò của Bot</label>
-                  <select
-                    className="bg-[#0B0F19] border border-white/10 rounded-lg px-4 py-2 text-white focus:outline-none focus:border-cyan-500/50 w-full"
-                    value={botRoles[group.telegram_group_id] || ''}
-                    onChange={(e) => handleBotRoleChange(group.telegram_group_id, e.target.value)}
-                  >
-                    <option value="">(Không xác định)</option>
-                    <option value="timekeep">Bot chấm công</option>
-                    <option value="report">Bot báo cáo</option>
-                    <option value="report_tour">Bot lịch khách (Tour)</option>
-                  </select>
-                </div>
-                <div className="flex flex-col">
-                  <label className="text-xs font-medium text-slate-400 mb-1">Mở đăng ký lịch</label>
-                  <button
-                    onClick={() => handleScheduleOpenChange(group.telegram_group_id, !(scheduleOpen[group.telegram_group_id] !== false))}
-                    className={`px-4 py-2 rounded-lg text-sm font-bold transition-all border w-full flex items-center justify-center gap-2 ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 shadow-lg shadow-rose-500/10'}`}
-                  >
-                    <span className={`w-2 h-2 rounded-full animate-pulse ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
-                    {scheduleOpen[group.telegram_group_id] !== false ? 'Đang mở đăng ký' : 'Đang đóng'}
-                  </button>
+
+                  {showTimekeepConfig && (
+                    <div className="flex flex-col">
+                      <label className="text-xs font-medium text-slate-400 mb-1">Mở đăng ký lịch</label>
+                      <button
+                        onClick={() => handleScheduleOpenChange(group.telegram_group_id, !(scheduleOpen[group.telegram_group_id] !== false))}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold transition-all border w-full flex items-center justify-center gap-2 ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/20 shadow-lg shadow-emerald-500/10' : 'bg-rose-500/10 text-rose-400 border-rose-500/30 hover:bg-rose-500/20 shadow-lg shadow-rose-500/10'}`}
+                      >
+                        <span className={`w-2 h-2 rounded-full animate-pulse ${scheduleOpen[group.telegram_group_id] !== false ? 'bg-emerald-400' : 'bg-rose-400'}`}></span>
+                        {scheduleOpen[group.telegram_group_id] !== false ? 'Đang mở đăng ký' : 'Đang đóng'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

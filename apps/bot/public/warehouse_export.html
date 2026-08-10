@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📤 Xuất Kho Sản Phẩm</title>
+    <!-- Google Font: Outfit -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-gradient: #0f172a;
+            --card-bg: #1e293b;
+            --card-border: rgba(255, 255, 255, 0.08);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --primary: #f43f5e;
+            --primary-hover: #e11d48;
+            --primary-glow: rgba(244, 63, 94, 0.35);
+            --success: #10b981;
+            --danger: #f43f5e;
+            --warning: #f59e0b;
+            --input-bg: rgba(15, 23, 42, 0.6);
+            --input-border: rgba(255, 255, 255, 0.08);
+            --input-focus: #fb7185;
+            --cyan-accent: #06b6d4;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: var(--bg-gradient);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 480px;
+            z-index: 10;
+            position: relative;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 24px;
+            padding: 24px 20px;
+            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .logo-container {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 56px;
+            height: 56px;
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            border-radius: 16px;
+            margin-bottom: 12px;
+            color: var(--primary);
+            box-shadow: 0 8px 24px -4px rgba(244, 63, 94, 0.3);
+            font-size: 28px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 700;
+            letter-spacing: -0.5px;
+            margin-bottom: 4px;
+            background: linear-gradient(to right, #ffffff, #ffe4e6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* Profile section */
+        .profile-section {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .profile-info {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .avatar-stub {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #f43f5e, #ec4899);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 14px;
+        }
+
+        .profile-name {
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .group-badge {
+            font-size: 11px;
+            background: rgba(244, 63, 94, 0.15);
+            color: #fb7185;
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 500;
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            color: var(--text-primary);
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-family: inherit;
+            outline: none;
+            transition: all 0.2s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            border-color: var(--input-focus);
+            box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.15);
+        }
+
+        .form-group input:disabled {
+            background: rgba(255, 255, 255, 0.02);
+            color: var(--text-secondary);
+            border-color: rgba(255, 255, 255, 0.03);
+            cursor: not-allowed;
+        }
+
+        /* Scan Section */
+        .scan-action-container {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn-scan {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #06b6d4, #0891b2);
+            border: none;
+            color: white;
+            padding: 14px;
+            border-radius: 14px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(6, 182, 212, 0.35);
+            transition: all 0.2s ease;
+        }
+
+        .btn-scan:active {
+            transform: scale(0.98);
+        }
+
+        /* Alert Notification */
+        .alert-box {
+            background: rgba(245, 158, 11, 0.1);
+            border: 1px solid rgba(245, 158, 11, 0.2);
+            border-radius: 12px;
+            padding: 10px 14px;
+            margin-bottom: 20px;
+            font-size: 13px;
+            color: var(--warning);
+            display: none;
+        }
+
+        .alert-box.danger {
+            background: rgba(244, 63, 94, 0.1);
+            border: 1px solid rgba(244, 63, 94, 0.2);
+            color: var(--danger);
+        }
+
+        .alert-box.success {
+            background: rgba(16, 185, 129, 0.1);
+            border: 1px solid rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        /* Submit Button */
+        .btn-submit {
+            width: 100%;
+            background: linear-gradient(135deg, #f43f5e, #e11d48);
+            color: white;
+            border: none;
+            padding: 15px;
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+            margin-top: 10px;
+            box-shadow: 0 4px 15px var(--primary-glow);
+            transition: all 0.2s ease;
+        }
+
+        .btn-submit:disabled {
+            background: #475569;
+            box-shadow: none;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-submit:not(:disabled):active {
+            transform: scale(0.98);
+        }
+
+        /* Overlay */
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(15, 23, 42, 0.95);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            padding: 24px;
+            text-align: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        .overlay.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .overlay-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .overlay-desc {
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+            max-width: 320px;
+            line-height: 1.5;
+        }
+
+        .success-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+        }
+
+        .btn-success {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(244, 63, 94, 0.1);
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Scanner Modal */
+        .scanner-modal-content {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 20px;
+            width: 92%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        #interactive {
+            width: 100%;
+            aspect-ratio: 4/3;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+            position: relative;
+        }
+        /* Custom styles for Quagga2 elements */
+        #interactive video,
+        #interactive canvas.drawingBuffer {
+            width: 100% !important;
+            height: 100% !important;
+            object-fit: cover !important;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        /* Laser line static guide */
+        .laser-line {
+            position: absolute;
+            top: 50%;
+            left: 5%;
+            width: 90%;
+            height: 2px;
+            background-color: #f43f5e;
+            box-shadow: 0 0 8px #f43f5e;
+            z-index: 10;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="card">
+            <!-- Header -->
+            <div class="header">
+                <div class="logo-container">📤</div>
+                <h1>XUẤT KHO HÀNG HÓA</h1>
+                <p>Quét mã hoặc chọn sản phẩm để gửi yêu cầu xuất kho</p>
+            </div>
+
+            <!-- Profile Info -->
+            <div class="profile-section">
+                <div class="profile-info">
+                    <div class="avatar-stub" id="avatarStub">U</div>
+                    <span class="profile-name" id="tgName">@employee</span>
+                </div>
+                <div class="group-badge">Kho Hàng</div>
+            </div>
+
+            <!-- Scan Action Button -->
+            <div class="scan-action-container">
+                <button type="button" class="btn-scan" onclick="startScan()">
+                    📷 Quét mã vạch / QR Code
+                </button>
+            </div>
+
+            <!-- Alert Notification -->
+            <div id="alertBox" class="alert-box"></div>
+
+            <!-- Main Form -->
+            <form id="exportForm" onsubmit="handleFormSubmit(event)">
+                <!-- Dropdown Select Product (Manual options) -->
+                <div class="form-group">
+                    <label for="productDropdown">Chọn sản phẩm có sẵn (Thủ công)</label>
+                    <input type="text" id="productDropdown" list="productsList" placeholder="Tìm kiếm hoặc chọn sản phẩm..." oninput="onProductSelect(this.value)">
+                    <datalist id="productsList">
+                        <!-- Dynamic Options -->
+                    </datalist>
+                </div>
+
+                <!-- Barcode -->
+                <div class="form-group">
+                    <label for="barcode">Mã vạch / Mã sản phẩm</label>
+                    <input type="text" id="barcode" placeholder="Quét mã vạch hoặc nhập thủ công..." required oninput="checkBarcode(this.value.trim())">
+                </div>
+
+                <!-- Product Name -->
+                <div class="form-group">
+                    <label for="productName">Tên sản phẩm</label>
+                    <input type="text" id="productName" placeholder="Tên sản phẩm..." required readonly disabled>
+                </div>
+
+                <!-- Quantity -->
+                <div class="form-group">
+                    <label for="quantity">Số lượng xuất</label>
+                    <input type="number" id="quantity" placeholder="Ví dụ: 5, 20..." required min="1" oninput="validateExportQty(this.value)">
+                </div>
+
+                <button type="submit" id="btnSubmit" class="btn-submit" disabled>📤 GỬI YÊU CẦU XUẤT KHO</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay" class="overlay">
+        <div class="spinner"></div>
+        <div class="overlay-title">Đang gửi yêu cầu...</div>
+        <div class="overlay-desc">Vui lòng chờ xác nhận tồn kho.</div>
+    </div>
+<!-- slide -->
+    <!-- Success Overlay -->
+    <div id="successScreen" class="overlay">
+        <div class="success-icon" id="successIcon">✅</div>
+        <div class="overlay-title" id="successTitle" style="color: var(--success);">ĐÃ GỬI YÊU CẦU!</div>
+        <div class="overlay-desc" id="successDesc">Yêu cầu xuất kho đã được gửi lên nhóm Telegram chờ duyệt.</div>
+        <button class="btn-success" onclick="closeWebApp()">HOÀN TẤT & ĐÓNG</button>
+    </div>
+
+    <!-- Scanner Modal -->
+    <div id="scannerModal" class="overlay">
+        <div class="scanner-modal-content">
+            <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-primary);">Quét mã vạch sản phẩm</h3>
+            <div id="interactive"></div>
+            <button type="button" class="btn-scan" style="background: var(--danger); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3); margin-top: 16px;" onclick="stopScan()">❌ Hủy bỏ</button>
+        </div>
+    </div>
+
+    <!-- Quagga2 Barcode Reader -->
+    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <!-- Telegram SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script>
+        const tg = window.Telegram ? window.Telegram.WebApp : null;
+        let initData = "";
+        let telegramId = "";
+        let telegramUsername = "";
+        let chatId = "";
+        let payloadTs = "";
+        let payloadSig = "";
+        let productsMap = {};
+        let availableQty = 0; // Số lượng tồn kho tối đa của sản phẩm đang chọn
+        let isValidProduct = false;
+        let lastCodes = []; // Bộ đệm lọc kết quả quét trùng lặp
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (tg) {
+                tg.ready();
+                tg.expand();
+                initData = tg.initData || "";
+            }
+
+            // Parse URL Query parameters
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
+                const user = tg.initDataUnsafe.user;
+                telegramId = user.id;
+                telegramUsername = user.username || user.first_name;
+                document.getElementById('tgName').textContent = `@${telegramUsername}`;
+                document.getElementById('avatarStub').textContent = telegramUsername.substring(0, 2).toUpperCase();
+
+                let startParam = tg.initDataUnsafe.start_param;
+                if (startParam) {
+                    const parts = startParam.split('_');
+                    if (parts.length >= 4) {
+                        chatId = parts[1];
+                        payloadTs = parts[2];
+                        payloadSig = parts[3];
+                    } else {
+                        chatId = startParam.replace('whexport_', '');
+                    }
+                }
+            }
+
+            if (!chatId) {
+                chatId = urlParams.get('chat_id') || "";
+                payloadTs = urlParams.get('ts') || "";
+                payloadSig = urlParams.get('sig') || "";
+            }
+
+            // Load existing products list
+            loadProductsList();
+        });
+
+        async function loadProductsList() {
+            try {
+                const response = await fetch(`/api/warehouse/products?initData=${encodeURIComponent(initData)}`, {
+                    headers: { 'x-telegram-init-data': initData }
+                });
+                const res = await response.json();
+                if (res.success && res.products) {
+                    const dataList = document.getElementById('productsList');
+                    dataList.innerHTML = '';
+                    productsMap = {};
+                    res.products.forEach(p => {
+                        const option = document.createElement('option');
+                        option.value = p.product_name;
+                        dataList.appendChild(option);
+                        productsMap[p.product_name] = p.barcode;
+                    });
+                }
+            } catch (e) {
+                console.error("Lỗi khi tải danh sách sản phẩm:", e);
+            }
+        }
+
+        function onProductSelect(selectedName) {
+            const barcode = productsMap[selectedName];
+            if (barcode) {
+                document.getElementById('barcode').value = barcode;
+                checkBarcode(barcode);
+            }
+        }
+
+        // Handle barcode scanned results from Quagga
+        function handleBarcode(result) {
+            if (!result || !result.codeResult || !result.codeResult.code) return;
+            const code = result.codeResult.code.trim();
+            
+            // Bộ lọc chống nhận dạng nhầm (yêu cầu lặp lại cùng một mã 3 lần liên tiếp)
+            lastCodes.push(code);
+            if (lastCodes.length > 5) {
+                lastCodes.shift();
+            }
+            
+            const count = lastCodes.filter(c => c === code).length;
+            if (count >= 3) {
+                lastCodes = []; // Reset bộ đệm
+                document.getElementById('barcode').value = code;
+                checkBarcode(code);
+                stopScan();
+            }
+        }
+
+        // Helper to find the best back camera on iOS/Android
+        async function getBestBackCameraId() {
+            try {
+                // Yêu cầu quyền truy cập trước để lấy nhãn (labels)
+                await navigator.mediaDevices.getUserMedia({ video: true });
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                const videoDevices = devices.filter(device => device.kind === 'videoinput');
+                const backCameras = videoDevices.filter(device => {
+                    const label = device.label.toLowerCase();
+                    return label.includes('back') || label.includes('sau') || label.includes('environment');
+                });
+                if (backCameras.length === 0) return null;
+                // Tránh các camera phụ như góc siêu rộng (ultra wide) và camera tele
+                const mainCamera = backCameras.find(device => {
+                    const label = device.label.toLowerCase();
+                    return !label.includes('ultra') && !label.includes('wide') && !label.includes('tele');
+                });
+                return mainCamera ? mainCamera.deviceId : backCameras[0].deviceId;
+            } catch (e) {
+                console.warn("Lỗi khi tìm camera sau tối ưu:", e);
+                return null;
+            }
+        }
+
+        // Scan barcode using Quagga2 camera reader
+        async function startScan() {
+            const modal = document.getElementById('scannerModal');
+            modal.classList.add('active');
+            lastCodes = []; // Reset bộ đệm lọc
+            
+            const viewport = document.getElementById('interactive');
+            viewport.innerHTML = `
+                <div class="laser-line"></div>
+                <div style="position: absolute; bottom: 12px; left: 0; width: 100%; text-align: center; color: #ffffff; font-size: 11px; z-index: 10; text-shadow: 0 1px 4px rgba(0,0,0,0.9); font-weight: 600; padding: 0 10px; box-sizing: border-box; line-height: 1.4;">
+                    🔍 Đưa mã vạch vào giữa vạch đỏ và giữ yên để quét
+                </div>
+            `;
+
+            // Giám sát và ép thuộc tính playsinline/autoplay cho thẻ video của iOS Safari
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.tagName === 'VIDEO') {
+                            node.setAttribute('playsinline', 'true');
+                            node.setAttribute('webkit-playsinline', 'true');
+                            node.setAttribute('muted', 'true');
+                            node.setAttribute('autoplay', 'true');
+                            // Ép chạy video lập tức
+                            node.play().catch(e => console.log("Lỗi ép chạy video:", e));
+                        }
+                    });
+                });
+            });
+            observer.observe(viewport, { childList: true });
+
+            // Tìm camera sau tốt nhất (tránh camera góc siêu rộng bị mờ nét)
+            const bestCameraId = await getBestBackCameraId();
+
+            // Đợi 300ms cho modal hiển thị hoàn toàn để tránh lỗi WebKit màn hình đen do kích thước 0x0 lúc ẩn
+            setTimeout(() => {
+                try {
+                    const constraints = bestCameraId ? {
+                        deviceId: { exact: bestCameraId },
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    } : {
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 },
+                        facingMode: "environment" // Mở camera sau làm phương án dự phòng
+                    };
+
+                    Quagga.init({
+                        inputStream: {
+                            name: "Live",
+                            type: "LiveStream",
+                            target: viewport,
+                            constraints: constraints,
+                            area: { // Giới hạn khu vực quét ở trung tâm
+                                top: "30%",
+                                right: "5%",
+                                left: "5%",
+                                bottom: "30%"
+                            }
+                        },
+                        locate: true,
+                        frequency: 10,
+                        locator: {
+                            patchSize: "medium",
+                            halfSample: false // Tắt halfSample trên iPhone để hình ảnh quét có độ phân giải gốc cao hơn
+                        },
+                        decoder: {
+                            readers: [
+                                "ean_reader",
+                                "code_128_reader",
+                                "ean_8_reader",
+                                "upc_reader",
+                                "upc_e_reader"
+                            ]
+                        }
+                    }, function (err) {
+                        // Hủy giám sát sau khi khởi tạo xong
+                        observer.disconnect();
+
+                        if (err) {
+                            console.error("Lỗi khởi tạo Quagga:", err);
+                            alert("Không thể khởi động camera sau! Chi tiết: " + err.message);
+                            stopScan();
+                            return;
+                        }
+                        Quagga.start();
+                        Quagga.onDetected(handleBarcode);
+                    });
+                } catch (err) {
+                    observer.disconnect();
+                    console.error("Lỗi nạp thư viện Quagga:", err);
+                    alert("Lỗi khởi chạy camera quét!");
+                    stopScan();
+                }
+            }, 300);
+        }
+
+        function stopScan() {
+            const modal = document.getElementById('scannerModal');
+            modal.classList.remove('active');
+            
+            const viewport = document.getElementById('interactive');
+            viewport.innerHTML = '';
+
+            try {
+                Quagga.stop();
+                Quagga.offDetected(handleBarcode);
+            } catch (e) {
+                // Đã dừng hoặc chưa khởi tạo
+            }
+        }
+
+        let checkTimeout;
+        function checkBarcode(barcode) {
+            clearTimeout(checkTimeout);
+            const alertBox = document.getElementById('alertBox');
+            const productNameInput = document.getElementById('productName');
+            const btnSubmit = document.getElementById('btnSubmit');
+
+            if (!barcode || barcode.trim() === '') {
+                productNameInput.value = '';
+                availableQty = 0;
+                isValidProduct = false;
+                btnSubmit.disabled = true;
+                alertBox.style.display = 'none';
+                alertBox.className = 'alert-box';
+                return;
+            }
+
+            alertBox.style.display = 'none';
+            alertBox.className = 'alert-box'; // reset class
+            isValidProduct = false;
+            btnSubmit.disabled = true;
+
+            checkTimeout = setTimeout(async () => {
+                try {
+                    const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?initData=${encodeURIComponent(initData)}`, {
+                        headers: { 'x-telegram-init-data': initData }
+                    });
+                    const res = await response.json();
+                    
+                    if (res.success && res.exists) {
+                        productNameInput.value = res.product.product_name;
+                        availableQty = res.product.quantity;
+                        isValidProduct = true;
+
+                        alertBox.innerHTML = `📦 <b>Sản phẩm:</b> ${res.product.product_name}<br>📊 <b>Tồn kho khả dụng:</b> <b>${res.product.quantity}</b>`;
+                        alertBox.classList.add('success');
+                        alertBox.style.display = 'block';
+
+                        validateExportQty(document.getElementById('quantity').value);
+                    } else {
+                        productNameInput.value = '';
+                        availableQty = 0;
+                        alertBox.innerHTML = `❌ <b>Sản phẩm này chưa từng được nhập kho!</b> Không thể làm yêu cầu xuất kho.`;
+                        alertBox.classList.add('danger');
+                        alertBox.style.display = 'block';
+                    }
+                } catch (e) {
+                    console.error("Lỗi kiểm tra mã vạch:", e);
+                }
+            }, 300);
+        }
+
+        function validateExportQty(qty) {
+            const btnSubmit = document.getElementById('btnSubmit');
+            const alertBox = document.getElementById('alertBox');
+            const qtyNum = parseInt(qty, 10);
+
+            if (!isValidProduct) {
+                btnSubmit.disabled = true;
+                return;
+            }
+
+            if (isNaN(qtyNum) || qtyNum <= 0) {
+                btnSubmit.disabled = true;
+                return;
+            }
+
+            if (qtyNum > availableQty) {
+                btnSubmit.disabled = true;
+                alertBox.innerHTML = `🚨 <b>Vượt quá tồn kho!</b> Số lượng xuất (${qtyNum}) lớn hơn số lượng hiện có (${availableQty}).`;
+                alertBox.className = 'alert-box danger';
+                alertBox.style.display = 'block';
+            } else {
+                btnSubmit.disabled = false;
+                alertBox.innerHTML = `📦 <b>Sản phẩm:</b> ${document.getElementById('productName').value}<br>📊 <b>Tồn kho khả dụng:</b> <b>${availableQty}</b> (Đủ hàng)`;
+                alertBox.className = 'alert-box success';
+                alertBox.style.display = 'block';
+            }
+        }
+
+        async function handleFormSubmit(event) {
+            event.preventDefault();
+
+            const barcode = document.getElementById('barcode').value.trim();
+            const quantity = document.getElementById('quantity').value.trim();
+
+            if (!barcode || !quantity || !isValidProduct) {
+                alert('Yêu cầu không hợp lệ!');
+                return;
+            }
+
+            document.getElementById('loadingOverlay').classList.add('active');
+
+            try {
+                const payloadData = {
+                    chat_id: chatId,
+                    barcode: barcode,
+                    quantity: quantity,
+                    ts: payloadTs,
+                    sig: payloadSig,
+                    action: 'whexport'
+                };
+
+                const response = await fetch('/api/warehouse/export/request', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': initData
+                    },
+                    body: JSON.stringify(payloadData)
+                });
+
+                const res = await response.json();
+                document.getElementById('loadingOverlay').classList.remove('active');
+
+                if (res.success) {
+                    if (res.auto_approved) {
+                        document.getElementById('successTitle').innerText = 'XUẤT KHO THÀNH CÔNG!';
+                        document.getElementById('successDesc').innerText = 'Bạn là Quản lý/Admin nên đơn hàng đã tự động phê duyệt và trừ số lượng trong kho!';
+                        document.getElementById('successIcon').innerText = '🟢';
+                    } else {
+                        document.getElementById('successTitle').innerText = 'ĐÃ GỬI YÊU CẦU!';
+                        document.getElementById('successDesc').innerText = 'Yêu cầu xuất kho đang chờ duyệt. Đã gửi tin nhắn phê duyệt đính kèm nút bấm lên nhóm Telegram.';
+                        document.getElementById('successIcon').innerText = '⏳';
+                    }
+                    document.getElementById('successScreen').classList.add('active');
+                } else {
+                    alert(res.message || 'Lỗi khi gửi yêu cầu xuất kho!');
+                }
+            } catch (e) {
+                document.getElementById('loadingOverlay').classList.remove('active');
+                console.error("Lỗi khi xuất kho:", e);
+                alert("Không thể kết nối đến máy chủ!");
+            }
+        }
+
+        function closeWebApp() {
+            if (tg) {
+                tg.close();
+            } else {
+                window.close();
+            }
+        }
+    </script>
+</body>
+
+</html>

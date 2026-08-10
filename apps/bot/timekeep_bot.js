@@ -19,6 +19,8 @@ import { setupWizard } from './setupWizard.js';
 import { requireGroupRole, sendMessageToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
 import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
 import { syncAllTimekeepSheets } from './syncTimekeepSheets.js';
+import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder } from './googleDrive.js';
+import { getCustomerDocForGroup, getDocById } from './sheetManager.js';
 import multer from 'multer';
 
 // Load environment variables
@@ -50,6 +52,23 @@ const uploadCheckin = multer({
     limits: { fileSize: 200 * 1024 * 1024 }
 });
 
+const customerMediaStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        const uploadDir = path.join(__dirname, 'public/uploads/temp');
+        fs.mkdirSync(uploadDir, { recursive: true });
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.jpg';
+        cb(null, `customer_${Date.now()}_${Math.round(Math.random() * 1e9)}${ext}`);
+    }
+});
+
+const uploadCustomerMedia = multer({
+    storage: customerMediaStorage,
+    limits: { fileSize: 200 * 1024 * 1024 }
+});
+
 // Initialize Telegraf Bot
 const botToken = process.env.TELEGRAM_BOT_TOKEN;
 if (!botToken) {
@@ -70,7 +89,7 @@ bot.use(async (ctx, next) => {
         pool.query(
             `INSERT INTO telegram_groups (telegram_group_id, group_name, is_active, is_deleted)
              VALUES ($1, $2, true, false)
-             ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = EXCLUDED.group_name, is_active = true`,
+             ON CONFLICT (telegram_group_id) DO UPDATE SET group_name = EXCLUDED.group_name, is_active = true, is_deleted = false`,
             [groupId, groupName]
         ).then(() => {
             return pool.query(
@@ -184,7 +203,7 @@ function verifySignedPayload(action, groupId, ts, sig) {
     const token = process.env.TELEGRAM_BOT_TOKEN || '';
     const now = Date.now();
     const age = now - parseInt(ts, 10);
-    if (isNaN(age) || age > 86400000 || age < -300000) { // 24h expiration
+    if (isNaN(age) || age < -300000) { // Removed 24h expiration (age > 86400000)
         return false;
     }
 
@@ -255,10 +274,18 @@ async function authenticateTelegramMiniApp(req, res, next) {
                 }
             } catch (err) {
                 console.error('[Security] Membership verification failed (Fail Closed):', err.message);
-                return res.status(403).json({
-                    success: false,
-                    message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
-                });
+                const errMsg = err.message || '';
+                const errDesc = err.response?.description || '';
+                
+                // If Telegram cannot resolve the ID (PARTICIPANT_ID_INVALID), bypass because signature is already verified.
+                if (errMsg.includes('PARTICIPANT_ID_INVALID') || errDesc.includes('PARTICIPANT_ID_INVALID')) {
+                    console.warn(`[Security] getChatMember returned PARTICIPANT_ID_INVALID for user=${verifiedId} group=${groupId}, bypassing block.`);
+                } else {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
+                    });
+                }
             }
         }
 
@@ -283,8 +310,13 @@ botApp.use(loggerMiddleware);
 botApp.use(express.json({ limit: '200mb' }));
 botApp.use(express.urlencoded({ limit: '200mb', extended: true }));
 
-// Serve static registration & schedule pages
+// Serve Web Admin React App & Mini App
+const webAdminDistPath = path.join(__dirname, '../web-admin/dist');
+botApp.use(express.static(webAdminDistPath));
 botApp.use('/mini-app', express.static(path.join(__dirname, 'public')));
+botApp.get('/', (req, res) => {
+    res.sendFile(path.join(webAdminDistPath, 'index.html'));
+});
 
 // Áp dụng middleware bảo mật cho toàn bộ API /api/timekeep
 botApp.use('/api/timekeep', authenticateTelegramMiniApp);
@@ -295,10 +327,14 @@ botApp.use('/api/timekeep', async (req, res, next) => {
     const groupId = req.body.telegram_group_id || req.body.chat_id || req.query.chat_id || req.query.telegram_group_id;
     if (groupId) {
         const role = await getGroupRole(groupId);
-        if (role !== 'timekeep') {
+        const isRegistration = req.path === '/register';
+        const allowedRoles = isRegistration ? ['timekeep', 'report', 'report_tour', 'customer'] : ['timekeep'];
+        if (!allowedRoles.includes(role)) {
             return res.status(403).json({
                 success: false,
-                message: 'Nhóm này không được cấu hình chức năng chấm công.'
+                message: isRegistration
+                    ? 'Nhóm này không được cấu hình chức năng đăng ký tài khoản.'
+                    : 'Nhóm này không được cấu hình chức năng chấm công.'
             });
         }
     }
@@ -352,14 +388,37 @@ botApp.post('/api/timekeep/register', async (req, res) => {
         }
 
         const employeeCode = `EMP-${telegram_id}-${Date.now().toString().slice(-4)}`;
-        // Insert new user
-        await pool.query(
-            'INSERT INTO employees (group_id, telegram_group_id, telegram_id, full_name, role, employee_code, department, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-            [groupId, telegram_group_id, telegram_id, full_name, role, employeeCode, 'Chưa xếp', 'Nhân viên']
+        // Ưu tiên liên kết hồ sơ đã được Admin tạo sẵn trong đúng nhóm.
+        const unlinkedRes = await pool.query(
+            `SELECT id FROM employees
+             WHERE group_id = $1
+               AND LOWER(TRIM(full_name)) = LOWER(TRIM($2))
+               AND (telegram_id IS NULL OR telegram_id = '')
+             ORDER BY id ASC
+             LIMIT 1`,
+            [groupId, full_name]
         );
+
+        if (unlinkedRes.rows.length > 0) {
+            await pool.query(
+                `UPDATE employees
+                 SET telegram_group_id = $1,
+                     telegram_id = $2,
+                     telegram_username = $3,
+                     role = COALESCE(NULLIF(role, ''), $4),
+                     is_active = true
+                 WHERE id = $5`,
+                [telegram_group_id, telegram_id, telegram_username || '', role, unlinkedRes.rows[0].id]
+            );
+        } else {
+            await pool.query(
+                'INSERT INTO employees (group_id, telegram_group_id, telegram_id, telegram_username, full_name, role, employee_code, department, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+                [groupId, telegram_group_id, telegram_id, telegram_username || '', full_name, role, employeeCode, 'Chưa xếp', 'Nhân viên']
+            );
+        }
         console.log(`[Registration] Thêm mới thành công user: ${full_name}`);
 
-        res.json({ success: true, message: 'Đăng ký tài khoản chấm công thành công!' });
+        res.json({ success: true, message: 'Đăng ký tài khoản thành công!' });
 
     } catch (error) {
         console.error('[Registration Error] Lỗi đăng ký:', error);
@@ -437,8 +496,15 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
             nextWeekDays.push(moment(startOfNextWeek).add(i, 'days').format('YYYY-MM-DD'));
         }
 
-        // Lock time is now based on DB toggle
-        const isLocked = !isAdmin && (user.schedule_registration_open === false);
+        // Calculate thresholds for current and next weeks (Sunday at 23:00)
+        const currentWeekThreshold = moment(startOfCurrentWeek).subtract(1, 'days').hours(23).minutes(0).seconds(0);
+        const nextWeekThreshold = moment(startOfNextWeek).subtract(1, 'days').hours(23).minutes(0).seconds(0);
+
+        const isCurrentWeekPastThreshold = moment().isSameOrAfter(currentWeekThreshold);
+        const isNextWeekPastThreshold = moment().isSameOrAfter(nextWeekThreshold);
+
+        const isCurrentWeekLocked = !isAdmin && isCurrentWeekPastThreshold && (user.schedule_registration_open === false);
+        const isNextWeekLocked = !isAdmin && isNextWeekPastThreshold && (user.schedule_registration_open === false);
 
         // 3. Fetch user's schedules
         const mySchedulesRes = await pool.query(
@@ -476,7 +542,8 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
             is_admin: isAdmin,
             currentWeekDays,
             nextWeekDays,
-            is_locked: isLocked,
+            is_current_week_locked: isCurrentWeekLocked,
+            is_next_week_locked: isNextWeekLocked,
             mySchedules,
             groupSchedules,
             groupUsers
@@ -562,6 +629,8 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
         }
         const caller = callerRes.rows[0];
         const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [telegram_id]);
+        const isManager = managerCheckRes.rows.length > 0;
 
         // Identify target user
         let targetUser = caller;
@@ -584,10 +653,6 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
 
         // Validation for regular staff
         if (!isAdmin) {
-            if (caller.schedule_registration_open === false) {
-                return res.status(403).json({ success: false, message: 'Quản lý đã đóng đăng ký lịch!' });
-            }
-
             const startOfCurrentWeek = moment().startOf('isoWeek').format('YYYY-MM-DD');
 
             for (const day of days) {
@@ -596,6 +661,16 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
                 // Chặn sửa lịch của các tuần cũ hơn tuần này
                 if (dayStr < startOfCurrentWeek) {
                     return res.status(400).json({ success: false, message: 'Bạn không thể thay đổi lịch của các tuần cũ!' });
+                }
+
+                // Check lock threshold for the week containing this day (Sunday at 23:00 of previous week)
+                const startOfWeekOfDay = moment(day.date).startOf('isoWeek');
+                const lockThreshold = moment(startOfWeekOfDay).subtract(1, 'days').hours(23).minutes(0).seconds(0);
+                if (moment().isSameOrAfter(lockThreshold)) {
+                    if (caller.schedule_registration_open === false) {
+                        const startOfWeekFormatted = startOfWeekOfDay.format('DD/MM/YYYY');
+                        return res.status(403).json({ success: false, message: `Quản lý đã đóng đăng ký lịch tuần ${startOfWeekFormatted}!` });
+                    }
                 }
             }
 
@@ -625,6 +700,96 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
                 return res.status(400).json({
                     success: false,
                     message: 'Bạn đăng ký nghỉ từ 2 ngày trở lên trong tuần. Vui lòng tải lên ảnh minh chứng!'
+                });
+            }
+
+            if (!isManager && offDaysCount >= 2) {
+                // Handle proof image upload
+                let proofUrl = null;
+                if (proof_image) {
+                    const matches = proof_image.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+                    if (matches && matches.length === 3) {
+                        const fileType = matches[1];
+                        const base64Data = matches[2];
+                        const buffer = Buffer.from(base64Data, 'base64');
+                        const ext = fileType.split('/')[1] || 'png';
+
+                        const filename = `proof_schedule_${targetUser.telegram_id}_${Date.now()}.${ext}`;
+                        const uploadDir = path.join(__dirname, 'public/uploads/proofs');
+                        const uploadPath = path.join(uploadDir, filename);
+
+                        fs.mkdirSync(uploadDir, { recursive: true });
+                        fs.writeFileSync(uploadPath, buffer);
+
+                        proofUrl = `/mini-app/uploads/proofs/${filename}`;
+                    }
+                }
+
+                const startOfWeekStr = moment(days[0].date).startOf('isoWeek').format('YYYY-MM-DD');
+
+                // Cancel existing pending SCHEDULE_CHANGE requests for this user & week
+                await pool.query(
+                    `UPDATE tk_leave_requests 
+                     SET status = 'CANCELLED' 
+                     WHERE user_id = $1 AND request_type = 'SCHEDULE_CHANGE' AND date = $2 AND status = 'PENDING'`,
+                    [targetUser.id, startOfWeekStr]
+                );
+
+                const insertRes = await pool.query(
+                    `INSERT INTO tk_leave_requests (group_id, user_id, request_type, late_minutes, date, reason, proof_url, status)
+                     VALUES ($1, $2, 'SCHEDULE_CHANGE', 0, $3, $4, $5, 'PENDING')
+                     RETURNING id`,
+                    [groupId, targetUser.id, startOfWeekStr, JSON.stringify(days), proofUrl]
+                );
+                const requestId = insertRes.rows[0].id;
+
+                let telegramGroupId = chat_id;
+                if (!telegramGroupId) {
+                    const groupRes = await pool.query('SELECT telegram_group_id FROM telegram_groups WHERE id = $1', [groupId]);
+                    if (groupRes.rows.length > 0) {
+                        telegramGroupId = groupRes.rows[0].telegram_group_id;
+                    }
+                }
+
+                if (telegramGroupId) {
+                    const startOfWeekFormatted = moment(startOfWeekStr).format('DD/MM/YYYY');
+                    const endOfWeekFormatted = moment(startOfWeekStr).endOf('isoWeek').format('DD/MM/YYYY');
+                    const offDaysDates = days.filter(d => d.shift_type === 'OFF').map(d => moment(d.date).format('DD/MM')).join(', ');
+                    const miniAppUrl = process.env.MINI_APP_URL || 'https://bot.adsup.vn';
+
+                    let msg = `🚨 <b>YÊU CẦU DUYỆT ĐĂNG KÝ LỊCH TUẦN (>= 2 NGÀY NGHỈ)</b>\n\n` +
+                        `👤 <b>Nhân viên:</b> ${targetUser.full_name}\n` +
+                        `💼 <b>Vị trí:</b> ${targetUser.role}\n` +
+                        `📅 <b>Tuần đăng ký:</b> ${startOfWeekFormatted} - ${endOfWeekFormatted}\n` +
+                        `🌴 <b>Các ngày xin nghỉ:</b> ${offDaysDates}\n`;
+
+                    if (proofUrl) {
+                        msg += `📸 <b>Minh chứng:</b> <a href="${miniAppUrl}${proofUrl}">Xem ảnh đính kèm</a>\n`;
+                    } else {
+                        msg += `📸 <b>Minh chứng:</b> Không có\n`;
+                    }
+
+                    msg += `\n------------------------------------------\n` +
+                        `Vui lòng phê duyệt lịch làm việc của nhân sự này.`;
+
+                    const keyboard = {
+                        inline_keyboard: [
+                            [
+                                { text: '✅ Duyệt lịch', callback_data: `approve_leave_${requestId}` },
+                                { text: '❌ Từ chối', callback_data: `reject_leave_${requestId}` }
+                            ]
+                        ]
+                    };
+
+                    await bot.telegram.sendMessage(telegramGroupId, msg, {
+                        parse_mode: 'HTML',
+                        reply_markup: keyboard
+                    });
+                }
+
+                return res.json({
+                    success: true,
+                    message: 'Lịch đang chờ Quản lý duyệt do đăng ký nghỉ >= 2 ngày.'
                 });
             }
         }
@@ -834,6 +999,14 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
                 proofUrl = `/mini-app/uploads/proofs/${filename}`;
             }
         }
+
+        // 3.5. Cancel any existing requests for the same date (Auto-Overwrite)
+        await pool.query(
+            `UPDATE tk_leave_requests 
+             SET status = 'CANCELLED' 
+             WHERE user_id = $1 AND date = $2 AND status IN ('PENDING', 'APPROVED', 'REJECTED')`,
+            [user.id, date]
+        );
 
         // 4. Save request into database
         const insertRes = await pool.query(
@@ -1061,7 +1234,8 @@ botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
             penalty_per_photo = 20000,
             penalty_missing_report = 100000,
             kpi_sheet_id,
-            customer_sheet_id
+            customer_sheet_id,
+            customer_drive_folder_id
         } = req.body;
 
         function extractSheetId(input) {
@@ -1076,14 +1250,15 @@ botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
 
         // Cập nhật hoặc tạo mới nhóm và gán bot_role
         await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open, kpi_sheet_id, customer_sheet_id) 
-             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6)
+            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open, kpi_sheet_id, customer_sheet_id, customer_drive_folder_id) 
+             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7)
              ON CONFLICT (telegram_group_id) DO UPDATE SET 
              bot_role = EXCLUDED.bot_role, 
              schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open),
              kpi_sheet_id = COALESCE(EXCLUDED.kpi_sheet_id, telegram_groups.kpi_sheet_id),
-             customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id)`,
-            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open, cleanKpiSheetId, cleanCustomerSheetId]
+             customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id),
+             customer_drive_folder_id = COALESCE(EXCLUDED.customer_drive_folder_id, telegram_groups.customer_drive_folder_id)`,
+            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open, cleanKpiSheetId, cleanCustomerSheetId, customer_drive_folder_id || null]
         );
 
         const checkRes = await pool.query(
@@ -1179,9 +1354,13 @@ async function startHandler(ctx) {
             const checkinUrl = createWebAppUrl('checkin', 'checkin_upload.html');
             const statsUrl = createWebAppUrl('stats', 'stats.html');
             const baocaoUrl = createWebAppUrl('baocao', 'form.html');
+            const customerUrl = createWebAppUrl('customer', 'customer_form.html');
 
             const schedclientSig = crypto.createHmac('sha256', token).update(`scheduleclient:${ctx.chat.id}:${ts}`).digest('hex');
             const scheduleclientUrl2 = `https://t.me/${botUsername}/${appShortName}?startapp=scheduleclient_${ctx.chat.id}_${ts}_${schedclientSig}`;
+
+            const makeupclientSig = crypto.createHmac('sha256', token).update(`makeupclient:${ctx.chat.id}:${ts}`).digest('hex');
+            const makeupclientUrl = `https://t.me/${botUsername}/${appShortName}?startapp=makeupclient_${ctx.chat.id}_${ts}_${makeupclientSig}`;
 
             // Generate dmUrl (Direct Message URL) for Report Form
             const dmUrl = `https://t.me/${botUsername}`; // Used for 'Điền Form Báo Cáo' which typically opens PM
@@ -1215,6 +1394,29 @@ async function startHandler(ctx) {
                         }
                     }
                 );
+            } else if (botRole === 'warehouse') {
+                const whImportUrl = createWebAppUrl('whimport', 'warehouse_import.html');
+                const whExportUrl = createWebAppUrl('whexport', 'warehouse_export.html');
+                const whInventoryUrl = createWebAppUrl('whinventory', 'warehouse_inventory.html');
+
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `Vui lòng chọn chức năng quản lý kho:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '📥 Nhập kho', url: whImportUrl },
+                                    { text: '📤 Xuất kho', url: whExportUrl }
+                                ],
+                                [
+                                    { text: '📊 Xem tồn kho', url: whInventoryUrl }
+                                ]
+                            ]
+                        }
+                    }
+                );
             } else if (botRole === 'report') {
                 await ctx.reply(
                     `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
@@ -1224,7 +1426,7 @@ async function startHandler(ctx) {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' }
+                                    { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
                                 ],
                                 [
                                     { text: '📝 Điền Báo Cáo KPI (Form)', url: baocaoUrl }
@@ -1246,10 +1448,31 @@ async function startHandler(ctx) {
                         reply_markup: {
                             inline_keyboard: [
                                 [
-                                    { text: '👤 Đăng Ký Tài Khoản', callback_data: 'START_SETUP_WIZARD' }
+                                    { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
                                 ],
                                 [
                                     { text: '📅 Đặt Lịch / Check Lịch', url: scheduleclientUrl2 }
+                                ],
+                                [
+                                    { text: '🕘 Báo Bù / Báo Công Muộn', url: makeupclientUrl }
+                                ]
+                            ]
+                        }
+                    }
+                );
+            } else if (botRole === 'customer' || botRole === 'customer_record') {
+                await ctx.reply(
+                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
+                    `Vui lòng chọn chức năng:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
+                                ],
+                                [
+                                    { text: '☘️ Điền Thông Tin Khách Hàng', url: customerUrl }
                                 ]
                             ]
                         }
@@ -1350,6 +1573,88 @@ async function startHandler(ctx) {
                         }
                     }
                 );
+            } else if (startPayload && startPayload.startsWith('customer_')) {
+                const payloadParts = startPayload.split('_');
+                const groupId = payloadParts[1] || startPayload.replace('customer_', '');
+                const formUrl = `${miniAppUrl}/mini-app/customer_form.html?chat_id=${groupId}`;
+
+                await ctx.reply(
+                    `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                    `Vui lòng nhấn nút <b>Điền thông tin khách hàng</b> dưới đây để bắt đầu nhập thông tin:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '☘️ Điền Thông Tin Khách Hàng', web_app: { url: formUrl } }
+                                ]
+                            ]
+                        }
+                    }
+                );
+            } else if (startPayload && startPayload.startsWith('whimport_')) {
+                const payloadParts = startPayload.split('_');
+                const groupId = payloadParts[1];
+                const ts = payloadParts[2];
+                const sig = payloadParts[3];
+                const formUrl = `${miniAppUrl}/mini-app/warehouse_import.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whimport`;
+
+                await ctx.reply(
+                    `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                    `Vui lòng nhấn nút <b>Nhập Kho</b> dưới đây để bắt đầu nhập sản phẩm:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '📥 Nhập Kho', web_app: { url: formUrl } }
+                                ]
+                            ]
+                        }
+                    }
+                );
+            } else if (startPayload && startPayload.startsWith('whexport_')) {
+                const payloadParts = startPayload.split('_');
+                const groupId = payloadParts[1];
+                const ts = payloadParts[2];
+                const sig = payloadParts[3];
+                const formUrl = `${miniAppUrl}/mini-app/warehouse_export.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whexport`;
+
+                await ctx.reply(
+                    `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                    `Vui lòng nhấn nút <b>Xuất Kho</b> dưới đây để gửi yêu cầu xuất sản phẩm:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '📤 Xuất Kho', web_app: { url: formUrl } }
+                                ]
+                            ]
+                        }
+                    }
+                );
+            } else if (startPayload && startPayload.startsWith('whinventory_')) {
+                const payloadParts = startPayload.split('_');
+                const groupId = payloadParts[1];
+                const ts = payloadParts[2];
+                const sig = payloadParts[3];
+                const formUrl = `${miniAppUrl}/mini-app/warehouse_inventory.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whinventory`;
+
+                await ctx.reply(
+                    `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                    `Vui lòng nhấn nút <b>Xem Tồn Kho</b> dưới đây để kiểm tra số lượng hàng trong kho:`,
+                    {
+                        parse_mode: 'HTML',
+                        reply_markup: {
+                            inline_keyboard: [
+                                [
+                                    { text: '📊 Xem Tồn Kho', web_app: { url: formUrl } }
+                                ]
+                            ]
+                        }
+                    }
+                );
             } else {
                 const botInfo = await ctx.telegram.getMe();
                 const addToGroupUrl = `https://t.me/${botInfo.username}?startgroup=true`;
@@ -1393,9 +1698,12 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
         const requestId = ctx.match[2];
         const clickerId = ctx.from.id.toString();
 
-        // 1. Verify clicker is Admin
+        // 1. Verify clicker is Admin or Manager
         const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-        if (!isAdmin) {
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [clickerId]);
+        const isManager = managerCheckRes.rows.length > 0;
+
+        if (!isAdmin && !isManager) {
             return ctx.answerCbQuery('⚠️ Bạn không có quyền phê duyệt yêu cầu này!', { show_alert: true });
         }
 
@@ -1431,59 +1739,195 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
             [newStatus, adminName, requestId]
         );
 
-        // 5. Special logic if APPROVED and request_type is FULL_DAY
-        if (newStatus === 'APPROVED' && request.request_type === 'FULL_DAY') {
+        let penaltyButtons = [];
+
+        // 5. Special logic if APPROVED for FULL/HALF days or SCHEDULE_CHANGE
+        if (newStatus === 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
             const formattedDate = moment(request.date).format('YYYY-MM-DD');
+            let newShift = 'OFF';
+            if (request.request_type === 'HALF_DAY_AM') newShift = 'HALF_DAY_PM_WORK';
+            if (request.request_type === 'HALF_DAY_PM') newShift = 'CA_SANG';
+            
             await pool.query(
                 `INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked)
-                 VALUES ($1, $2, $3, 'OFF', true)
+                 VALUES ($1, $2, $3, $4, true)
                  ON CONFLICT (user_id, date) 
-                 DO UPDATE SET shift_type = 'OFF', is_locked = true`,
-                [request.group_id, request.user_id, formattedDate]
+                 DO UPDATE SET shift_type = $4, is_locked = true`,
+                [request.group_id, request.user_id, formattedDate, newShift]
             );
+
+            // PENALTY LOGIC: Nghỉ đột xuất > 1 lần/tháng
+            const monthStart = moment(request.date).startOf('month').format('YYYY-MM-DD');
+            const monthEnd = moment(request.date).endOf('month').format('YYYY-MM-DD');
+            const suddenLeavesRes = await pool.query(
+                `SELECT id FROM tk_leave_requests 
+                 WHERE user_id = $1 AND status = 'APPROVED' 
+                 AND request_type IN ('FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM')
+                 AND date >= $2 AND date <= $3`,
+                [request.user_id, monthStart, monthEnd]
+            );
+            
+            if (suddenLeavesRes.rows.length > 1) { // Lần 1 là = 1, lần 2 là = 2
+                // Insert penalty 100k
+                await pool.query(
+                    `INSERT INTO tk_penalties (group_id, user_id, date, violation_type, late_minutes, amount, reason, is_paid)
+                     VALUES ($1, $2, $3, 'SUDDEN_LEAVE', 0, 100000, $4, false)`,
+                    [request.group_id, request.user_id, formattedDate, `Nghỉ đột xuất lần thứ ${suddenLeavesRes.rows.length} trong tháng`]
+                );
+            }
+
+            // PENALTY LOGIC: Nghỉ 2 ngày liên tiếp
+            const prevDay = moment(request.date).subtract(1, 'days').format('YYYY-MM-DD');
+            const nextDay = moment(request.date).add(1, 'days').format('YYYY-MM-DD');
+            
+            const consecutiveRes = await pool.query(
+                `SELECT date FROM tk_leave_requests 
+                 WHERE user_id = $1 AND status = 'APPROVED' 
+                 AND request_type IN ('FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM')
+                 AND (date = $2 OR date = $3) LIMIT 1`,
+                [request.user_id, prevDay, nextDay]
+            );
+            
+            if (consecutiveRes.rows.length > 0) {
+                // Insert penalty 200k
+                const insertPen = await pool.query(
+                    `INSERT INTO tk_penalties (group_id, user_id, date, violation_type, late_minutes, amount, reason, is_paid)
+                     VALUES ($1, $2, $3, 'CONSECUTIVE_LEAVE', 0, 200000, 'Nghỉ liên tiếp 2 ngày sai quy định', false)
+                     RETURNING id`,
+                    [request.group_id, request.user_id, formattedDate]
+                );
+                const penId = insertPen.rows[0].id;
+                penaltyButtons.push([{ text: '✅ Miễn phạt nghỉ liên tiếp', callback_data: `excuse_penalty_${penId}` }]);
+            }
+        } else if (newStatus === 'APPROVED' && request.request_type === 'SCHEDULE_CHANGE') {
+            try {
+                const daysToSave = JSON.parse(request.reason);
+                for (const day of daysToSave) {
+                    const dayStr = moment(day.date).format('YYYY-MM-DD');
+                    await pool.query(
+                        `INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked)
+                         VALUES ($1, $2, $3, $4, true)
+                         ON CONFLICT (user_id, date) 
+                         DO UPDATE SET shift_type = EXCLUDED.shift_type, is_locked = true`,
+                        [request.group_id, request.user_id, dayStr, day.shift_type]
+                    );
+                }
+                syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
+            } catch (jsonErr) {
+                console.error('[Approve Schedule Change Error] Failed to parse days:', jsonErr);
+            }
         }
 
         // 6. Edit group message to show updated status
-        const requestTypeName = request.request_type === 'FULL_DAY' ? 'Nghỉ cả ngày 🟥' :
-            (request.request_type === 'HALF_DAY_AM' ? 'Nghỉ nửa ngày (Sáng) 🌅' :
-                (request.request_type === 'HALF_DAY_PM' ? 'Nghỉ nửa ngày (Chiều) 🌇' :
-                    `Xin đi muộn (${request.late_minutes} phút) 🟩`));
-        const displayDate = moment(request.date).format('DD/MM/YYYY');
+        let updatedMsg = '';
+        let requestTypeName = '';
+        if (request.request_type === 'SCHEDULE_CHANGE') {
+            requestTypeName = 'Đăng ký lịch tuần (>= 2 ngày nghỉ) 📅';
+            const startOfWeekFormatted = moment(request.date).format('DD/MM/YYYY');
+            const endOfWeekFormatted = moment(request.date).endOf('isoWeek').format('DD/MM/YYYY');
+            
+            let offDaysDates = '';
+            try {
+                const daysToSave = JSON.parse(request.reason);
+                offDaysDates = daysToSave.filter(d => d.shift_type === 'OFF').map(d => moment(d.date).format('DD/MM')).join(', ');
+            } catch (err) {}
 
-        let statusText = newStatus === 'APPROVED' ? `✅ <b>ĐÃ DUYỆT YÊU CẦU NGHỈ</b>` : `❌ <b>ĐÃ TỪ CHỐI YÊU CẦU NGHỈ</b>`;
-        let colorSymbol = newStatus === 'APPROVED' ? '🟢' : '🔴';
+            let statusText = newStatus === 'APPROVED' ? `✅ <b>ĐÃ DUYỆT ĐĂNG KÝ LỊCH TUẦN</b>` : `❌ <b>ĐÃ TỪ CHỐI ĐĂNG KÝ LỊCH TUẦN</b>`;
+            let colorSymbol = newStatus === 'APPROVED' ? '🟢' : '🔴';
 
-        let updatedMsg = `${statusText}\n\n` +
-            `👤 <b>Nhân viên:</b> ${request.full_name}\n` +
-            `💼 <b>Vị trí:</b> ${request.role}\n` +
-            `📅 <b>Ngày xin phép:</b> ${displayDate}\n` +
-            `📝 <b>Loại yêu cầu:</b> ${requestTypeName}\n` +
-            `💬 <b>Lý do:</b> ${request.reason}\n` +
-            `🤝 <b>Trạng thái:</b> ${colorSymbol} ${newStatus === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'} bởi Admin <b>${adminName}</b>`;
+            updatedMsg = `${statusText}\n\n` +
+                `👤 <b>Nhân viên:</b> ${request.full_name}\n` +
+                `💼 <b>Vị trí:</b> ${request.role}\n` +
+                `📅 <b>Tuần đăng ký:</b> ${startOfWeekFormatted} - ${endOfWeekFormatted}\n` +
+                `🌴 <b>Các ngày xin nghỉ:</b> ${offDaysDates}\n` +
+                `🤝 <b>Trạng thái:</b> ${colorSymbol} ${newStatus === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'} bởi Admin <b>${adminName}</b>`;
+        } else {
+            requestTypeName = request.request_type === 'FULL_DAY' ? 'Nghỉ cả ngày 🟥' :
+                (request.request_type === 'HALF_DAY_AM' ? 'Nghỉ nửa ngày (Sáng) 🌅' :
+                    (request.request_type === 'HALF_DAY_PM' ? 'Nghỉ nửa ngày (Chiều) 🌇' :
+                        `Xin đi muộn (${request.late_minutes} phút) 🟩`));
+            const displayDate = moment(request.date).format('DD/MM/YYYY');
+            let statusText = newStatus === 'APPROVED' ? `✅ <b>ĐÃ DUYỆT YÊU CẦU NGHỈ</b>` : `❌ <b>ĐÃ TỪ CHỐI YÊU CẦU NGHỈ</b>`;
+            let colorSymbol = newStatus === 'APPROVED' ? '🟢' : '🔴';
+
+            updatedMsg = `${statusText}\n\n` +
+                `👤 <b>Nhân viên:</b> ${request.full_name}\n` +
+                `💼 <b>Vị trí:</b> ${request.role}\n` +
+                `📅 <b>Ngày xin phép:</b> ${displayDate}\n` +
+                `📝 <b>Loại yêu cầu:</b> ${requestTypeName}\n` +
+                `💬 <b>Lý do:</b> ${request.reason}\n` +
+                `🤝 <b>Trạng thái:</b> ${colorSymbol} ${newStatus === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'} bởi Admin <b>${adminName}</b>`;
+        }
 
         await ctx.editMessageText(updatedMsg, {
             parse_mode: 'HTML',
-            reply_markup: { inline_keyboard: [] } // Remove buttons
+            reply_markup: { inline_keyboard: penaltyButtons } // Remove buttons or add penalty buttons
         });
 
-        await ctx.answerCbQuery(`Đã ${newStatus === 'APPROVED' ? 'duyệt' : 'từ chối'} đơn xin phép!`);
+        await ctx.answerCbQuery(`Đã ${newStatus === 'APPROVED' ? 'duyệt' : 'từ chối'} yêu cầu!`);
 
         // 7. Notify the employee directly in private message if possible
         try {
-            await ctx.telegram.sendMessage(
-                request.user_telegram_id,
-                `🔔 <b>Kết quả duyệt đơn xin nghỉ/đi muộn ngày ${displayDate}:</b>\n\n` +
-                `📝 <b>Loại:</b> ${requestTypeName}\n` +
-                `📊 <b>Kết quả:</b> ${newStatus === 'APPROVED' ? 'Đã được DUYỆT ✅' : 'Bị TỪ CHỐI ❌'}\n` +
-                `👤 <b>Người duyệt:</b> Admin ${adminName}`,
-                { parse_mode: 'HTML' }
-            );
+            let notifyText = '';
+            if (request.request_type === 'SCHEDULE_CHANGE') {
+                const startOfWeekFormatted = moment(request.date).format('DD/MM/YYYY');
+                const endOfWeekFormatted = moment(request.date).endOf('isoWeek').format('DD/MM/YYYY');
+                notifyText = `🔔 <b>Kết quả duyệt đăng ký lịch tuần (${startOfWeekFormatted} - ${endOfWeekFormatted}):</b>\n\n` +
+                             `📊 <b>Kết quả:</b> ${newStatus === 'APPROVED' ? 'Đã được DUYỆT ✅' : 'Bị TỪ CHỐI ❌'}\n` +
+                             `👤 <b>Người duyệt:</b> Admin ${adminName}`;
+            } else {
+                const displayDate = moment(request.date).format('DD/MM/YYYY');
+                notifyText = `🔔 <b>Kết quả duyệt đơn xin nghỉ/đi muộn ngày ${displayDate}:</b>\n\n` +
+                             `📝 <b>Loại:</b> ${requestTypeName}\n` +
+                             `📊 <b>Kết quả:</b> ${newStatus === 'APPROVED' ? 'Đã được DUYỆT ✅' : 'Bị TỪ CHỐI ❌'}\n` +
+                             `👤 <b>Người duyệt:</b> Admin ${adminName}`;
+            }
+            await ctx.telegram.sendMessage(request.user_telegram_id, notifyText, { parse_mode: 'HTML' });
         } catch (e) {
             console.log(`Không thể gửi tin nhắn riêng cho user ${request.user_telegram_id} (chưa chat với bot bao giờ).`);
         }
 
     } catch (e) {
         console.error('Lỗi duyệt phép bot.action:', e);
+        await ctx.answerCbQuery('Lỗi xử lý hệ thống!', { show_alert: true });
+    }
+});
+
+bot.action(/^excuse_penalty_(\d+)$/, async (ctx) => {
+    if (!(await requireGroupRole(ctx, 'timekeep'))) return;
+    try {
+        const penaltyId = ctx.match[1];
+        const clickerId = ctx.from.id.toString();
+
+        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [clickerId]);
+        const isManager = managerCheckRes.rows.length > 0;
+
+        if (!isAdmin && !isManager) {
+            return ctx.answerCbQuery('⚠️ Bạn không có quyền miễn trừ án phạt này!', { show_alert: true });
+        }
+
+        const adminRes = await pool.query('SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1', [clickerId]);
+        const adminName = adminRes.rows.length > 0 ? adminRes.rows[0].full_name : (ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name);
+
+        await pool.query(
+            `UPDATE tk_penalties 
+             SET amount = 0, reason = reason || ' (Đã được miễn trừ bởi ' || $1 || ')' 
+             WHERE id = $2`,
+            [adminName, penaltyId]
+        );
+
+        let msgText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
+        msgText += `\n\n🎁 <b>Miễn trừ:</b> Án phạt nghỉ liên tiếp 2 ngày đã được miễn trừ bởi Admin <b>${adminName}</b>.`;
+
+        await ctx.editMessageText(msgText, {
+            parse_mode: 'HTML',
+            reply_markup: { inline_keyboard: [] }
+        });
+
+        await ctx.answerCbQuery('Đã miễn trừ án phạt thành công!', { show_alert: true });
+    } catch (e) {
+        console.error('Lỗi miễn trừ phạt bot.action:', e);
         await ctx.answerCbQuery('Lỗi xử lý hệ thống!', { show_alert: true });
     }
 });
@@ -1522,46 +1966,73 @@ cron.schedule('*/1 * * * *', async () => {
                     num: 1,
                     label: 'Ca sớm',
                     startStr: shift_1_time,
-                    types: ['CA_1', 'CA_SANG']
+                    types: ['CA_1', 'CA_SANG', 'FULL_DAY']
                 },
                 {
                     num: 2,
                     label: 'Ca muộn',
                     startStr: shift_2_time,
                     types: ['CA_2', 'CA_CHIEU', 'FULL_DAY']
+                },
+                {
+                    num: 3,
+                    label: 'Ca làm bù chiều',
+                    startStr: '13:30:00',
+                    types: ['HALF_DAY_PM_WORK']
                 }
             ];
 
             for (const shift of shifts) {
                 // Parse giờ bắt đầu ca
                 const shiftStartMoment = moment(shift.startStr, 'HH:mm:ss');
-                const remindTime = shiftStartMoment.clone().subtract(3, 'minutes').format('HH:mm');
+                const isPmWork = shift.types.includes('HALF_DAY_PM_WORK');
+                const remindMinutes = isPmWork ? 5 : 3;
+                const remindTime = shiftStartMoment.clone().subtract(remindMinutes, 'minutes').format('HH:mm');
                 const lateTime = shiftStartMoment.clone().add(1, 'minutes').format('HH:mm');
 
-                // A. Nhắc nhở trước ca 3 phút (Bỏ qua nhân sự được miễn check-in hoặc bị vô hiệu hóa)
+                // A. Nhắc nhở trước ca làm (Bỏ qua nhân sự được miễn check-in hoặc bị vô hiệu hóa)
                 if (currentTimeStr === remindTime) {
                     const uncheckedRes = await pool.query(`
-                        SELECT u.full_name
+                        SELECT u.id AS user_id, u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
                         WHERE u.group_id = $1
                           AND COALESCE(u.is_exempt_checkin, false) = false
                           AND COALESCE(u.is_active, true) = true
                           AND s.shift_type = ANY($3)
-                          AND NOT EXISTS (
-                              SELECT 1 FROM tk_check_ins c
-                              WHERE c.user_id = u.id AND c.date = $2
-                          )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM tk_check_ins c
+                               WHERE c.user_id = u.id AND c.date = $2
+                           )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM tk_attendance_daily_status ds
+                               WHERE ds.group_id = $1
+                                 AND ds.user_id = u.id
+                                 AND ds.date = $2
+                                 AND (ds.reminder_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
+                           )
                         ORDER BY u.full_name ASC
                     `, [group_uuid, todayStr, shift.types]);
 
                     if (uncheckedRes.rows.length > 0) {
                         const names = uncheckedRes.rows.map(r => `👤 ${r.full_name}`).join('\n');
                         const msg = `🔔 <b>NHẮC NHỞ ĐIỂM DANH (${shift.label})</b> 🔔\n\n` +
-                            `⏰ Chỉ còn 3 phút nữa là đến giờ vào làm (<b>${shift.startStr.substring(0, 5)}</b>).\n` +
+                            `⏰ Chỉ còn ${remindMinutes} phút nữa là đến giờ vào làm (<b>${shift.startStr.substring(0, 5)}</b>).\n` +
                             `Các nhân sự sau chưa điểm danh, vui lòng check-in ngay nhé:\n\n${names}`;
                         try {
-                            await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_reminder_3min');
+                            const sent = await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, `checkin_reminder_${remindMinutes}min`);
+                            if (sent) {
+                                for (const employee of uncheckedRes.rows) {
+                                    await pool.query(`
+                                        INSERT INTO tk_attendance_daily_status
+                                            (group_id, user_id, date, reminder_sent_at, updated_at)
+                                        VALUES ($1, $2, $3, NOW(), NOW())
+                                        ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                                            reminder_sent_at = COALESCE(tk_attendance_daily_status.reminder_sent_at, NOW()),
+                                            updated_at = NOW()
+                                    `, [group_uuid, employee.user_id, todayStr]);
+                                }
+                            }
                         } catch (err) {
                             console.error(`Lỗi gửi nhắc nhở checkin ca ${shift.num} cho nhóm ${group_name}:`, err.message);
                         }
@@ -1571,17 +2042,24 @@ cron.schedule('*/1 * * * *', async () => {
                 // B. Báo cáo đi muộn sau ca 1 phút (Bỏ qua nhân sự được miễn check-in hoặc bị vô hiệu hóa)
                 if (currentTimeStr === lateTime) {
                     const lateRes = await pool.query(`
-                        SELECT u.full_name
+                        SELECT u.id AS user_id, u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
                         WHERE u.group_id = $1
                           AND COALESCE(u.is_exempt_checkin, false) = false
                           AND COALESCE(u.is_active, true) = true
                           AND s.shift_type = ANY($3)
-                          AND NOT EXISTS (
-                              SELECT 1 FROM tk_check_ins c
-                              WHERE c.user_id = u.id AND c.date = $2
-                          )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM tk_check_ins c
+                               WHERE c.user_id = u.id AND c.date = $2
+                           )
+                           AND NOT EXISTS (
+                               SELECT 1 FROM tk_attendance_daily_status ds
+                               WHERE ds.group_id = $1
+                                 AND ds.user_id = u.id
+                                 AND ds.date = $2
+                                 AND (ds.late_warning_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
+                           )
                         ORDER BY u.full_name ASC
                     `, [group_uuid, todayStr, shift.types]);
 
@@ -1591,7 +2069,23 @@ cron.schedule('*/1 * * * *', async () => {
                             `🚫 Đã quá giờ vào làm 1 phút (<b>${shift.startStr.substring(0, 5)}</b>).\n` +
                             `Các nhân sự sau chưa điểm danh (ghi nhận đi muộn):\n\n${names}`;
                         try {
-                            await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_late_warning_1min');
+                            const sent = await sendMessageToRoleGroup(bot, telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_late_warning_1min');
+                            if (sent) {
+                                for (const employee of lateRes.rows) {
+                                    await pool.query(`
+                                        INSERT INTO tk_attendance_daily_status
+                                            (group_id, user_id, date, result, late_warning_sent_at, updated_at)
+                                        VALUES ($1, $2, $3, 'LATE_NOTIFIED', NOW(), NOW())
+                                        ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                                            result = CASE
+                                                WHEN tk_attendance_daily_status.finalized_at IS NULL THEN 'LATE_NOTIFIED'
+                                                ELSE tk_attendance_daily_status.result
+                                            END,
+                                            late_warning_sent_at = COALESCE(tk_attendance_daily_status.late_warning_sent_at, NOW()),
+                                            updated_at = NOW()
+                                    `, [group_uuid, employee.user_id, todayStr]);
+                                }
+                            }
                         } catch (err) {
                             console.error(`Lỗi gửi báo muộn ca ${shift.num} cho nhóm ${group_name}:`, err.message);
                         }
@@ -1615,18 +2109,30 @@ cron.schedule('*/1 * * * *', async () => {
             WHERE c.date = $1
               AND COALESCE(u.is_exempt_checkin, false) = false
               AND COALESCE(u.is_active, true) = true
+              AND NOT EXISTS (
+                  SELECT 1 FROM tk_attendance_daily_status ds
+                  WHERE ds.group_id = c.group_id
+                    AND ds.user_id = c.user_id
+                    AND ds.date = c.date
+                    AND ds.finalized_at IS NOT NULL
+              )
             ORDER BY c.user_id, c.check_in_time ASC
         `, [todayStr]);
 
         for (const c of checkInsRes.rows) {
-            // Chỉ tính phạt cho Ca 1 (CA_SANG), Ca 2 (CA_CHIEU) hoặc Cả ngày (FULL_DAY)
-            if (!['CA_1', 'CA_2', 'CA_SANG', 'CA_CHIEU', 'FULL_DAY'].includes(c.shift_type)) {
+            // Chỉ tính phạt cho Ca 1 (CA_SANG), Ca 2 (CA_CHIEU), Cả ngày (FULL_DAY) hoặc Ca bù chiều (HALF_DAY_PM_WORK)
+            if (!['CA_1', 'CA_2', 'CA_SANG', 'CA_CHIEU', 'FULL_DAY', 'HALF_DAY_PM_WORK'].includes(c.shift_type)) {
                 continue;
             }
 
-            const shiftStart = (c.shift_type === 'CA_1' || c.shift_type === 'CA_SANG')
-                ? (c.shift_1_time || '08:00:00')
-                : (c.shift_2_time || '13:30:00');
+            let shiftStart = '08:00:00';
+            if (c.shift_type === 'CA_1' || c.shift_type === 'CA_SANG' || c.shift_type === 'FULL_DAY') {
+                shiftStart = c.shift_1_time || '08:00:00';
+            } else if (c.shift_type === 'CA_2' || c.shift_type === 'CA_CHIEU') {
+                shiftStart = c.shift_2_time || '13:30:00';
+            } else if (c.shift_type === 'HALF_DAY_PM_WORK') {
+                shiftStart = '13:30:00';
+            }
 
             // Định dạng check-in time và giờ bắt đầu ca thành moment để so sánh
             const checkInTimeStr = moment(c.check_in_time).utcOffset(7).format('HH:mm:ss');
@@ -1635,7 +2141,16 @@ cron.schedule('*/1 * * * *', async () => {
 
             if (checkInMoment.isAfter(shiftStartMoment)) {
                 const lateMinutes = checkInMoment.diff(shiftStartMoment, 'minutes');
-                if (lateMinutes <= 0) continue;
+                if (lateMinutes <= 0) {
+                    await pool.query(`
+                        INSERT INTO tk_attendance_daily_status
+                            (group_id, user_id, date, result, finalized_at, updated_at)
+                        VALUES ($1, $2, $3, 'ON_TIME', NOW(), NOW())
+                        ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                            result = 'ON_TIME', finalized_at = NOW(), updated_at = NOW()
+                    `, [c.group_id, c.user_id, c.date]);
+                    continue;
+                }
 
                 // Kiểm tra xem đã có bản ghi phạt LATE cho user vào ngày này chưa
                 const penaltyExist = await pool.query(
@@ -1686,7 +2201,10 @@ cron.schedule('*/1 * * * *', async () => {
 
                     if (leaveReqRes.rows.length > 0 && amount > 0) {
                         amount = amount / 2;
-                        reason += ` (Đã giảm 50% do có đơn xin đi muộn)`;
+                        reason += ` (Đã giảm 50% do có đơn báo trước)`;
+                    } else if (amount > 0) {
+                        amount += 100000;
+                        reason += ` (Phạt thêm 100k do không có đơn báo trước)`;
                     }
 
                     // Thêm bản ghi phạt vào tk_penalties
@@ -1707,6 +2225,21 @@ cron.schedule('*/1 * * * *', async () => {
                         try { await sendMessageToRoleGroup(bot, c.telegram_group_id, 'timekeep', msg, { parse_mode: 'HTML' }, 'late_penalty_notice'); } catch (err) { console.error(err); }
                     }
                 }
+                await pool.query(`
+                    INSERT INTO tk_attendance_daily_status
+                        (group_id, user_id, date, result, finalized_at, updated_at)
+                    VALUES ($1, $2, $3, 'LATE', NOW(), NOW())
+                    ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                        result = 'LATE', finalized_at = NOW(), updated_at = NOW()
+                `, [c.group_id, c.user_id, c.date]);
+            } else {
+                await pool.query(`
+                    INSERT INTO tk_attendance_daily_status
+                        (group_id, user_id, date, result, finalized_at, updated_at)
+                    VALUES ($1, $2, $3, 'ON_TIME', NOW(), NOW())
+                    ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                        result = 'ON_TIME', finalized_at = NOW(), updated_at = NOW()
+                `, [c.group_id, c.user_id, c.date]);
             }
         }
     } catch (error) { console.error('[Cron Error] Lỗi khi xử lý tính phạt đi muộn:', error); }
@@ -2053,6 +2586,8 @@ botApp.get('/api/export/today', async (req, res) => {
                     shiftDisplay = `${s1Start}–17:30`;
                 } else if (['CA_2', 'CA_CHIEU'].includes(userSchedule.shift_type)) {
                     shiftDisplay = `${s2Start}–17:30`;
+                } else if (userSchedule.shift_type === 'HALF_DAY_PM_WORK') {
+                    shiftDisplay = `13:30-17:30`;
                 } else {
                     shiftDisplay = userSchedule.shift_type;
                 }
@@ -2150,21 +2685,187 @@ botApp.get('/api/export/today', async (req, res) => {
     }
 });
 
-// Cron: Tự động đóng đăng ký lịch vào lúc 20:00 Chủ Nhật hàng tuần
-cron.schedule('0 20 * * 0', async () => {
+let cachedBotUsername = null;
+async function getBotUsername() {
+    if (!cachedBotUsername) {
+        try {
+            const botInfo = await bot.telegram.getMe();
+            cachedBotUsername = botInfo.username;
+        } catch (e) {
+            console.error('Lỗi khi lấy thông tin bot:', e);
+            cachedBotUsername = process.env.BOT_USERNAME || 'baocao_kpi_adsup_bot';
+        }
+    }
+    return cachedBotUsername;
+}
+
+function generateScheduleLink(groupId, botUsername) {
+    const token = process.env.TELEGRAM_BOT_TOKEN || '';
+    const ts = Date.now();
+    const appShortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
+    const dataString = `schedule:${groupId}:${ts}`;
+    const sig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
+    return `https://t.me/${botUsername}/${appShortName}?startapp=schedule_${groupId}_${ts}_${sig}`;
+}
+
+async function sendSundayScheduleReminder(type) {
     try {
-        await pool.query(`
-            UPDATE telegram_groups 
-            SET schedule_registration_open = false 
+        console.log(`[Sunday Cron] Chạy trình nhắc nhở lịch: ${type}`);
+        // 1. Tìm tất cả các nhóm chấm công đang hoạt động
+        const groupsRes = await pool.query(`
+            SELECT id, telegram_group_id, group_name 
+            FROM telegram_groups 
             WHERE bot_role = 'timekeep' 
               AND is_active = true 
               AND COALESCE(is_deleted, false) = false
         `);
-        console.log('[Cron] Đã tự động đóng đăng ký lịch cho các nhóm chấm công.');
+
+        if (groupsRes.rows.length === 0) return;
+
+        // Lấy danh sách 7 ngày của tuần tiếp theo (Thứ 2 đến Chủ Nhật)
+        const nextMonday = moment().utcOffset(7).add(1, 'day').startOf('day');
+        const nextWeekDates = [];
+        for (let i = 0; i < 7; i++) {
+            nextWeekDates.push(moment(nextMonday).add(i, 'days').format('YYYY-MM-DD'));
+        }
+
+        const botUsername = await getBotUsername();
+
+        for (const group of groupsRes.rows) {
+            const groupId = group.telegram_group_id;
+            const groupName = group.group_name;
+
+            const scheduleUrl = generateScheduleLink(groupId, botUsername);
+
+            // Tìm nhân viên trong nhóm chưa đăng ký lịch cho tuần tới (0 bản ghi trong tk_schedules cho tuần sau)
+            const unregisteredRes = await pool.query(`
+                SELECT e.id, e.full_name, e.telegram_id, e.telegram_username
+                FROM employees e
+                WHERE e.telegram_group_id = $1 
+                  AND e.is_active = true 
+                  AND e.full_name NOT LIKE '/%' 
+                  AND e.full_name != 'tester'
+                  AND NOT EXISTS (
+                      SELECT 1 
+                      FROM tk_schedules s 
+                      WHERE s.user_id = e.id 
+                        AND s.date >= $2::date 
+                        AND s.date <= $3::date
+                  )
+            `, [groupId, nextWeekDates[0], nextWeekDates[6]]);
+
+            const unregisteredStaff = unregisteredRes.rows;
+
+            if (type === 'general_17' || type === 'general_18') {
+                const message = `🔔 <b>[NHẮC NHỞ ĐĂNG KÝ LỊCH TUẦN MỚI]</b>\n\n` +
+                    `Các bạn thành viên nhóm <b>${groupName}</b> ơi, vui lòng nhấp vào nút dưới đây để đăng ký lịch làm việc cho tuần tới nhé!\n` +
+                    `⏰ Hạn chót đóng đăng ký: <b>20:00 tối nay (Chủ Nhật)</b>.`;
+
+                await bot.telegram.sendMessage(groupId, message, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '📅 Đăng ký lịch tuần', url: scheduleUrl }
+                            ]
+                        ]
+                    }
+                });
+            } else if (type === 'targeted_19' || type === 'targeted_1950') {
+                if (unregisteredStaff.length === 0) {
+                    continue; 
+                }
+
+                const tagList = unregisteredStaff.map(emp => {
+                    if (emp.telegram_username) {
+                        return `@${emp.telegram_username.replace('@', '')} (${emp.full_name})`;
+                    } else {
+                        return `<a href="tg://user?id=${emp.telegram_id}">${emp.full_name}</a>`;
+                    }
+                }).join(', ');
+
+                let message = '';
+                if (type === 'targeted_19') {
+                    message = `🔔 <b>[CẢNH BÁO ĐĂNG KÝ LỊCH TUẦN MỚI]</b>\n\n` +
+                        `Các thành viên sau đây vui lòng nhấn nút dưới đây để hoàn tất đăng ký lịch làm việc tuần tới trước 20:00:\n\n` +
+                        `👉 ${tagList}`;
+                } else {
+                    message = `🚨 <b>[CẢNH BÁO ĐĂNG KÝ LỊCH LẦN CUỐI]</b>\n\n` +
+                        `⏰ <b>Chỉ còn đúng 10 phút!</b> Nếu quá 20:00 chưa hoàn tất đăng ký lịch, hệ thống sẽ tự động xếp toàn bộ ca của bạn thành <b>Ca sớm (8:30)</b> cho cả tuần sau.\n\n` +
+                        `👉 Các bạn chưa đăng ký: ${tagList}`;
+                }
+
+                await bot.telegram.sendMessage(groupId, message, {
+                    parse_mode: 'HTML',
+                    reply_markup: {
+                        inline_keyboard: [
+                            [
+                                { text: '📅 Đăng ký lịch tuần', url: scheduleUrl }
+                            ]
+                        ]
+                    }
+                });
+            } else if (type === 'auto_set_2000') {
+                // 1. Tự động xếp lịch Ca Sáng (CA_SANG) cho toàn bộ nhân sự chưa đăng ký lịch
+                if (unregisteredStaff.length > 0) {
+                    for (const emp of unregisteredStaff) {
+                        for (const dateStr of nextWeekDates) {
+                            await pool.query(`
+                                INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked, updated_by)
+                                VALUES ($1, $2, $3, 'CA_SANG', true, 'Hệ thống tự động')
+                                ON CONFLICT (user_id, date) 
+                                DO UPDATE SET shift_type = 'CA_SANG', is_locked = true, updated_by = 'Hệ thống tự động', updated_at = NOW()
+                            `, [group.id, emp.id, dateStr]);
+                        }
+                    }
+
+                    const namesList = unregisteredStaff.map(emp => emp.full_name).join(', ');
+                    const message = `🔒 <b>[HẾT HẠN ĐĂNG KÝ & TỰ ĐỘNG XẾP CA]</b>\n\n` +
+                        `Hạn đăng ký lịch làm việc tuần tới đã kết thúc.\n\n` +
+                        `Các thành viên chưa đăng ký đã được hệ thống tự động xếp lịch <b>Ca sớm (8:30)</b> cho cả tuần từ Thứ 2 đến Chủ Nhật:\n` +
+                        `👉 <b>${namesList}</b>`;
+
+                    await bot.telegram.sendMessage(groupId, message, { parse_mode: 'HTML' });
+                }
+
+                // 2. Tiến hành đóng đăng ký lịch cho nhóm
+                await pool.query(`
+                    UPDATE telegram_groups 
+                    SET schedule_registration_open = false 
+                    WHERE id = $1
+                `, [group.id]);
+                console.log(`[Cron] Đã đóng đăng ký lịch cho nhóm ${groupName}`);
+            }
+        }
     } catch (e) {
-        console.error('[Cron Error] Lỗi khi tự động đóng đăng ký lịch:', e);
+        console.error(`[Sunday Cron Error] Lỗi khi xử lý reminder ${type}:`, e);
     }
-});
+}
+
+// 1. Nhắc chung lúc 17:00 Chủ Nhật hàng tuần
+cron.schedule('0 17 * * 0', async () => {
+    await sendSundayScheduleReminder('general_17');
+}, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
+
+// 2. Nhắc chung lúc 18:00 Chủ Nhật hàng tuần
+cron.schedule('0 18 * * 0', async () => {
+    await sendSundayScheduleReminder('general_18');
+}, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
+
+// 3. Nhắc tên cụ thể lúc 19:00 Chủ Nhật hàng tuần
+cron.schedule('0 19 * * 0', async () => {
+    await sendSundayScheduleReminder('targeted_19');
+}, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
+
+// 4. Nhắc tên cụ thể lúc 19:50 Chủ Nhật hàng tuần (cảnh báo 10 phút cuối)
+cron.schedule('50 19 * * 0', async () => {
+    await sendSundayScheduleReminder('targeted_1950');
+}, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
+
+// 5. Khóa đăng ký lịch và tự động xếp ca lúc 20:00 Chủ Nhật hàng tuần
+cron.schedule('0 20 * * 0', async () => {
+    await sendSundayScheduleReminder('auto_set_2000');
+}, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
 
 // Daily export cron job at 23:00
 cron.schedule('0 23 * * *', async () => {
@@ -2376,8 +3077,20 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         }
 
         const user = userRes.rows[0];
-        const currentDate = moment().utcOffset(7).format('YYYY-MM-DD');
-        const checkInTime = moment().utcOffset(7).format('YYYY-MM-DD HH:mm:ss');
+        let msgDate = ctx.message.date;
+        if (isReplyCheck && ctx.message.reply_to_message) {
+            msgDate = ctx.message.reply_to_message.date;
+        } else if (isCachedCheck) {
+            const cached = recentUserVideos.get(telegram_id);
+            if (cached) {
+                // cached.timestamp is in ms, need to convert to unix seconds
+                msgDate = Math.floor(cached.timestamp / 1000);
+            }
+        }
+
+        const msgMoment = moment.unix(msgDate).utcOffset(7);
+        const currentDate = msgMoment.format('YYYY-MM-DD');
+        const checkInTime = msgMoment.format('YYYY-MM-DD HH:mm:ss');
         const fileId = videoObj.file_id;
 
         // 2. Lưu thông tin điểm danh vào bảng tk_check_ins
@@ -2392,7 +3105,7 @@ bot.on(['video', 'video_note', 'text'], async (ctx, next) => {
         recentUserVideos.delete(telegram_id);
 
         // 3. Phản hồi xác nhận điểm danh thành công
-        const timestampStr = moment().utcOffset(7).format('HH:mm:ss - DD/MM/YYYY');
+        const timestampStr = msgMoment.format('HH:mm:ss - DD/MM/YYYY');
         let replyNote = '';
         if (isReplyCheck) {
             replyNote = ' (Xác nhận từ video được trả lời)';
@@ -2508,6 +3221,877 @@ bot.launch().then(() => {
     syncGroupsOnStartup();
 }).catch((err) => {
     console.error('[Telegraf Error] Lỗi khởi động Bot:', err);
+});
+
+// ==========================================
+// CUSTOMER RECORD (LƯU THÔNG TIN KHÁCH HÀNG) FEATURES
+// ==========================================
+
+const escapeHtml = (str) => {
+    if (!str) return '';
+    return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+};
+
+// Route nhận thông tin từ Mini App Form và lưu trữ
+botApp.post('/api/customer/save', authenticateTelegramMiniApp, uploadCustomerMedia.array('media_files', 20), async (req, res) => {
+    try {
+        const telegram_id = req.verifiedTelegramId || req.body.telegram_id;
+        const {
+            chat_id,
+            consultant,
+            customer_type,
+            customer_name,
+            phone,
+            address,
+            service,
+            gift,
+            bill_amount,
+            paid_amount,
+            debt_amount,
+            operator,
+            warranty
+        } = req.body;
+
+        if (!telegram_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin Telegram ID!' });
+        }
+
+        // 1. Kiểm tra nhân sự
+        const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trên hệ thống!' });
+        }
+        const user = userRes.rows[0];
+
+        // 2. Xác định nhóm Telegram
+        let groupRecord = null;
+        let tgGroupId = chat_id || user.telegram_group_id;
+        if (tgGroupId) {
+            const groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [tgGroupId]);
+            if (groupRes.rows.length > 0) {
+                groupRecord = groupRes.rows[0];
+            }
+        }
+        const dbGroupId = groupRecord ? groupRecord.id : null;
+
+        // 3. Xử lý Google Drive (Tải ảnh/video lên thư mục của riêng khách hàng)
+        const parentFolderId = (groupRecord && groupRecord.customer_drive_folder_id) || process.env.CUSTOMER_DRIVE_PARENT_FOLDER_ID || '1efnVoB6tQXrHKAeTcm3lcqzJqBoGg3QF';
+        
+        // Tạo hoặc tìm thư mục con đặt tên theo SĐT của khách hàng
+        const cleanPhone = phone.replace(/[^0-9+]/g, '');
+        const customerFolder = await getOrCreateCustomerFolder(parentFolderId, cleanPhone);
+        const driveFolderLink = customerFolder.webViewLink;
+
+        // Tải các file tạm từ Multer lên thư mục vừa tạo (không xóa file tạm ngay để gửi lên Telegram)
+        const mediaUrls = [];
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                const buffer = fs.readFileSync(file.path);
+                const uploadResult = await uploadToDrive(buffer, file.originalname, file.mimetype, customerFolder.id);
+                mediaUrls.push(uploadResult.webViewLink);
+            }
+        }
+
+        const currentDate = moment().utcOffset(7).format('YYYY-MM-DD');
+        const billVal = parseFloat(bill_amount) || 0;
+        const paidVal = parseFloat(paid_amount) || 0;
+        const debtVal = parseFloat(debt_amount) || 0;
+
+        // 4. Ghi nhận vào cơ sở dữ liệu (Lưu bản ghi gốc không escape để bảo toàn dữ liệu)
+        await pool.query(
+            `INSERT INTO public.customer_records 
+             (group_id, creator_employee_id, record_date, consultant, customer_type, customer_name, address, phone, service, gift, bill_amount, paid_amount, debt_amount, operator, warranty, drive_folder_link, media_urls)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+            [
+                dbGroupId,
+                user.id,
+                currentDate,
+                consultant,
+                customer_type,
+                customer_name,
+                address || null,
+                phone,
+                service,
+                gift || null,
+                billVal,
+                paidVal,
+                debtVal,
+                operator,
+                warranty || null,
+                driveFolderLink,
+                JSON.stringify(mediaUrls)
+            ]
+        );
+
+        // 5. Gửi thông báo tức thời lên nhóm Telegram (Dưới dạng Album ảnh/video đính kèm nội dung báo cáo làm caption)
+        if (tgGroupId) {
+            const displayDate = moment().utcOffset(7).format('DD/MM/YYYY HH:mm');
+            const custTypeDisplay = customer_type === 'NEW' ? 'Khách mới ☘️' : 'Khách cũ 🔁';
+
+            const notifyMsg = `☘️ <b>GHI NHẬN THÔNG TIN KHÁCH HÀNG</b> ☘️\n\n` +
+                `📅 <b>Ngày ghi nhận:</b> ${displayDate}\n` +
+                `👤 <b>Nhân viên báo cáo:</b> ${escapeHtml(user.full_name)}\n` +
+                `👩‍💼 <b>Tư vấn:</b> ${escapeHtml(consultant)}\n` +
+                `📊 <b>Loại khách:</b> ${custTypeDisplay}\n` +
+                `👤 <b>Tên khách hàng:</b> ${escapeHtml(customer_name)}\n` +
+                `📞 <b>Điện thoại:</b> ${escapeHtml(phone)}\n` +
+                `📍 <b>Địa chỉ:</b> ${escapeHtml(address) || 'Không có'}\n` +
+                `🛠️ <b>Dịch vụ:</b> ${escapeHtml(service)}\n` +
+                `🎁 <b>Tặng kèm:</b> ${escapeHtml(gift) || 'Không có'}\n` +
+                `💸 <b>Tổng Bill:</b> ${billVal.toLocaleString('vi-VN')}đ\n` +
+                `💳 <b>Đã thanh toán:</b> ${paidVal.toLocaleString('vi-VN')}đ\n` +
+                `🚨 <b>Còn nợ:</b> ${debtVal.toLocaleString('vi-VN')}đ\n` +
+                `🧑‍⚕️ <b>Người thực hiện:</b> ${escapeHtml(operator)}\n` +
+                `🛡️ <b>Bảo hành:</b> ${escapeHtml(warranty) || 'Không có'}`;
+
+            if (req.files && req.files.length > 0) {
+                const mediaGroup = req.files.slice(0, 10).map((file, idx) => {
+                    const isVideo = file.mimetype.startsWith('video');
+                    const mediaObj = {
+                        type: isVideo ? 'video' : 'photo',
+                        media: { source: file.path }
+                    };
+                    if (idx === 0) {
+                        mediaObj.caption = notifyMsg;
+                        mediaObj.parse_mode = 'HTML';
+                    }
+                    return mediaObj;
+                });
+                await bot.telegram.sendMediaGroup(tgGroupId, mediaGroup);
+            } else {
+                await bot.telegram.sendMessage(tgGroupId, notifyMsg, { parse_mode: 'HTML', disable_web_page_preview: true });
+            }
+        }
+
+        // 6. Xóa các file tạm sau khi đã hoàn tất gửi lên Telegram
+        if (req.files && req.files.length > 0) {
+            for (const file of req.files) {
+                try {
+                    fs.unlinkSync(file.path);
+                } catch (err) {
+                    console.error('Lỗi khi xóa tệp tạm:', err);
+                }
+            }
+        }
+
+        // 7. Đồng bộ lên Google Sheet của nhóm
+        syncCustomerRecordToSheet(tgGroupId, {
+            date: moment().utcOffset(7).format('DD/MM/YYYY'),
+            employeeName: user.full_name,
+            employeeCode: user.employee_code || '',
+            consultant,
+            customerType: customer_type === 'NEW' ? 'Khách mới' : 'Khách cũ',
+            customerName: customer_name,
+            address,
+            phone,
+            service,
+            gift,
+            billAmount: billVal,
+            paidAmount: paidVal,
+            debtAmount: debtVal,
+            operator,
+            warranty,
+            driveFolderLink
+        }).catch(err => console.error('[Sheet Sync Error] Lỗi khi đồng bộ khách hàng lên Google Sheet:', err));
+
+        res.json({ success: true, message: 'Ghi nhận thông tin khách hàng thành công!' });
+
+    } catch (error) {
+        console.error('[Save Customer Record Error]:', error);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ: ' + error.message });
+    }
+});
+
+// Hàm hỗ trợ ghi thông tin khách hàng vào Google Sheet
+async function syncCustomerRecordToSheet(telegramGroupId, data) {
+    try {
+        const doc = await getCustomerDocForGroup(telegramGroupId);
+        if (!doc) {
+            console.warn(`[Sheet Sync Warning] Không tìm thấy Spreadsheet cấu hình cho nhóm ${telegramGroupId}`);
+            return;
+        }
+        await doc.loadInfo();
+
+        const sheetTitle = 'THÔNG TIN KHÁCH HÀNG THỰC TẾ';
+        const headers = [
+            'Ngày', 'Nhân viên', 'Mã NV', 'Tư vấn', 'Khách mới/cũ', 'Tên KH', 
+            'Địa chỉ', 'Điện thoại', 'Dịch vụ', 'Tặng', 'Bill (đ)', 
+            'Đã TT (đ)', 'Nợ (đ)', 'Người thực hiện', 'Bảo hành', 'Link Folder Drive'
+        ];
+
+        let sheet = doc.sheetsByTitle[sheetTitle];
+        if (!sheet) {
+            sheet = await doc.addSheet({ headerValues: headers, title: sheetTitle });
+        } else {
+            await sheet.setHeaderRow(headers);
+        }
+
+        await sheet.addRow({
+            'Ngày': data.date,
+            'Nhân viên': data.employeeName,
+            'Mã NV': data.employeeCode,
+            'Tư vấn': data.consultant,
+            'Khách mới/cũ': data.customerType,
+            'Tên KH': data.customerName,
+            'Địa chỉ': data.address || '',
+            'Điện thoại': data.phone,
+            'Dịch vụ': data.service,
+            'Tặng': data.gift || '',
+            'Bill (đ)': data.billAmount,
+            'Đã TT (đ)': data.paidAmount,
+            'Nợ (đ)': data.debtAmount,
+            'Người thực hiện': data.operator,
+            'Bảo hành': data.warranty || '',
+            'Link Folder Drive': data.driveFolderLink
+        });
+        console.log(`[Sheet Sync] Đồng bộ thành công thông tin KH ${data.customerName} lên Sheet.`);
+    } catch (e) {
+        console.error('[Sheet Sync Error] Thất bại khi ghi dữ liệu lên Google Sheet:', e);
+        throw e;
+    }
+}
+
+// Cron job chạy lúc 22:00 hàng ngày tổng kết danh sách khách hàng phục vụ trong ngày
+cron.schedule('0 22 * * *', async () => {
+    try {
+        console.log('[Cron] Khởi chạy tổng hợp danh sách khách hàng lúc 22:00 hàng ngày...');
+        const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
+
+        // Tìm tất cả các nhóm có bot_role liên quan
+        const groupsRes = await pool.query(
+            `SELECT id, telegram_group_id, group_name FROM telegram_groups 
+             WHERE bot_role IN ('customer', 'customer_record') AND is_active = true AND COALESCE(is_deleted, false) = false`
+        );
+
+        for (const group of groupsRes.rows) {
+            // Lấy danh sách bản ghi khách hàng phát sinh trong hôm nay của nhóm
+            const recordsRes = await pool.query(
+                `SELECT r.*, e.full_name as creator_name 
+                 FROM customer_records r
+                 LEFT JOIN employees e ON r.creator_employee_id = e.id
+                 WHERE r.group_id = $1 AND r.record_date = $2
+                 ORDER BY r.created_at ASC`,
+                [group.id, todayStr]
+            );
+
+            let message = '';
+            if (recordsRes.rows.length > 0) {
+                message = `📋 <b>TỔNG HỢP DANH SÁCH KHÁCH HÀNG HÔM NAY (${moment().utcOffset(7).format('DD/MM/YYYY')})</b>\n`;
+                message += `<b>Nhóm:</b> ${escapeHtml(group.group_name)}\n`;
+                message += `-------------------------------------------\n\n`;
+
+                recordsRes.rows.forEach((r, idx) => {
+                    const custType = r.customer_type === 'NEW' ? 'Khách mới ☘️' : 'Khách cũ 🔁';
+                    message += `${idx + 1}. <b>Khách hàng:</b> ${escapeHtml(r.customer_name)} (${custType})\n`;
+                    message += `   📞 <b>Điện thoại:</b> ${escapeHtml(r.phone)}\n`;
+                    message += `   👩‍💼 <b>Tư vấn:</b> ${escapeHtml(r.consultant)}\n`;
+                    message += `   🛠️ <b>Dịch vụ:</b> ${escapeHtml(r.service)}\n`;
+                    message += `   💸 <b>Tổng Bill:</b> ${(Number(r.bill_amount) || 0).toLocaleString('vi-VN')}đ | 💳 <b>Đã TT:</b> ${(Number(r.paid_amount) || 0).toLocaleString('vi-VN')}đ | 🚨 <b>Nợ:</b> ${(Number(r.debt_amount) || 0).toLocaleString('vi-VN')}đ\n`;
+                    message += `   🧑‍⚕️ <b>Người thực hiện:</b> ${escapeHtml(r.operator)}\n`;
+                    message += `   📁 <b>Drive Folder:</b> <a href="${r.drive_folder_link}">Xem folder ảnh</a>\n\n`;
+                });
+            } else {
+                message = `📋 <b>TỔNG HỢP DANH SÁCH KHÁCH HÀNG HÔM NAY (${moment().utcOffset(7).format('DD/MM/YYYY')})</b>\n`;
+                message += `<b>Nhóm:</b> ${escapeHtml(group.group_name)}\n`;
+                message += `-------------------------------------------\n\n`;
+                message += `😔 Hôm nay không có khách hàng nào được ghi nhận.`;
+            }
+
+            // Gửi tin nhắn đến nhóm
+            await bot.telegram.sendMessage(group.telegram_group_id, message, { parse_mode: 'HTML', disable_web_page_preview: true });
+            console.log(`[Cron] Đã gửi báo cáo tổng kết khách hàng cho nhóm: ${group.group_name}`);
+        }
+    } catch (e) {
+        console.error('[Cron Error] Lỗi khi chạy tổng kết khách hàng cuối ngày lúc 22:00:', e);
+    }
+});
+
+// Express APIs for Warehouse
+botApp.get('/api/products/by-barcode/:barcode', authenticateTelegramMiniApp, async (req, res) => {
+    try {
+        const { barcode } = req.params;
+        const productRes = await pool.query('SELECT * FROM tk_products WHERE barcode = $1 LIMIT 1', [barcode]);
+        
+        if (productRes.rows.length > 0) {
+            const product = productRes.rows[0];
+            const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [product.id]);
+            const quantity = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
+            return res.json({
+                success: true,
+                exists: true,
+                product: {
+                    id: product.id,
+                    barcode: product.barcode,
+                    product_name: product.product_name,
+                    quantity: quantity
+                }
+            });
+        }
+        
+        return res.json({ success: true, exists: false });
+    } catch (e) {
+        console.error('Lỗi check barcode API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tra cứu mã vạch' });
+    }
+});
+
+botApp.get('/api/warehouse/products', authenticateTelegramMiniApp, async (req, res) => {
+    try {
+        const productsRes = await pool.query('SELECT id, barcode, product_name FROM tk_products ORDER BY product_name ASC');
+        res.json({ success: true, products: productsRes.rows });
+    } catch (e) {
+        console.error('Lỗi get products list API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách sản phẩm' });
+    }
+});
+
+botApp.get('/api/warehouse/inventory', authenticateTelegramMiniApp, async (req, res) => {
+    try {
+        const query = `
+            SELECT p.id, p.barcode, p.product_name, COALESCE(i.quantity, 0) as quantity, i.updated_at
+            FROM tk_products p
+            LEFT JOIN tk_inventory i ON p.id = i.product_id
+            ORDER BY p.product_name ASC
+        `;
+        const inventoryRes = await pool.query(query);
+        res.json({ success: true, inventory: inventoryRes.rows });
+    } catch (e) {
+        console.error('Lỗi get inventory list API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy dữ liệu tồn kho' });
+    }
+});
+
+botApp.get('/api/warehouse/check-stock', authenticateTelegramMiniApp, async (req, res) => {
+    try {
+        const { barcode } = req.query;
+        if (!barcode) {
+            return res.status(400).json({ success: false, message: 'Thiếu mã vạch!' });
+        }
+        
+        const productRes = await pool.query('SELECT id FROM tk_products WHERE barcode = $1 LIMIT 1', [barcode]);
+        if (productRes.rows.length === 0) {
+            return res.json({ success: true, quantity: 0 });
+        }
+        
+        const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productRes.rows[0].id]);
+        const quantity = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
+        res.json({ success: true, quantity });
+    } catch (e) {
+        console.error('Lỗi check stock API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi kiểm tra tồn kho' });
+    }
+});
+
+botApp.post('/api/warehouse/import', authenticateTelegramMiniApp, uploadCustomerMedia.array('media_files', 20), async (req, res) => {
+    try {
+        const telegram_id = req.verifiedTelegramId;
+        const { chat_id, items: itemsStr } = req.body;
+        
+        if (!chat_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin ID nhóm!' });
+        }
+        
+        let items = [];
+        try {
+            items = JSON.parse(itemsStr);
+        } catch (e) {
+            return res.status(400).json({ success: false, message: 'Danh sách sản phẩm không hợp lệ!' });
+        }
+
+        if (!Array.isArray(items) || items.length === 0) {
+            return res.status(400).json({ success: false, message: 'Danh sách sản phẩm trống!' });
+        }
+
+        // 1. Kiểm tra nhân viên
+        const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
+        }
+        const user = userRes.rows[0];
+
+        // 2. Kiểm tra nhóm
+        const groupRes = await pool.query("SELECT * FROM telegram_groups WHERE telegram_group_id = $1 AND bot_role = 'warehouse' LIMIT 1", [chat_id]);
+        if (groupRes.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'Nhóm chưa được phân quyền Quản lý kho!' });
+        }
+        const group = groupRes.rows[0];
+
+        // 3. Xử lý tải hình ảnh + video lên Google Drive (Dùng chung cho cả phiên giao dịch này)
+        let folderUrl = null;
+        if (req.files && req.files.length > 0) {
+            try {
+                // Định dạng tên thư mục: HH[h]mm_DD-MM-YYYY (ví dụ: 14h11_10-08-2026)
+                const folderName = moment().utcOffset(7).format('HH[h]mm_DD-MM-YYYY');
+                const parentFolderId = group.customer_drive_folder_id || process.env.WAREHOUSE_DRIVE_PARENT_FOLDER_ID || '1VDcvrEc5nvVrvYsz1ShImZ21GsK7dQ8P';
+                
+                const folder = await createWarehouseFolder(parentFolderId, folderName);
+                folderUrl = folder.webViewLink;
+
+                for (const file of req.files) {
+                    const buffer = fs.readFileSync(file.path);
+                    await uploadToDrive(buffer, file.originalname, file.mimetype, folder.id);
+                    // Dọn dẹp tệp tạm
+                    try { fs.unlinkSync(file.path); } catch (uErr) {}
+                }
+            } catch (driveErr) {
+                console.error('[Warehouse Upload Error] Thất bại khi upload ảnh lên Drive:', driveErr);
+            }
+        }
+
+        // 4. Xử lý từng sản phẩm
+        const resultItems = [];
+        for (const item of items) {
+            if (!item.barcode || !item.barcode.trim() || !item.product_name || !item.product_name.trim()) {
+                continue;
+            }
+            const cleanBarcode = item.barcode.trim();
+            const cleanProductName = item.product_name.trim();
+            const qtyNum = parseInt(item.quantity, 10);
+            if (isNaN(qtyNum) || qtyNum <= 0) {
+                continue;
+            }
+
+            // A. Tìm hoặc tạo sản phẩm
+            const newProd = await pool.query(
+                `INSERT INTO tk_products (barcode, product_name)
+                 VALUES ($1, $2)
+                 ON CONFLICT (barcode) 
+                 DO UPDATE SET product_name = COALESCE(NULLIF(EXCLUDED.product_name, ''), tk_products.product_name)
+                 RETURNING id`,
+                [cleanBarcode, cleanProductName]
+            );
+            const productId = newProd.rows[0].id;
+
+            // B. Cộng kho
+            await pool.query(
+                `INSERT INTO tk_inventory (product_id, quantity, updated_at)
+                 VALUES ($1, $2, NOW())
+                 ON CONFLICT (product_id) 
+                 DO UPDATE SET quantity = tk_inventory.quantity + EXCLUDED.quantity, updated_at = NOW()`,
+                [productId, qtyNum]
+            );
+
+            // C. Ghi giao dịch
+            const txRes = await pool.query(
+                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status, proof_folder_url)
+                 VALUES ($1, $2, 'IMPORT', $3, $4, 'APPROVED', $5)
+                 RETURNING id`,
+                [group.id, user.id, productId, qtyNum, folderUrl]
+            );
+            const txId = txRes.rows[0].id;
+
+            // D. Lấy tồn mới
+            const stockCheck = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productId]);
+            const newStock = stockCheck.rows[0].quantity;
+
+            resultItems.push({
+                product_name: cleanProductName,
+                barcode: cleanBarcode,
+                quantity: qtyNum,
+                newStock: newStock
+            });
+
+            // E. Đồng bộ Google Sheets cho sản phẩm này
+            try {
+                await syncWarehouseSheets(productId, txId);
+            } catch (sheetErr) {
+                console.error(`[Warehouse Sync Error] Đồng bộ Sheet thất bại cho sản phẩm ${cleanProductName}:`, sheetErr);
+            }
+        }
+
+        if (resultItems.length === 0) {
+            return res.status(400).json({ success: false, message: 'Không có sản phẩm nào hợp lệ được xử lý!' });
+        }
+
+        // 5. Gửi thông báo đến nhóm
+        let message = `📥 <b>[NHẬP KHO THÀNH CÔNG]</b>\n\n` +
+            `👤 <b>Người thực hiện:</b> ${escapeHtml(user.full_name)}\n` +
+            `📦 <b>Danh sách sản phẩm nhập:</b>\n`;
+        
+        resultItems.forEach((item, idx) => {
+            message += `${idx + 1}. <b>${escapeHtml(item.product_name)}</b> (<code>${escapeHtml(item.barcode)}</code>): +${item.quantity} (Tồn: <b>${item.newStock}</b>)\n`;
+        });
+
+        if (folderUrl) {
+            message += `\n🔗 <b>Chứng minh nhập kho:</b> <a href="${folderUrl}">Xem thư mục Drive</a>`;
+        }
+
+        await bot.telegram.sendMessage(chat_id, message, { parse_mode: 'HTML', disable_web_page_preview: true });
+
+        res.json({ success: true, message: 'Nhập kho thành công!' });
+    } catch (e) {
+        console.error('Lỗi nhập kho API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xử lý nhập kho' });
+    }
+});
+
+botApp.post('/api/warehouse/export/request', authenticateTelegramMiniApp, async (req, res) => {
+    try {
+        const telegram_id = req.verifiedTelegramId;
+        const { chat_id, barcode, quantity } = req.body;
+        
+        if (!chat_id) {
+            return res.status(400).json({ success: false, message: 'Thiếu thông tin ID nhóm!' });
+        }
+        if (!barcode || !barcode.trim()) {
+            return res.status(400).json({ success: false, message: 'Mã vạch hoặc mã sản phẩm không được để trống!' });
+        }
+
+        const qtyNum = parseInt(quantity, 10);
+        if (isNaN(qtyNum) || qtyNum <= 0) {
+            return res.status(400).json({ success: false, message: 'Số lượng xuất phải lớn hơn 0!' });
+        }
+
+        // 1. Kiểm tra nhân viên
+        const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (userRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
+        }
+        const user = userRes.rows[0];
+
+        // 2. Kiểm tra nhóm
+        const groupRes = await pool.query("SELECT * FROM telegram_groups WHERE telegram_group_id = $1 AND bot_role = 'warehouse' LIMIT 1", [chat_id]);
+        if (groupRes.rows.length === 0) {
+            return res.status(403).json({ success: false, message: 'Nhóm chưa được phân quyền Quản lý kho!' });
+        }
+        const group = groupRes.rows[0];
+
+        // 3. Tìm sản phẩm
+        const cleanBarcode = barcode.trim();
+        const prodCheck = await pool.query('SELECT * FROM tk_products WHERE barcode = $1 LIMIT 1', [cleanBarcode]);
+        if (prodCheck.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Sản phẩm chưa từng tồn tại trong hệ thống kho!' });
+        }
+        const product = prodCheck.rows[0];
+        const productId = product.id;
+
+        // 4. Kiểm tra tồn kho tức thời
+        const stockCheck = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productId]);
+        const currentStock = stockCheck.rows.length > 0 ? stockCheck.rows[0].quantity : 0;
+
+        if (currentStock < qtyNum) {
+            return res.status(400).json({ success: false, message: `Không đủ số lượng trong kho! (Tồn hiện tại: ${currentStock})` });
+        }
+
+        // 5. Kiểm tra vai trò nhân viên
+        const isManager = user.role === 'Quản lý' || user.role === 'admin';
+        const isAdminId = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(telegram_id);
+
+        if (isManager || isAdminId) {
+            // DUYỆT TỰ ĐỘNG cho Quản lý / Admin
+            try {
+                await pool.query('UPDATE tk_inventory SET quantity = quantity - $2, updated_at = NOW() WHERE product_id = $1', [productId, qtyNum]);
+            } catch (err) {
+                if (err.code === '23514') { // check constraint negative violation
+                    return res.status(400).json({ success: false, message: `Số lượng tồn kho không đủ để thực hiện xuất kho (Có thay đổi kho trong lúc bạn thao tác)!` });
+                }
+                throw err;
+            }
+            
+            const txRes = await pool.query(
+                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status, approved_by, approved_at)
+                 VALUES ($1, $2, 'EXPORT', $3, $4, 'APPROVED', $2, NOW())
+                 RETURNING id`,
+                [group.id, user.id, productId, qtyNum]
+            );
+            const txId = txRes.rows[0].id;
+            
+            const newStock = currentStock - qtyNum;
+
+            const message = `📤 <b>[XUẤT KHO THÀNH CÔNG]</b>\n\n` +
+                `👤 <b>Người thực hiện (Quản lý):</b> ${escapeHtml(user.full_name)}\n` +
+                `📦 <b>Sản phẩm:</b> ${escapeHtml(product.product_name)} (<code>${escapeHtml(cleanBarcode)}</code>)\n` +
+                `➖ <b>Số lượng xuất:</b> -${qtyNum}\n` +
+                `📊 <b>Tồn kho hiện tại:</b> <b>${newStock}</b>`;
+
+            await bot.telegram.sendMessage(chat_id, message, { parse_mode: 'HTML' });
+
+            // Đồng bộ Sheets
+            await syncWarehouseSheets(productId, txId);
+
+            return res.json({ success: true, auto_approved: true, message: 'Đã xuất kho thành công!' });
+        } else {
+            // YÊU CẦU CHỜ DUYỆT cho Nhân viên thường
+            const txRes = await pool.query(
+                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status)
+                 VALUES ($1, $2, 'EXPORT', $3, $4, 'PENDING')
+                 RETURNING id`,
+                [group.id, user.id, productId, qtyNum]
+            );
+            const txId = txRes.rows[0].id;
+
+            const message = `⚠️ <b>[YÊU CẦU XUẤT KHO CHỜ DUYỆT]</b>\n\n` +
+                `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(user.full_name)}\n` +
+                `📦 <b>Sản phẩm:</b> ${escapeHtml(product.product_name)} (<code>${escapeHtml(cleanBarcode)}</code>)\n` +
+                `➖ <b>Số lượng xuất:</b> ${qtyNum}\n` +
+                `📊 <b>Tồn kho hiện tại:</b> ${currentStock}\n\n` +
+                `👉 Quản lý hoặc Admin vui lòng nhấn nút bên dưới để duyệt yêu cầu:`;
+
+            await bot.telegram.sendMessage(chat_id, message, {
+                parse_mode: 'HTML',
+                reply_markup: {
+                    inline_keyboard: [
+                        [
+                            { text: '✅ Duyệt Xuất Kho', callback_data: `wh_approve_${txId}` },
+                            { text: '❌ Từ Chối', callback_data: `wh_reject_${txId}` }
+                        ]
+                    ]
+                }
+            });
+
+            return res.json({ success: true, auto_approved: false, message: 'Đã gửi yêu cầu xuất kho chờ Quản lý duyệt!' });
+        }
+    } catch (e) {
+        console.error('Lỗi xuất kho API:', e);
+        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xử lý xuất kho' });
+    }
+});
+
+// Google Sheets Sync helpers for Warehouse
+async function getWarehouseDocForGroup(telegram_group_id) {
+    if (telegram_group_id) {
+        const res = await pool.query('SELECT customer_sheet_id, kpi_sheet_id FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
+        if (res.rows.length > 0) {
+            const sheetId = res.rows[0].customer_sheet_id || res.rows[0].kpi_sheet_id;
+            if (sheetId) {
+                return await getDocById(sheetId);
+            }
+        }
+    }
+    return await getDocById(process.env.WAREHOUSE_SPREADSHEET_ID || process.env.CUSTOMER_SPREADSHEET_ID);
+}
+
+async function syncWarehouseSheets(productId, transactionId) {
+    try {
+        console.log(`[Warehouse Sync] Bắt đầu đồng bộ cho sản phẩm ${productId}...`);
+        
+        // 1. Lấy thông tin sản phẩm và tồn kho hiện tại
+        const productRes = await pool.query(`
+            SELECT p.barcode, p.product_name, COALESCE(i.quantity, 0) as quantity
+            FROM tk_products p
+            LEFT JOIN tk_inventory i ON p.id = i.product_id
+            WHERE p.id = $1
+        `, [productId]);
+        
+        if (productRes.rows.length === 0) return;
+        const product = productRes.rows[0];
+
+        // 2. Lấy thông tin giao dịch hiện tại
+        const txRes = await pool.query(`
+            SELECT t.*, e.full_name as emp_name, g.telegram_group_id
+            FROM tk_warehouse_transactions t
+            JOIN employees e ON t.user_id = e.id
+            JOIN telegram_groups g ON t.group_id = g.id
+            WHERE t.id = $1
+        `, [transactionId]);
+
+        if (txRes.rows.length === 0) return;
+        const tx = txRes.rows[0];
+
+        // 3. Lấy Google Sheet Document
+        const doc = await getWarehouseDocForGroup(tx.telegram_group_id);
+        if (!doc) {
+            console.error('[Warehouse Sync Error] Không tìm thấy Spreadsheet!');
+            return;
+        }
+
+        await doc.loadInfo();
+
+        // 4. Đồng bộ Tab 1: Lịch sử xuất nhập kho
+        let sheetHistory = doc.sheetsByTitle['Lịch sử xuất nhập kho'];
+        if (!sheetHistory) {
+            sheetHistory = await doc.addSheet({
+                title: 'Lịch sử xuất nhập kho',
+                headerValues: ['Mã giao dịch', 'Người thực hiện', 'Loại giao dịch', 'Tên sản phẩm', 'Mã vạch', 'Số lượng', 'Ảnh chứng minh nhập kho', 'Trạng thái', 'Người duyệt', 'Ngày giờ']
+            });
+            await new Promise(r => setTimeout(r, 1000));
+        } else {
+            await sheetHistory.loadHeaderRow();
+            if (!sheetHistory.headerValues.includes('Ảnh chứng minh nhập kho')) {
+                const newHeaders = [...sheetHistory.headerValues];
+                const statusIdx = newHeaders.indexOf('Trạng thái');
+                if (statusIdx !== -1) {
+                    newHeaders.splice(statusIdx, 0, 'Ảnh chứng minh nhập kho');
+                } else {
+                    newHeaders.push('Ảnh chứng minh nhập kho');
+                }
+                await sheetHistory.setHeaderRow(newHeaders);
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+
+        const timeStr = moment(tx.created_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
+        
+        let approverName = '';
+        if (tx.approved_by) {
+            const appRes = await pool.query('SELECT full_name FROM employees WHERE id = $1', [tx.approved_by]);
+            if (appRes.rows.length > 0) {
+                approverName = appRes.rows[0].full_name;
+            } else {
+                approverName = 'Admin';
+            }
+        }
+
+        const typeStr = tx.transaction_type === 'IMPORT' ? 'Nhập kho 📥' : 'Xuất kho 📤';
+        const statusStr = tx.status === 'APPROVED' ? 'Đã duyệt ✅' : (tx.status === 'PENDING' ? 'Chờ duyệt ⏳' : 'Từ chối ❌');
+
+        await sheetHistory.addRow({
+            'Mã giao dịch': tx.id.substring(0, 8).toUpperCase(),
+            'Người thực hiện': tx.emp_name,
+            'Loại giao dịch': typeStr,
+            'Tên sản phẩm': product.product_name,
+            'Mã vạch': product.barcode,
+            'Số lượng': tx.quantity,
+            'Ảnh chứng minh nhập kho': tx.proof_folder_url || '',
+            'Trạng thái': statusStr,
+            'Người duyệt': approverName,
+            'Ngày giờ': timeStr
+        });
+        await new Promise(r => setTimeout(r, 1000));
+
+        // 5. Đồng bộ Tab 2: Tình trạng các sản phẩm
+        let sheetStock = doc.sheetsByTitle['Tình trạng các sản phẩm'];
+        if (!sheetStock) {
+            sheetStock = await doc.addSheet({
+                title: 'Tình trạng các sản phẩm',
+                headerValues: ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối']
+            });
+            await new Promise(r => setTimeout(r, 1000));
+        }
+
+        const rows = await sheetStock.getRows();
+        let existingRow = rows.find(r => r.get('Mã vạch') === product.barcode);
+
+        const updateTimeStr = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
+
+        if (existingRow) {
+            existingRow.set('Số lượng tồn kho', product.quantity);
+            existingRow.set('Cập nhật cuối', updateTimeStr);
+            existingRow.set('Tên sản phẩm', product.product_name);
+            await existingRow.save();
+        } else {
+            await sheetStock.addRow({
+                'Mã vạch': product.barcode,
+                'Tên sản phẩm': product.product_name,
+                'Số lượng tồn kho': product.quantity,
+                'Cập nhật cuối': updateTimeStr
+            });
+        }
+
+        console.log(`[Warehouse Sync] Đồng bộ thành công lên Sheet cho sản phẩm: ${product.product_name}`);
+    } catch (e) {
+        console.error('[Warehouse Sync Error] Thất bại khi đồng bộ lên Google Sheet:', e);
+    }
+}
+
+bot.action(/^(wh_approve|wh_reject)_(.+)$/, async (ctx) => {
+    try {
+        const action = ctx.match[1]; // 'wh_approve' or 'wh_reject'
+        const transactionId = ctx.match[2];
+        const clickerId = ctx.from.id.toString();
+
+        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
+        const managerCheckRes = await pool.query("SELECT * FROM employees WHERE telegram_id = $1 AND (role = 'Quản lý' OR role = 'admin') LIMIT 1", [clickerId]);
+        const isManager = managerCheckRes.rows.length > 0;
+
+        if (!isAdmin && !isManager) {
+            return ctx.answerCbQuery('⚠️ Bạn không có quyền phê duyệt yêu cầu này!', { show_alert: true });
+        }
+
+        const manager = managerCheckRes.rows[0];
+        const managerName = manager ? manager.full_name : 'Admin';
+        const managerId = manager ? manager.id : null;
+
+        const txRes = await pool.query(`
+            SELECT t.*, p.product_name, p.barcode, e.full_name as emp_name, e.telegram_id as emp_tg_id
+            FROM tk_warehouse_transactions t
+            JOIN tk_products p ON t.product_id = p.id
+            JOIN employees e ON t.user_id = e.id
+            WHERE t.id = $1
+        `, [transactionId]);
+
+        if (txRes.rows.length === 0) {
+            return ctx.answerCbQuery('⚠️ Yêu cầu không tồn tại hoặc đã bị xóa!', { show_alert: true });
+        }
+
+        const tx = txRes.rows[0];
+
+        if (tx.status !== 'PENDING') {
+            return ctx.answerCbQuery(`⚠️ Yêu cầu này đã được xử lý từ trước! (Trạng thái: ${tx.status})`, { show_alert: true });
+        }
+
+        if (action === 'wh_reject') {
+            await pool.query(`
+                UPDATE tk_warehouse_transactions
+                SET status = 'REJECTED', approved_by = $2, approved_at = NOW()
+                WHERE id = $1
+            `, [transactionId, managerId]);
+
+            await ctx.answerCbQuery('❌ Đã từ chối yêu cầu xuất kho!', { show_alert: true });
+            
+            await ctx.editMessageText(
+                `❌ <b>[YÊU CẦU XUẤT KHO BỊ TỪ CHỐI]</b>\n\n` +
+                `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(tx.emp_name)}\n` +
+                `📦 <b>Sản phẩm:</b> ${escapeHtml(tx.product_name)} (<code>${escapeHtml(tx.barcode)}</code>)\n` +
+                `➖ <b>Số lượng xuất:</b> ${tx.quantity}\n` +
+                `----------------------------------\n` +
+                `🚫 <b>Trạng thái:</b> Đã bị từ chối bởi <b>${escapeHtml(managerName)}</b>`,
+                { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
+            );
+
+            // Sync to sheets to log rejection
+            await syncWarehouseSheets(tx.product_id, transactionId);
+            return;
+        }
+
+        const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [tx.product_id]);
+        const currentQty = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
+
+        if (currentQty < tx.quantity) {
+            return ctx.answerCbQuery(`❌ Lỗi duyệt: Kho không đủ hàng! (Hiện chỉ còn: ${currentQty})`, { show_alert: true });
+        }
+
+        try {
+            await pool.query('UPDATE tk_inventory SET quantity = quantity - $2, updated_at = NOW() WHERE product_id = $1', [tx.product_id, tx.quantity]);
+        } catch (updateErr) {
+            if (updateErr.code === '23514') { // check constraint negative violation
+                return ctx.answerCbQuery(`❌ Lỗi duyệt: Kho không đủ hàng để đáp ứng yêu cầu xuất kho này!`, { show_alert: true });
+            }
+            throw updateErr;
+        }
+        
+        await pool.query(`
+            UPDATE tk_warehouse_transactions
+            SET status = 'APPROVED', approved_by = $2, approved_at = NOW()
+            WHERE id = $1
+        `, [transactionId, managerId]);
+
+        await ctx.answerCbQuery('✅ Đã duyệt xuất kho thành công!', { show_alert: true });
+
+        const updatedQty = currentQty - tx.quantity;
+
+        await ctx.editMessageText(
+            `🟢 <b>[YÊU CẦU XUẤT KHO ĐÃ DUYỆT]</b>\n\n` +
+            `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(tx.emp_name)}\n` +
+            `📦 <b>Sản phẩm:</b> ${escapeHtml(tx.product_name)} (<code>${escapeHtml(tx.barcode)}</code>)\n` +
+            `➖ <b>Số lượng xuất:</b> ${tx.quantity}\n` +
+            `📊 <b>Tồn kho hiện tại:</b> <b>${updatedQty}</b>\n` +
+            `----------------------------------\n` +
+            `✅ <b>Người duyệt:</b> <b>${escapeHtml(managerName)}</b>`,
+            { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
+        );
+
+        await syncWarehouseSheets(tx.product_id, transactionId);
+
+    } catch (e) {
+        console.error('Lỗi bot.action warehouse:', e);
+        ctx.answerCbQuery('❌ Lỗi hệ thống khi xử lý yêu cầu!', { show_alert: true });
+    }
 });
 
 // Enable graceful stop

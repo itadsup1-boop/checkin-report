@@ -1512,7 +1512,7 @@ function verifySignedPayload(action, groupId, ts, sig) {
     const token = process.env.TELEGRAM_BOT_TOKEN || '';
     const now = Date.now();
     const age = now - parseInt(ts, 10);
-    if (isNaN(age) || age > 86400000 || age < -300000) { // 24h expiration
+    if (isNaN(age) || age < -300000) { // Removed 24h expiration (age > 86400000)
         return false;
     }
 
@@ -2195,34 +2195,6 @@ ${lichKhach}`;
             } catch (e) {
                 console.error('Lỗi gửi ảnh từ form (bị bắt ở catch ngoài):', e);
             }
-        }
-
-        const remaining_photos = new_photos_needed - sentPhotos;
-
-        if (remaining_photos <= 0 || !is_photo_required) {
-            const formattedDate = new Date().toLocaleDateString('vi-VN');
-            await processReport(user, parsedJSON, kpiTarget, telegramId.toString(), chatId.toString(), finalReportText, null, bot);
-            // Đã đủ ảnh -> Đẩy sang Sheet Khách Hàng
-            await pushCustomersToSheet(customersData, user);
-            await bot.telegram.sendMessage(chatId.toString(),
-                `👤 <b>Cập nhật báo cáo: ${user.full_name} ngày ${formattedDate}</b>\n` +
-                `💬 Số tin: ${tinNhan}\n` +
-                `💰 Doanh thu: ${parsedJSON.doanh_thu.toLocaleString('vi-VN')}đ\n` +
-                `📅 Lịch khách:\n${lichKhach}\n` +
-                `✅ Đã lưu lên hệ thống thành công (Đã nhận đủ ảnh)!`,
-                { parse_mode: 'HTML' }
-            );
-
-            // Xóa pending_report nếu có để tránh nhắc nhở sau này (nếu họ vừa nộp đủ qua form)
-            await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [telegramId.toString()]);
-
-        } else {
-            // Cần nộp THÊM ảnh (chưa đủ hoặc chưa gửi ảnh nào)
-            const [h, m, s] = remind_time_1.split(':').map(Number);
-            let deadlineDate = new Date();
-            deadlineDate.setHours(h, m + 120, 0, 0);
-
-            const minDeadline = new Date(Date.now() + 5 * 60 * 1000);
             const deadline_at = deadlineDate > minDeadline ? deadlineDate : minDeadline;
 
             await pool.query(
@@ -2265,27 +2237,37 @@ ${lichKhach}`;
 // CRON: 20h02 tối báo cáo lịch khách hàng ngày mai
 cron.schedule('2 20 * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        // Opt-out model: gửi cho tất cả nhóm report/report_tour trừ nhóm đã tắt (is_disabled=true)
+        const groupsRes = await pool.query(`
+            SELECT g.telegram_group_id AS group_id
+            FROM telegram_groups g
+            LEFT JOIN schedule_notification_groups s ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+              AND COALESCE(s.is_disabled, false) = false
+        `);
         if (groupsRes.rows.length === 0) return;
 
         const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('vi-VN');
-        const apsRes = await pool.query(
-            `SELECT * 
-             FROM customer_appointments 
-             WHERE DATE(appointment_time) = CURRENT_DATE + INTERVAL '1 day' AND status = 'ACTIVE'
-             ORDER BY appointment_time ASC`
-        );
-        if (apsRes.rows.length === 0) return;
-
-        let msg = `🌅 <b>BÁO CÁO LỊCH KHÁCH HÀNG NGÀY MAI (${tomorrowStr})</b>\n\n`;
-        apsRes.rows.forEach(a => {
-            const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-            const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
-            msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})\n`;
-            msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
-        });
 
         for (const g of groupsRes.rows) {
+            const apsRes = await pool.query(
+                `SELECT * 
+                 FROM customer_appointments 
+                 WHERE DATE(appointment_time) = CURRENT_DATE + INTERVAL '1 day' AND status = 'ACTIVE' AND (group_id = $1 OR group_id IS NULL)
+                 ORDER BY appointment_time ASC`,
+                [g.group_id]
+            );
+            let msg = `🌅 <b>BÁO CÁO LỊCH KHÁCH HÀNG NGÀY MAI (${tomorrowStr})</b>\n\n`;
+            if (apsRes.rows.length === 0) {
+                msg += `💭 Hiện tại chưa có lịch hẹn khách hàng nào được đặt cho ngày mai.`;
+            } else {
+                apsRes.rows.forEach(a => {
+                    const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                    msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})\n`;
+                    msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+                });
+            }
             await bot.telegram.sendMessage(g.group_id, msg, { parse_mode: 'HTML' });
         }
     } catch (e) {
@@ -2296,31 +2278,37 @@ cron.schedule('2 20 * * *', async () => {
 // CRON: 22h đêm tổng kết lịch khách hàng đã qua
 cron.schedule('0 22 * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        // Opt-out model: gửi cho tất cả nhóm report/report_tour trừ nhóm đã tắt (is_disabled=true)
+        const groupsRes = await pool.query(`
+            SELECT g.telegram_group_id AS group_id
+            FROM telegram_groups g
+            LEFT JOIN schedule_notification_groups s ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+              AND COALESCE(s.is_disabled, false) = false
+        `);
         if (groupsRes.rows.length === 0) return;
 
-        const apsRes = await pool.query(
-            `SELECT * 
-             FROM customer_appointments 
-             WHERE DATE(appointment_time) = CURRENT_DATE
-             ORDER BY appointment_time ASC`
-        );
-        if (apsRes.rows.length === 0) return;
-
-        let msg = `🌙 <b>TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY (${new Date().toLocaleDateString('vi-VN')})</b>\n\n`;
-        apsRes.rows.forEach(a => {
-            const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
-            const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
-            let statusText = '';
-            if (a.status === 'ACTIVE') statusText = ' (Chờ khách)';
-            else if (a.status === 'ARRIVED') statusText = ' (Đã đến)';
-            else if (a.status === 'CANCELLED') statusText = ' (Đã hủy)';
-
-            msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})${statusText}\n`;
-            msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
-        });
-
         for (const g of groupsRes.rows) {
+            const apsRes = await pool.query(
+                `SELECT * 
+                 FROM customer_appointments 
+                 WHERE DATE(appointment_time) = CURRENT_DATE AND (group_id = $1 OR group_id IS NULL)
+                 ORDER BY appointment_time ASC`,
+                [g.group_id]
+            );
+            if (apsRes.rows.length === 0) continue;
+
+            let msg = `🌙 <b>TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY (${new Date().toLocaleDateString('vi-VN')})</b>\n\n`;
+            apsRes.rows.forEach(a => {
+                const timeStr = new Date(a.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                const revenueStr = a.revenue ? ` - Thu tiền: ${a.revenue}` : '';
+                let statusText = '';
+                if (a.status === 'ACTIVE') statusText = ' (Chờ khách)';
+                else if (a.status === 'ARRIVED') statusText = ' (Đã đến)';
+                else if (a.status === 'CANCELLED') statusText = ' (Đã hủy)';
+                msg += `⏰ <b>${timeStr}</b> | Khách: ${a.customer_name} (${a.phone})${statusText}\n`;
+                msg += `   └ NV: ${a.employee_name} - DV: ${a.service} - Buổi: ${a.sessions}${revenueStr}\n\n`;
+            });
             await bot.telegram.sendMessage(g.group_id, msg, { parse_mode: 'HTML' });
         }
     } catch (e) {
@@ -2331,7 +2319,14 @@ cron.schedule('0 22 * * *', async () => {
 // CRON: Nhắc nhở khi tới giờ (quét mỗi phút)
 cron.schedule('* * * * *', async () => {
     try {
-        const groupsRes = await pool.query('SELECT group_id FROM schedule_notification_groups');
+        // Opt-out model
+        const groupsRes = await pool.query(`
+            SELECT g.telegram_group_id AS group_id
+            FROM telegram_groups g
+            LEFT JOIN schedule_notification_groups s ON s.group_id = g.telegram_group_id
+            WHERE g.bot_role IN ('report', 'report_tour') AND g.is_active = true AND COALESCE(g.is_deleted, false) = false
+              AND COALESCE(s.is_disabled, false) = false
+        `);
         const defaultGroups = groupsRes.rows.map(g => g.group_id);
         if (defaultGroups.length === 0) return;
 

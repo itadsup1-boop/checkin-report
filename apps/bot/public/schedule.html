@@ -606,7 +606,8 @@
         let payloadSig = "";
         
         let isUserAdmin = false;
-        let isSystemLocked = false;
+        let isCurrentWeekLocked = false;
+        let isNextWeekLocked = false;
         let scheduleRegistrationOpen = true;
         let currentTab = "current"; // 'current' or 'next'
 
@@ -682,7 +683,8 @@
                 .then(res => {
                     if (res.success) {
                         isUserAdmin = res.is_admin;
-                        isSystemLocked = res.is_locked;
+                        isCurrentWeekLocked = res.is_current_week_locked;
+                        isNextWeekLocked = res.is_next_week_locked;
                         scheduleRegistrationOpen = res.schedule_registration_open;
                         currentWeekDays = res.currentWeekDays;
                         nextWeekDays = res.nextWeekDays;
@@ -814,7 +816,7 @@
                 document.getElementById('managerToggleBtn').style.display = 'none';
             }
 
-            const isWeekLocked = isSystemLocked && !isUserAdmin;
+            const isWeekLocked = (tab === 'current' ? isCurrentWeekLocked : isNextWeekLocked) && !isUserAdmin;
             const daysToRender = tab === 'current' ? currentWeekDays : nextWeekDays;
             const weekLabel = tab === 'current' ? 'tuần này' : 'tuần sau';
 
@@ -828,7 +830,7 @@
                 document.getElementById('lockBanner').innerHTML = `<span>🔒 Quản lý đã đóng đăng ký lịch ${weekLabel}.</span>`;
                 document.getElementById('lockBanner').style.display = 'flex';
                 document.getElementById('btnSave').style.display = 'none';
-            } else if ((isUserAdmin || isUserManager) && scheduleRegistrationOpen === false) {
+            } else if ((isUserAdmin || isUserManager) && (tab === 'current' ? isCurrentWeekLocked : isNextWeekLocked)) {
                 document.getElementById('lockBanner').innerHTML = '<span style="color:#f59e0b;">⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
                 document.getElementById('lockBanner').style.display = 'flex';
                 document.getElementById('btnSave').style.display = 'block';
@@ -1061,11 +1063,11 @@
                 .then(r => r.json())
                 .then(res => {
                     if (res.success) {
-                        showAlert('Đã lưu lịch thành công!');
+                        showAlert(res.message || 'Đã lưu lịch thành công!');
                         // Auto-close mini app after short delay
                         setTimeout(() => {
                             if (tg) tg.close();
-                        }, 1500);
+                        }, 2500);
                     } else {
                         showAlert(res.message, true);
                         btnSave.disabled = false;

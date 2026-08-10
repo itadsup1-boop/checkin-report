@@ -277,9 +277,9 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
         );
 
         // 3. Nếu nhân viên bị vô hiệu hóa, tự động đóng/hủy tất cả pending_reports của nhân viên đó
-        if (!newIsActive && currentEmp.telegram_id) {
+        if ((!newIsActive || !newNeedReport) && currentEmp.telegram_id) {
             await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [currentEmp.telegram_id.toString()]);
-            console.log(`[Admin API] Đã dọn dẹp pending_reports của nhân viên bị vô hiệu hóa (telegram_id: ${currentEmp.telegram_id})`);
+            console.log(`[Admin API] Đã dọn pending_reports của nhân viên không còn phải báo cáo (telegram_id: ${currentEmp.telegram_id})`);
         }
 
         res.json({ success: true });
@@ -564,22 +564,26 @@ app.put('/api/admin/leave-requests/:id', async (req, res) => {
             [status, approved_by || 'Admin', id]
         );
 
-        // 3. Special logic if APPROVED and FULL_DAY
-        if (status === 'APPROVED' && request.request_type === 'FULL_DAY') {
+        // 3. Special logic if APPROVED for FULL/HALF days
+        if (status === 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
             const formattedDate = new Date(request.date).toISOString().split('T')[0];
+            let newShift = 'OFF';
+            if (request.request_type === 'HALF_DAY_AM') newShift = 'HALF_DAY_PM_WORK';
+            if (request.request_type === 'HALF_DAY_PM') newShift = 'CA_SANG';
+
             await pool.query(
                 `INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked)
-                 VALUES ($1, $2, $3, 'OFF', true)
+                 VALUES ($1, $2, $3, $4, true)
                  ON CONFLICT (user_id, date) 
-                 DO UPDATE SET shift_type = 'OFF', is_locked = true`,
-                [request.group_id, request.user_id, formattedDate]
+                 DO UPDATE SET shift_type = $4, is_locked = true`,
+                [request.group_id, request.user_id, formattedDate, newShift]
             );
-        } else if (request.status === 'APPROVED' && status !== 'APPROVED' && request.request_type === 'FULL_DAY') {
-            // Revert OFF schedule if the request was previously approved but now rejected/reset
+        } else if (request.status === 'APPROVED' && status !== 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
+            // Revert schedule if the request was previously approved but now rejected/reset
             const formattedDate = new Date(request.date).toISOString().split('T')[0];
             await pool.query(
                 `DELETE FROM tk_schedules 
-                 WHERE user_id = $1 AND date = $2 AND shift_type = 'OFF'`,
+                 WHERE user_id = $1 AND date = $2 AND shift_type IN ('OFF', 'CA_CHIEU', 'CA_SANG', 'HALF_DAY_PM_WORK')`,
                 [request.user_id, formattedDate]
             );
         }
@@ -709,7 +713,14 @@ app.put('/api/employees/:id/kpi', async (req, res) => {
     try {
         const { id } = req.params;
         const { kpi_target } = req.body;
-        await pool.query('UPDATE employees SET current_kpi_target = $1 WHERE id = $2', [kpi_target, id]);
+        const target = Number(kpi_target);
+        if (!Number.isFinite(target) || target < 0) {
+            return res.status(400).json({ error: 'KPI phải là số không âm' });
+        }
+        const updated = await pool.query('UPDATE employees SET current_kpi_target = $1 WHERE id = $2 RETURNING telegram_id', [target, id]);
+        if (target === 0 && updated.rows[0]?.telegram_id) {
+            await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -721,7 +732,10 @@ app.put('/api/employees/:id/report-status', async (req, res) => {
     try {
         const { id } = req.params;
         const { need_report } = req.body;
-        await pool.query('UPDATE employees SET need_report = $1 WHERE id = $2', [need_report, id]);
+        const updated = await pool.query('UPDATE employees SET need_report = $1 WHERE id = $2 RETURNING telegram_id', [!!need_report, id]);
+        if (!need_report && updated.rows[0]?.telegram_id) {
+            await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+        }
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -987,7 +1001,9 @@ app.use(['/api/schedules', '/api/photo-debts', '/api/upload-proof', '/api/timeke
     }
 });
 
-// Serve Bot Mini App
+// Serve Web Admin React App & Mini App
+app.use(express.static(webAdminPath));
+
 const botAppPath = path.join(__dirname, '../bot/public');
 app.use('/mini-app', express.static(botAppPath));
 

@@ -66,6 +66,8 @@
                 targetPage = 'register.html';
             } else if (startParam.startsWith('scheduleclient')) {
                 targetPage = 'schedule_client.html';
+            } else if (startParam.startsWith('makeupclient')) {
+                targetPage = 'schedule_client.html';
             } else if (startParam.startsWith('schedule')) {
                 targetPage = 'schedule.html';
             } else if (startParam.startsWith('leave')) {
@@ -76,13 +78,22 @@
                 targetPage = 'stats.html';
             } else if (startParam.startsWith('baocao')) {
                 targetPage = 'form.html';
+            } else if (startParam.startsWith('customer')) {
+                targetPage = 'customer_form.html';
+            } else if (startParam.startsWith('whimport')) {
+                targetPage = 'warehouse_import.html';
+            } else if (startParam.startsWith('whexport')) {
+                targetPage = 'warehouse_export.html';
+            } else if (startParam.startsWith('whinventory')) {
+                targetPage = 'warehouse_inventory.html';
             } else {
                 document.getElementById('statusText').innerText = "Lỗi: Payload không hợp lệ hoặc không xác định.";
                 return;
             }
 
             // Chuyển hướng sang trang đích và truyền lại payload qua query string, ĐỒNG THỜI giữ nguyên hash của Telegram
-            window.location.href = `${targetPage}?payload=${startParam}${window.location.hash}`;
+            const tabParam = startParam.startsWith('makeupclient') ? '&tab=makeup' : '';
+            window.location.href = `${targetPage}?payload=${startParam}${tabParam}${window.location.hash}`;
         });
     </script>
 </body>

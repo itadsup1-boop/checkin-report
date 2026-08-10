@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Đăng Ký Tài Khoản Chấm Công</title>
+    <title>Đăng Ký Tài Khoản</title>
     <!-- Google Font: Outfit (Very modern and premium) -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -315,7 +315,7 @@
             <div id="successScreen" class="success-screen">
                 <div class="success-icon">✓</div>
                 <h2>Đăng Ký Thành Công</h2>
-                <p id="successMessage">Tài khoản của bạn đã được kết nối với hệ thống chấm công.</p>
+                <p id="successMessage">Tài khoản Telegram của bạn đã được kết nối với hệ thống công ty.</p>
                 <button class="btn-submit" onclick="closeWebApp()">Hoàn Thành</button>
             </div>
 
@@ -329,7 +329,7 @@
                     </svg>
                 </div>
                 <h1>ĐĂNG KÝ HỆ THỐNG</h1>
-                <p>Kết nối tài khoản Telegram với hệ thống chấm công</p>
+                <p>Kết nối tài khoản Telegram với hệ thống công ty</p>
             </div>
 
             <!-- Telegram Auto Info Badge -->
@@ -513,7 +513,7 @@
                     const successScreen = document.getElementById('successScreen');
                     const successMessage = document.getElementById('successMessage');
                     
-                    successMessage.innerHTML = `Chúc mừng <b>${fullName}</b>!<br>Tài khoản của bạn đã được đăng ký thành công vào hệ thống chấm công.<br>Vị trí: <b>${role}</b>`;
+                    successMessage.innerHTML = `Chúc mừng <b>${fullName}</b>!<br>Tài khoản của bạn đã được đăng ký thành công.<br>Vị trí: <b>${role}</b>`;
                     successScreen.style.display = 'flex';
                 } else {
                     showAlert(data.message || 'Đã xảy ra lỗi khi đăng ký!', true);
