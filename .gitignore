@@ -74,4 +74,4 @@ scripts/windows/cloudflared.exe
 # video & uploaded files
 apps/bot/public/uploads/
 apps/public/uploads/
-**/public/uploads/
+**/public/uploads/scratch/
