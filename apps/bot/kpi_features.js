@@ -17,6 +17,10 @@ import { uploadToDrive, deleteOldPhotos } from './googleDrive.js';
 import { Composer } from 'telegraf';
 import { requireGroupRole, getGroupRole, sendMessageToRoleGroup, sendPhotoToRoleGroup, sendMediaGroupToRoleGroup } from './role_guard.js';
 import { REPORT_BOT_HELP_HTML } from './user_guide_report.js';
+import {
+    getEmployeeMembership,
+    registerEmployeeInKpiGroup
+} from '../../packages/shared/kpiMembership.js';
 
 // Khởi chạy cronjob dọn ảnh rác lúc 03:00 sáng
 cron.schedule('0 3 * * *', async () => {
@@ -125,11 +129,6 @@ export function setupKpiBot(bot, botApp) {
         const target = Number(user.current_kpi_target);
         return Number.isFinite(target) && target > 0 ? target : 0;
     }
-
-    kpiComposer.use(async (ctx, next) => {
-        if (!(await requireGroupRole(ctx, ['report', 'report_tour']))) return;
-        return next();
-    });
 
     async function logPenaltyToSheet(user_full_name, employee_code, telegram_id, penalty_type, amount, details) {
         if (SPREADSHEET_ID === 'SPREADSHEET_ID_CHUA_CAI_DAT' || amount <= 0) return;
@@ -370,20 +369,24 @@ export function setupKpiBot(bot, botApp) {
 
                     const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                     const empRes = await pool.query(`
-                        SELECT full_name, telegram_id, id
-                        FROM employees
-                        WHERE is_active = true
-                          AND telegram_id IS NOT NULL
-                          AND telegram_group_id = $1
-                          AND COALESCE(need_report, true) = true
-                          AND COALESCE(current_kpi_target, 0) > 0
+                        SELECT e.full_name, e.telegram_id, e.id
+                        FROM employee_group_memberships m
+                        JOIN employees e ON e.id = m.employee_id
+                        WHERE e.is_active = true
+                          AND e.telegram_id IS NOT NULL
+                          AND m.telegram_group_id = $1
+                          AND m.status = 'ACTIVE'
+                          AND m.need_report = true
+                          AND COALESCE(m.current_kpi_target, 0) > 0
+                          AND LOWER(e.role) NOT IN ('quản lý', 'quản lý kho', 'admin')
                     `, [group.telegram_group_id]);
 
                     const repRes = await pool.query(`
                         SELECT e.telegram_id FROM daily_reports dr
                         JOIN employees e ON dr.employee_id = e.id
                         WHERE dr.report_date = $1
-                    `, [todayStr]);
+                          AND dr.telegram_group_id = $2
+                    `, [todayStr, group.telegram_group_id]);
                     
                     const offRes = await pool.query(`
                         SELECT e.telegram_id FROM tk_schedules s
@@ -425,20 +428,25 @@ export function setupKpiBot(bot, botApp) {
                     if (currentTimeString === penaltyTimeString) {
                         const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
                         const empRes = await pool.query(`
-                            SELECT full_name, telegram_id, employee_code, id, current_kpi_target
-                            FROM employees
-                            WHERE is_active = true
-                              AND telegram_id IS NOT NULL
-                              AND telegram_group_id = $1
-                              AND COALESCE(need_report, true) = true
-                              AND COALESCE(current_kpi_target, 0) > 0
+                            SELECT e.full_name, e.telegram_id, e.employee_code, e.id,
+                                   m.current_kpi_target
+                            FROM employee_group_memberships m
+                            JOIN employees e ON e.id = m.employee_id
+                            WHERE e.is_active = true
+                              AND e.telegram_id IS NOT NULL
+                              AND m.telegram_group_id = $1
+                              AND m.status = 'ACTIVE'
+                              AND m.need_report = true
+                              AND COALESCE(m.current_kpi_target, 0) > 0
+                              AND LOWER(e.role) NOT IN ('quản lý', 'quản lý kho', 'admin')
                         `, [group.telegram_group_id]);
 
                         const repRes = await pool.query(`
                             SELECT e.telegram_id FROM daily_reports dr
                             JOIN employees e ON dr.employee_id = e.id
                             WHERE dr.report_date = $1
-                        `, [todayStr]);
+                              AND dr.telegram_group_id = $2
+                        `, [todayStr, group.telegram_group_id]);
                         
                         const offRes = await pool.query(`
                             SELECT e.telegram_id FROM tk_schedules s
@@ -839,13 +847,13 @@ export function setupKpiBot(bot, botApp) {
     // Xử lý khi nhận được ảnh/video minh chứng
     kpiComposer.on(['photo', 'video'], async (ctx, next) => {
         const telegram_id = ctx.message.from.id.toString();
+        const group_id = ctx.chat.id.toString();
 
         try {
             // --- CHỐT CHẶN VÂN TAY CHO ẢNH GỬI TRỰC TIẾP ---
-            const userResult = await pool.query(`SELECT id, full_name, employee_code, current_kpi_target, need_report, is_active FROM employees WHERE telegram_id = $1 LIMIT 1`, [telegram_id]);
-            const user = userResult.rows[0];
+            const user = await getEmployeeMembership(pool, telegram_id, group_id, { activeOnly: true });
 
-            if (!user || user.is_active === false) {
+            if (!user) {
                 return next();
             }
 
@@ -900,9 +908,9 @@ export function setupKpiBot(bot, botApp) {
              SET received_photos = received_photos + 1,
                  last_photo_received_at = NOW(),
                  inactivity_reminded = false
-             WHERE telegram_id = $1 AND status = 'WAITING_PHOTOS' 
+             WHERE telegram_id = $1 AND group_id = $2 AND status = 'WAITING_PHOTOS' 
              RETURNING *`,
-                [telegram_id]
+                [telegram_id, group_id]
             );
 
             if (updateResult.rows.length > 0) {
@@ -911,14 +919,15 @@ export function setupKpiBot(bot, botApp) {
                 if (report.received_photos >= report.required_photos) {
                     // Đủ ảnh -> Cập nhật thành DONE an toàn
                     const doneResult = await pool.query(
-                        `UPDATE pending_reports SET status = 'DONE' WHERE telegram_id = $1 AND status = 'WAITING_PHOTOS' RETURNING telegram_id`,
-                        [telegram_id]
+                        `UPDATE pending_reports SET status = 'DONE' WHERE telegram_id = $1 AND group_id = $2 AND status = 'WAITING_PHOTOS' RETURNING telegram_id`,
+                        [telegram_id, group_id]
                     );
 
                     if (doneResult.rowCount > 0) {
-                        // Fetch lại user để lấy full name
-                        const userResult = await pool.query(`SELECT id, full_name, employee_code, current_kpi_target, need_report FROM employees WHERE telegram_id = $1 LIMIT 1`, [telegram_id]);
-                        const user = userResult.rows[0] || { id: null, full_name: ctx.message.from.first_name, employee_code: null, current_kpi_target: 40 };
+                        // Lấy cấu hình KPI đúng theo nhóm chứa pending report.
+                        const scopedUser = await getEmployeeMembership(pool, telegram_id, report.group_id, { activeOnly: true });
+                        if (!scopedUser) return next();
+                        const user = scopedUser;
                         const kpiTarget = getEffectiveKpiTarget(user);
 
                         // Parse lại báo cáo với trigger rỗng vì nó đã được validate lúc text
@@ -997,20 +1006,15 @@ export function setupKpiBot(bot, botApp) {
                     return next(); // Bỏ qua nếu bắt nhầm tự nhiên
                 }
 
-                const userResult = await pool.query(
-                    `SELECT id, full_name, employee_code, current_kpi_target, need_report, is_active
-                 FROM employees 
-                 WHERE telegram_id = $1 OR employee_code = $2 
-                 ORDER BY (telegram_id = $1) DESC NULLS LAST 
-                 LIMIT 1`,
-                    [telegram_id, telegram_id]
-                );
-                const user = userResult.rows[0];
+                const user = await getEmployeeMembership(pool, telegram_id, group_id);
                 if (!user) {
-                    return ctx.reply("❌ Bạn chưa đăng ký tài khoản. Vui lòng bấm [👤 Đăng Ký Tài Khoản] trước.");
+                    return ctx.reply("❌ Bạn chưa đăng ký hoạt động KPI trong nhóm này. Vui lòng dùng /setup Họ và tên.");
                 }
                 if (user.is_active === false) {
                     return ctx.reply("⚠️ Tài khoản của bạn đã bị vô hiệu hóa trong hệ thống. Vui lòng liên hệ Admin nếu muốn bật lại.");
+                }
+                if (user.membership_status === 'PAUSED') {
+                    return ctx.reply("⏸ Bạn đang được tạm dừng báo cáo KPI trong nhóm này. Việc đăng ký ở nhóm khác vẫn hoạt động bình thường.");
                 }
                 const kpiTarget = getEffectiveKpiTarget(user);
 
@@ -1032,8 +1036,7 @@ export function setupKpiBot(bot, botApp) {
                         `INSERT INTO pending_reports 
                     (telegram_id, group_id, raw_text, kpi_actual, required_photos, received_photos, deadline_at, status, last_reminder_stage) 
                     VALUES ($1, $2, $3, $4, $5, 0, $6, 'WAITING_PHOTOS', 0)
-                    ON CONFLICT (telegram_id) DO UPDATE SET
-                        group_id = EXCLUDED.group_id,
+                    ON CONFLICT (telegram_id, group_id) DO UPDATE SET
                         raw_text = EXCLUDED.raw_text,
                         kpi_actual = EXCLUDED.kpi_actual,
                         required_photos = EXCLUDED.required_photos,
@@ -1154,8 +1157,14 @@ export function setupKpiBot(bot, botApp) {
 
         try {
             const groupId = chat.id.toString();
-            // Cập nhật kpi cho tất cả nhân viên thuộc nhóm này
-            const result = await pool.query(`UPDATE employees SET current_kpi_target = $1 WHERE telegram_group_id = $2 RETURNING id`, [newKpi, groupId]);
+            // Cập nhật KPI riêng cho membership của nhóm hiện tại.
+            const result = await pool.query(
+                `UPDATE employee_group_memberships
+                 SET current_kpi_target = $1, updated_at = NOW(), updated_by = $3
+                 WHERE telegram_group_id = $2 AND status = 'ACTIVE'
+                 RETURNING employee_id`,
+                [newKpi, groupId, `telegram:${ctx.from.id}`]
+            );
 
             if (newKpi === 0) {
                 await pool.query(`
@@ -1436,26 +1445,70 @@ export function setupKpiBot(bot, botApp) {
                 }
 
                 if (res.rows.length > 0) {
-                    // Đã có trong DB -> Cập nhật telegram_id và group_id
+                    // Đã có tài khoản toàn cục. Chỉ đăng ký membership của nhóm
+                    // hiện tại; tuyệt đối không thay đổi membership nhóm cũ.
                     const empId = res.rows[0].id;
                     const currentKpi = parseFloat(res.rows[0].current_kpi_target);
                     const newKpi = Number.isFinite(currentKpi) ? currentKpi : 40;
+                    const client = await pool.connect();
+                    try {
+                        await client.query('BEGIN');
+                        const updatedRes = await client.query(
+                            `UPDATE employees
+                             SET telegram_id = $1, telegram_username = $2, full_name = $3,
+                                 current_kpi_target = $4
+                             WHERE id = $5
+                             RETURNING *`,
+                            [telegramId, username, fullName, newKpi, empId]
+                        );
 
-                    if (groupId) {
-                        await pool.query('UPDATE employees SET telegram_id = $1, telegram_username = $2, full_name = $3, current_kpi_target = $4, telegram_group_id = $5 WHERE id = $6', [telegramId, username, fullName, newKpi, groupId, empId]);
-                    } else {
-                        await pool.query('UPDATE employees SET telegram_id = $1, telegram_username = $2, full_name = $3, current_kpi_target = $4 WHERE id = $5', [telegramId, username, fullName, newKpi, empId]);
+                        let registration = { ok: true, membership: updatedRes.rows[0] };
+                        if (groupId) {
+                            registration = await registerEmployeeInKpiGroup(client, updatedRes.rows[0], groupId);
+                        }
+
+                        if (!registration.ok) {
+                            await client.query('ROLLBACK');
+                            if (registration.reason === 'PAUSED') {
+                                return ctx.reply('⏸ Bạn đang được Admin tạm dừng KPI trong nhóm này. Đăng ký tại nhóm KPI khác vẫn hoạt động bình thường, nhưng nhóm này chỉ Admin mới có thể kích hoạt lại.');
+                            }
+                            return ctx.reply('❌ Nhóm hiện tại không phải nhóm báo cáo KPI đang hoạt động.');
+                        }
+
+                        await client.query('COMMIT');
+                        const target = Number(registration.membership?.current_kpi_target ?? newKpi);
+                        return ctx.reply(`✅ Đăng ký nhóm thành công! Đã kết nối với nhân viên: ${fullName}\n🎯 Chỉ tiêu KPI tại nhóm này: ${target}`);
+                    } catch (error) {
+                        await client.query('ROLLBACK');
+                        throw error;
+                    } finally {
+                        client.release();
                     }
-
-                    return ctx.reply(`✅ Cập nhật thành công! Đã kết nối với nhân viên: ${fullName}\n🎯 Chỉ tiêu hiện tại của bạn: ${newKpi}`);
                 } else {
                     // Chưa có -> Tạo mới nhân viên với KPI mặc định là 40
                     const tempEmpCode = `NV_${telegramId.slice(-4)}`;
-                    await pool.query(
-                        `INSERT INTO employees (full_name, employee_code, department, position, telegram_id, telegram_username, current_kpi_target, telegram_group_id) 
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                        [fullName, tempEmpCode, 'Sales', 'Telesale', telegramId, username, 40, groupId]
-                    );
+                    const client = await pool.connect();
+                    try {
+                        await client.query('BEGIN');
+                        const inserted = await client.query(
+                            `INSERT INTO employees
+                                (full_name, employee_code, department, position,
+                                 telegram_id, telegram_username, current_kpi_target, telegram_group_id)
+                             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL)
+                             RETURNING *`,
+                            [fullName, tempEmpCode, 'Sales', 'Telesale', telegramId, username, 40]
+                        );
+                        if (groupId) {
+                            const registration = await registerEmployeeInKpiGroup(client, inserted.rows[0], groupId);
+                            if (!registration.ok) throw new Error('Nhóm hiện tại không phải nhóm KPI đang hoạt động.');
+                        }
+                        await client.query('COMMIT');
+                    } catch (error) {
+                        await client.query('ROLLBACK');
+                        throw error;
+                    } finally {
+                        client.release();
+                    }
                     return ctx.reply(`✅ Đăng ký thành công! Đã thêm nhân viên mới: ${fullName}\n🎯 Chỉ tiêu KPI mặc định: 40\nBây giờ bạn có thể dùng lệnh báo cáo.`);
                 }
             } catch (err) {
@@ -1501,13 +1554,16 @@ export function setupKpiBot(bot, botApp) {
             FROM pending_reports pr
             JOIN telegram_groups tg ON tg.telegram_group_id = pr.group_id
             JOIN employees e ON e.telegram_id = pr.telegram_id
+            JOIN employee_group_memberships m
+              ON m.employee_id = e.id AND m.telegram_group_id = pr.group_id
             WHERE pr.status = 'WAITING_PHOTOS'
               AND tg.bot_role IN ('report', 'report_tour')
               AND tg.is_active = true
               AND COALESCE(tg.is_deleted, false) = false
               AND COALESCE(e.is_active, true) = true
-              AND COALESCE(e.need_report, true) = true
-              AND COALESCE(e.current_kpi_target, 0) > 0
+              AND m.status = 'ACTIVE'
+              AND m.need_report = true
+              AND COALESCE(m.current_kpi_target, 0) > 0
         `);
 
             for (const report of pendingResult.rows) {
@@ -1517,8 +1573,8 @@ export function setupKpiBot(bot, botApp) {
                 // Nếu đã quá hạn
                 if (diffMinutes <= 0) {
                     // Lấy thông tin user
-                    const userResult = await pool.query(`SELECT id, full_name, employee_code, current_kpi_target, need_report FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
-                    const user = userResult.rows[0] || { id: null, full_name: 'Nhân viên', employee_code: null, current_kpi_target: 40 };
+                    const user = await getEmployeeMembership(pool, report.telegram_id, report.group_id, { activeOnly: true }) ||
+                        { id: null, full_name: 'Nhân viên', employee_code: null, current_kpi_target: 40 };
                     const kpiTarget = getEffectiveKpiTarget(user);
 
                     // Lấy lệnh để parse lại text
@@ -1534,7 +1590,7 @@ export function setupKpiBot(bot, botApp) {
                     };
 
                     // Chuyển status thành DONE_WITH_DEBT
-                    await pool.query(`UPDATE pending_reports SET status = 'DONE_WITH_DEBT' WHERE telegram_id = $1`, [report.telegram_id]);
+                    await pool.query(`UPDATE pending_reports SET status = 'DONE_WITH_DEBT' WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
 
                     // Gọi processReport đẩy lên DB và Google Sheet với debt_info
                     await processReport(user, parsedJSON, kpiTarget, report.telegram_id, report.group_id, report.raw_text, null, bot, debt_info);
@@ -1544,7 +1600,7 @@ export function setupKpiBot(bot, botApp) {
                     const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                     const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                    await pool.query(`UPDATE pending_reports SET last_reminder_stage = 2 WHERE telegram_id = $1`, [report.telegram_id]);
+                    await pool.query(`UPDATE pending_reports SET last_reminder_stage = 2 WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                     await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `🚨 CẢNH BÁO CHÓT: ${fullName} ơi, còn đúng ${diffMinutes} phút nữa là hết hạn nộp ảnh! Bạn đang thiếu ${report.required_photos - report.received_photos} ảnh nữa.`, {}, 'photo_deadline_stage_2');
                 }
                 // Nếu còn <= 15 phút (Nhắc nhở giữa kỳ) - Chỉ nhắc 1 lần (stage < 1)
@@ -1552,7 +1608,7 @@ export function setupKpiBot(bot, botApp) {
                     const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                     const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                    await pool.query(`UPDATE pending_reports SET last_reminder_stage = 1 WHERE telegram_id = $1`, [report.telegram_id]);
+                    await pool.query(`UPDATE pending_reports SET last_reminder_stage = 1 WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                     await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `⚠️ Nhắc nhở: ${fullName} mới tải lên được ${report.received_photos}/${report.required_photos} ảnh. Bạn còn ${diffMinutes} phút để hoàn thành nhé.`, {}, 'photo_deadline_stage_1');
                 }
                 // Nhắc nhở nếu đã nộp ảnh nhưng im lặng 5 phút
@@ -1563,7 +1619,7 @@ export function setupKpiBot(bot, botApp) {
                         const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                         const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                        await pool.query(`UPDATE pending_reports SET inactivity_reminded = true WHERE telegram_id = $1`, [report.telegram_id]);
+                        await pool.query(`UPDATE pending_reports SET inactivity_reminded = true WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                         await sendMessageToRoleGroup(bot, report.group_id, ['report', 'report_tour'], `⚠️ Nhắc nhở: ${fullName} ơi, hệ thống đã ghi nhận ${report.received_photos}/${report.required_photos} ảnh. Còn thiếu ${report.required_photos - report.received_photos} ảnh nữa nhưng đã 5 phút không thấy bạn nộp thêm. Vui lòng gửi nốt để hoàn thành báo cáo nhé!`, {}, 'photo_inactivity_reminder');
                     }
                 }
@@ -1741,8 +1797,6 @@ export function setupKpiBot(bot, botApp) {
             if (userResult.rows.length === 0 || userResult.rows[0].is_active === false) {
                 return res.json({ success: false, message: 'Tài khoản của bạn đã bị vô hiệu hóa trong hệ thống.' });
             }
-            const employeeId = userResult.rows[0].id;
-
             // Fallback chatId: nếu WebApp mở từ menu toàn cục
             if (!chatId || chatId === 'undefined' || chatId === 'null') {
                 chatId = userResult.rows[0].telegram_group_id;
@@ -1752,6 +1806,14 @@ export function setupKpiBot(bot, botApp) {
             }
 
             chatId = chatId.toString().split('_')[0];
+            const scopedUser = await getEmployeeMembership(pool, telegramId, chatId);
+            if (!scopedUser) {
+                return res.status(403).json({ success: false, message: 'Bạn chưa đăng ký KPI trong nhóm này.' });
+            }
+            if (scopedUser.membership_status !== 'ACTIVE') {
+                return res.status(403).json({ success: false, message: 'Bạn đang được tạm dừng KPI trong nhóm này.' });
+            }
+            const employeeId = scopedUser.id;
 
             const today = new Date().toISOString().split('T')[0];
 
@@ -2233,7 +2295,7 @@ export function setupKpiBot(bot, botApp) {
             if (userResult.rows.length === 0) {
                 return res.status(400).json({ success: false, message: 'Bạn chưa dùng lệnh /setup để đăng ký tài khoản.' });
             }
-            const user = userResult.rows[0];
+            let user = userResult.rows[0];
             if (user.is_active === false) {
                 return res.status(403).json({ success: false, message: 'Tài khoản của bạn đã bị vô hiệu hóa trong hệ thống. Vui lòng liên hệ Admin.' });
             }
@@ -2247,6 +2309,15 @@ export function setupKpiBot(bot, botApp) {
             }
 
             chatId = chatId.toString().split('_')[0];
+
+            const scopedUser = await getEmployeeMembership(pool, telegramId, chatId);
+            if (!scopedUser) {
+                return res.status(403).json({ success: false, message: 'Bạn chưa đăng ký KPI trong nhóm này. Vui lòng dùng /setup trong đúng nhóm.' });
+            }
+            if (scopedUser.membership_status !== 'ACTIVE') {
+                return res.status(403).json({ success: false, message: 'Bạn đang được Admin tạm dừng báo cáo KPI trong nhóm này.' });
+            }
+            user = scopedUser;
 
             // 1. Kiểm tra cấu hình nhóm
             const wfResult = await pool.query('SELECT command_trigger FROM telegram_workflows WHERE group_id = $1', [chatId.toString()]);
@@ -2450,7 +2521,7 @@ ${lichKhach}`;
                 }
 
                 // Xóa pending_report nếu có để tránh nhắc nhở sau này (nếu họ vừa nộp đủ qua form)
-                await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [telegramId.toString()]);
+                await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2`, [telegramId.toString(), chatId.toString()]);
 
             } else {
                 // Cần nộp THÊM ảnh (chưa đủ hoặc chưa gửi ảnh nào)
@@ -2465,8 +2536,7 @@ ${lichKhach}`;
                     `INSERT INTO pending_reports 
                 (telegram_id, group_id, raw_text, kpi_actual, required_photos, received_photos, deadline_at, status, last_reminder_stage, customers_data) 
                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'WAITING_PHOTOS', 0, $8)
-                ON CONFLICT (telegram_id) DO UPDATE SET
-                    group_id = EXCLUDED.group_id,
+                ON CONFLICT (telegram_id, group_id) DO UPDATE SET
                     raw_text = EXCLUDED.raw_text,
                     kpi_actual = EXCLUDED.kpi_actual,
                     required_photos = EXCLUDED.required_photos,
@@ -2859,7 +2929,13 @@ ${lichKhach}`;
             const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
             let isManager = false;
             const managerRes = await client.query(
-                "SELECT role FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 AND is_active = true AND role = 'Quản lý' LIMIT 1",
+                `SELECT e.role
+                 FROM employees e
+                 JOIN employee_group_memberships m ON m.employee_id = e.id
+                 WHERE e.telegram_id = $1 AND m.telegram_group_id = $2
+                   AND e.is_active = true AND m.status = 'ACTIVE'
+                   AND e.role = 'Quản lý'
+                 LIMIT 1`,
                 [clickerId, request.telegram_group_id]
             );
             if (managerRes.rows.length > 0) {
@@ -3003,7 +3079,13 @@ ${lichKhach}`;
             const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
             let isManager = false;
             const managerRes = await client.query(
-                "SELECT role FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 AND is_active = true AND role = 'Quản lý' LIMIT 1",
+                `SELECT e.role
+                 FROM employees e
+                 JOIN employee_group_memberships m ON m.employee_id = e.id
+                 WHERE e.telegram_id = $1 AND m.telegram_group_id = $2
+                   AND e.is_active = true AND m.status = 'ACTIVE'
+                   AND e.role = 'Quản lý'
+                 LIMIT 1`,
                 [clickerId, request.telegram_group_id]
             );
             if (managerRes.rows.length > 0) {
@@ -3212,9 +3294,65 @@ ${lichKhach}`;
             );
 
             // Cập nhật Google Sheet
-            const rowIndex = apt.sheet_row_index;
-            const empName = apt.employee_name;
-            // Đồng bộ Google Sheet đã được chuyển sang chế độ "Delayed Sync"
+            try {
+                const rowIndex = apt.sheet_row_index;
+                const empName = apt.employee_name;
+                const workDateFormatted = moment(apt.appointment_time).format('DD/MM/YYYY');
+                const codeRes = await pool.query('SELECT employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1', [apt.telegram_id, apt.group_id]);
+                const employeeCode = codeRes.rows.length > 0 ? codeRes.rows[0].employee_code : '';
+
+                if (rowIndex) {
+                    const target = await getCustomerSheetTarget(apt.group_id, empName);
+                    if (target.doc) {
+                        await target.doc.loadInfo();
+                        let sheet = target.doc.sheetsByTitle[target.sheetName];
+                        if (sheet) {
+                            const rows = await sheet.getRows();
+                            const matchRow = rows.find(r => r.rowNumber === rowIndex);
+                            if (matchRow) {
+                                matchRow.set('Trạng Thái', 'Đã hoàn thành');
+                                matchRow.set('Ảnh Chứng Thực', proofUrl);
+                                if (apt.revenue) matchRow.set('Thu Tiền', apt.revenue);
+                                await matchRow.save();
+                            }
+                        }
+                        const masterSheetName = target.role === 'report_tour' ? 'TỔNG HỢP TOUR' : 'TỔNG HỢP KHÁCH HÀNG';
+                        let masterSheet = target.doc.sheetsByTitle[masterSheetName];
+                        if (masterSheet) {
+                            const mRows = await masterSheet.getRows();
+                            const appTimeStr = moment(apt.appointment_time).format('HH:mm DD/MM/YYYY');
+                            const matchMRow = mRows.find(r => r.get('Khách Hàng') === apt.customer_name && r.get('SĐT') === apt.phone && r.get('Thời Gian') === appTimeStr);
+                            if (matchMRow) {
+                                matchMRow.set('Trạng Thái', 'Đã hoàn thành');
+                                matchMRow.set('Ảnh Chứng Thực', proofUrl);
+                                if (apt.revenue) matchMRow.set('Thu Tiền', apt.revenue);
+                                await matchMRow.save();
+                            }
+                        }
+                    }
+                } else {
+                    const rowData = {
+                        'Ngày': workDateFormatted,
+                        'Nhân Viên': empName,
+                        'Mã NV': employeeCode,
+                        'Khách Hàng': apt.customer_name,
+                        'SĐT': apt.phone,
+                        'Dịch Vụ': apt.service,
+                        'Buổi Làm': apt.sessions,
+                        'Thời Gian': moment(apt.appointment_time).format('HH:mm DD/MM/YYYY'),
+                        'Trạng Thái': 'Đã hoàn thành',
+                        'Lý Do Hủy': '',
+                        'Thu Tiền': apt.revenue || '',
+                        'Ảnh Chứng Thực': proofUrl
+                    };
+                    const rowNumber = await writeToGoogleSheets(apt.group_id, empName, rowData);
+                    if (rowNumber) {
+                        await pool.query('UPDATE customer_appointments SET sheet_row_index = $1 WHERE id = $2', [rowNumber, apt.id]);
+                    }
+                }
+            } catch (sheetErr) {
+                console.error('[Sheet Sync Error] Không thể đồng bộ ảnh lên Google Sheet:', sheetErr);
+            }
 
             // Gửi thông báo ảnh lên Telegram Group
             try {
@@ -3903,9 +4041,65 @@ ${lichKhach}`;
             );
 
             // Cập nhật Google Sheet — dùng suffix [Tour] cho nhóm report_tour
-            const rowIndex = apt.sheet_row_index;
-            const empName = apt.employee_name;
-            // Đồng bộ Google Sheet đã được chuyển sang chế độ "Delayed Sync"
+            try {
+                const rowIndex = apt.sheet_row_index;
+                const empName = apt.employee_name;
+                const workDateFormatted = moment(apt.appointment_time).format('DD/MM/YYYY');
+                const codeRes = await pool.query('SELECT employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1', [apt.telegram_id, apt.group_id]);
+                const employeeCode = codeRes.rows.length > 0 ? codeRes.rows[0].employee_code : '';
+
+                if (rowIndex) {
+                    const target = await getCustomerSheetTarget(apt.group_id, empName);
+                    if (target.doc) {
+                        await target.doc.loadInfo();
+                        let sheet = target.doc.sheetsByTitle[target.sheetName];
+                        if (sheet) {
+                            const rows = await sheet.getRows();
+                            const matchRow = rows.find(r => r.rowNumber === rowIndex);
+                            if (matchRow) {
+                                matchRow.set('Trạng Thái', 'Đã hoàn thành');
+                                matchRow.set('Ảnh Chứng Thực', proofUrl);
+                                if (apt.revenue) matchRow.set('Thu Tiền', apt.revenue);
+                                await matchRow.save();
+                            }
+                        }
+                        const masterSheetName = target.role === 'report_tour' ? 'TỔNG HỢP TOUR' : 'TỔNG HỢP KHÁCH HÀNG';
+                        let masterSheet = target.doc.sheetsByTitle[masterSheetName];
+                        if (masterSheet) {
+                            const mRows = await masterSheet.getRows();
+                            const appTimeStr = moment(apt.appointment_time).format('HH:mm DD/MM/YYYY');
+                            const matchMRow = mRows.find(r => r.get('Khách Hàng') === apt.customer_name && r.get('SĐT') === apt.phone && r.get('Thời Gian') === appTimeStr);
+                            if (matchMRow) {
+                                matchMRow.set('Trạng Thái', 'Đã hoàn thành');
+                                matchMRow.set('Ảnh Chứng Thực', proofUrl);
+                                if (apt.revenue) matchMRow.set('Thu Tiền', apt.revenue);
+                                await matchMRow.save();
+                            }
+                        }
+                    }
+                } else {
+                    const rowData = {
+                        'Ngày': workDateFormatted,
+                        'Nhân Viên': empName,
+                        'Mã NV': employeeCode,
+                        'Khách Hàng': apt.customer_name,
+                        'SĐT': apt.phone,
+                        'Dịch Vụ': apt.service,
+                        'Buổi Làm': apt.sessions,
+                        'Thời Gian': moment(apt.appointment_time).format('HH:mm DD/MM/YYYY'),
+                        'Trạng Thái': 'Đã hoàn thành',
+                        'Lý Do Hủy': '',
+                        'Thu Tiền': apt.revenue || '',
+                        'Ảnh Chứng Thực': proofUrl
+                    };
+                    const rowNumber = await writeToGoogleSheets(apt.group_id, empName, rowData);
+                    if (rowNumber) {
+                        await pool.query('UPDATE customer_appointments SET sheet_row_index = $1 WHERE id = $2', [rowNumber, apt.id]);
+                    }
+                }
+            } catch (sheetErr) {
+                console.error('[Sheet Sync Error] Không thể đồng bộ ảnh lên Google Sheet:', sheetErr);
+            }
 
             // Reply báo thành công
             const timeStr = new Date(apt.appointment_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
@@ -3916,5 +4110,21 @@ ${lichKhach}`;
             ctx.reply('❌ Có lỗi xảy ra khi lưu ảnh, vui lòng tải lên bằng Mini App!', { reply_to_message_id: ctx.message.message_id });
         }
     });
-    bot.use(kpiComposer);
+    // Chỉ chuyển update vào KPI composer khi đang ở nhóm báo cáo.
+    // Nếu chặn ngay bên trong composer, các callback/ảnh của module đăng ký
+    // phía sau (ví dụ wh_appgrp_* của kho) sẽ bị "nuốt" và không bao giờ tới
+    // đúng handler của chúng.
+    const kpiMiddleware = kpiComposer.middleware();
+    bot.use(async (ctx, next) => {
+        if (!ctx.chat || ctx.chat.type === 'private') {
+            return kpiMiddleware(ctx, next);
+        }
+
+        const role = await getGroupRole(ctx.chat.id);
+        if (['report', 'report_tour'].includes(role)) {
+            return kpiMiddleware(ctx, next);
+        }
+
+        return next();
+    });
 }

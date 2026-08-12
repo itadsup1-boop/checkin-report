@@ -269,6 +269,59 @@
             font-weight: bold;
         }
 
+        .media-mode-options {
+            display: grid;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .media-mode-card {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            padding: 13px 14px;
+            border: 1px solid var(--input-border);
+            border-radius: 12px;
+            background: var(--input-bg);
+            cursor: pointer;
+        }
+
+        .media-mode-card:has(input:checked) {
+            border-color: var(--primary);
+            background: rgba(6, 182, 212, 0.08);
+        }
+
+        .media-mode-card input {
+            margin-top: 3px;
+            accent-color: var(--primary);
+        }
+
+        .media-mode-title {
+            display: block;
+            color: var(--text-primary);
+            font-size: 13px;
+            font-weight: 700;
+            margin-bottom: 3px;
+        }
+
+        .media-mode-desc {
+            display: block;
+            color: var(--text-secondary);
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .telegram-reply-help {
+            display: none;
+            padding: 13px 14px;
+            border: 1px solid rgba(34, 211, 238, 0.24);
+            border-radius: 12px;
+            background: rgba(6, 182, 212, 0.06);
+            color: #bae6fd;
+            font-size: 12px;
+            line-height: 1.55;
+        }
+
         /* Button Submit */
         .btn-submit {
             width: 100%;
@@ -491,13 +544,36 @@
 
                 <!-- Media Upload Area -->
                 <div class="form-group">
-                    <label class="form-label">Tải lên hình ảnh & video minh chứng (bắt buộc)</label>
-                    <div class="upload-area" onclick="document.getElementById('mediaInput').click()">
-                        <span class="upload-icon">📷</span>
-                        <div class="upload-text">Nhấn để <strong>chọn ảnh/video</strong> minh chứng</div>
-                        <input type="file" id="mediaInput" style="display:none" multiple accept="image/*,video/*">
+                    <label class="form-label">Cách gửi hình ảnh & video minh chứng</label>
+                    <div class="media-mode-options">
+                        <label class="media-mode-card">
+                            <input type="radio" name="mediaMode" value="mini_app" checked>
+                            <span>
+                                <span class="media-mode-title">Tải trực tiếp trong Mini App</span>
+                                <span class="media-mode-desc">Giữ nguyên cách gửi hiện tại: chọn ảnh/video và chờ tải lên.</span>
+                            </span>
+                        </label>
+                        <label class="media-mode-card">
+                            <input type="radio" name="mediaMode" value="telegram_reply">
+                            <span>
+                                <span class="media-mode-title">Gửi sau bằng Reply Telegram</span>
+                                <span class="media-mode-desc">Lưu thông tin trước, sau đó reply ảnh/video vào tin nhắn hồ sơ Bot tạo trong nhóm.</span>
+                            </span>
+                        </label>
                     </div>
-                    <div id="previewContainer" class="preview-container"></div>
+
+                    <div id="miniAppUploadSection">
+                        <div class="upload-area" onclick="document.getElementById('mediaInput').click()">
+                            <span class="upload-icon">📷</span>
+                            <div class="upload-text">Nhấn để <strong>chọn ảnh/video</strong> minh chứng</div>
+                            <input type="file" id="mediaInput" style="display:none" multiple accept="image/*,video/*">
+                        </div>
+                        <div id="previewContainer" class="preview-container"></div>
+                    </div>
+
+                    <div id="telegramReplyHelp" class="telegram-reply-help">
+                        Sau khi lưu, quay lại nhóm và <strong>Reply</strong> đúng tin nhắn hồ sơ khách hàng do Bot vừa tạo. Có thể gửi nhiều ảnh/video cùng lúc. Video cần được Telegram nén xuống dưới 20 MB để Bot đồng bộ được lên Drive.
+                    </div>
                 </div>
 
                 <button type="submit" class="btn-submit">GỬI BÁO CÁO</button>
@@ -519,7 +595,7 @@
     <div id="successScreen" class="overlay">
         <div class="success-icon">✅</div>
         <div class="overlay-title" style="color: var(--success);">ĐÃ LƯU THÀNH CÔNG!</div>
-        <div class="overlay-desc">Thông tin khách hàng đã được đồng bộ lên Google Sheets và Google Drive.</div>
+        <div id="successDescription" class="overlay-desc">Thông tin khách hàng đã được ghi nhận và đang được đồng bộ lên Google Sheets và Google Drive.</div>
         <button class="btn-success" onclick="closeWebApp()">HOÀN TẤT & ĐÓNG</button>
     </div>
 
@@ -609,6 +685,22 @@
             // Handle file input changes and previews
             const mediaInput = document.getElementById('mediaInput');
             const previewContainer = document.getElementById('previewContainer');
+            const mediaModeInputs = document.querySelectorAll('input[name="mediaMode"]');
+            const miniAppUploadSection = document.getElementById('miniAppUploadSection');
+            const telegramReplyHelp = document.getElementById('telegramReplyHelp');
+
+            function getMediaMode() {
+                return document.querySelector('input[name="mediaMode"]:checked')?.value || 'mini_app';
+            }
+
+            function updateMediaModeUI() {
+                const replyMode = getMediaMode() === 'telegram_reply';
+                miniAppUploadSection.style.display = replyMode ? 'none' : 'block';
+                telegramReplyHelp.style.display = replyMode ? 'block' : 'none';
+            }
+
+            mediaModeInputs.forEach(input => input.addEventListener('change', updateMediaModeUI));
+            updateMediaModeUI();
 
             mediaInput.addEventListener('change', (e) => {
                 const files = Array.from(e.target.files);
@@ -666,7 +758,9 @@
                 e.preventDefault();
                 document.getElementById('alertBox').style.display = 'none';
 
-                if (selectedFiles.length === 0) {
+                const mediaMode = getMediaMode();
+
+                if (mediaMode === 'mini_app' && selectedFiles.length === 0) {
                     showAlert('⚠️ Bạn bắt buộc phải chọn tải lên ít nhất một ảnh hoặc video minh chứng!');
                     return;
                 }
@@ -702,6 +796,7 @@
                 formData.append('chat_id', chatId);
                 formData.append('ts', payloadTs);
                 formData.append('sig', payloadSig);
+                formData.append('media_mode', mediaMode);
                 
                 // Các trường biểu mẫu
                 formData.append('consultant', consultant);
@@ -718,9 +813,11 @@
                 formData.append('warranty', warranty);
 
                 // Thêm các tệp đa phương tiện
-                selectedFiles.forEach((file) => {
-                    formData.append('media_files', file);
-                });
+                if (mediaMode === 'mini_app') {
+                    selectedFiles.forEach((file) => {
+                        formData.append('media_files', file);
+                    });
+                }
 
                 const xhr = new XMLHttpRequest();
                 xhr.open('POST', '/api/customer/save', true);
@@ -743,6 +840,12 @@
                         try {
                             const data = JSON.parse(xhr.responseText);
                             if (data.success) {
+                                const successDescription = document.getElementById('successDescription');
+                                if (data.media_mode === 'telegram_reply') {
+                                    successDescription.innerHTML = 'Đã tạo hồ sơ. Hãy đóng Mini App, quay lại nhóm và <strong>Reply ảnh/video</strong> vào tin nhắn Bot vừa gửi.';
+                                } else {
+                                    successDescription.textContent = 'Thông tin khách hàng đã được ghi nhận và đang được đồng bộ lên Google Sheets và Google Drive.';
+                                }
                                 document.getElementById('successScreen').style.display = 'flex';
                             } else {
                                 showAlert(data.message || 'Lỗi khi lưu dữ liệu khách hàng!');

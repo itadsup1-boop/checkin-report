@@ -15,7 +15,7 @@ export const TIMEKEEP_BOT_HELP_HTML = `
 • Hoặc gửi 1 clip video ngắn lên nhóm kèm từ <code>check</code> (Vd: <code>checkin ca sớm</code>).
 
 4️⃣ <b>Nhắc nhở & Phạt đi muộn:</b>
-• Bot tự động nhắc nhở trước ca 3 phút.
+• Bot tự động nhắc nhở trước tất cả các ca 5 phút.
 • Báo cáo nhân sự đi muộn sau ca 1 phút & tự động tính tiền phạt dựa trên số phút muộn.
 
 5️⃣ <b>Xem Telegram ID:</b>

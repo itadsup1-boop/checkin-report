@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save, Shield } from 'lucide-react';
+import { Activity, Users, AlertCircle, CheckCircle, BarChart3, Settings, Bell, Search, Menu, Zap, TrendingUp, TrendingDown, Plus, Trash2, X, UserCheck, LogOut, ClipboardCheck, CalendarDays, CalendarX, LayoutDashboard, Save, Shield, Key, Package } from 'lucide-react';
 import LoginScreen from './LoginScreen.jsx';
 import StaffManagement from './StaffManagement.jsx';
 import CheckinManagement from './CheckinManagement.jsx';
@@ -8,6 +8,8 @@ import ScheduleManagement from './ScheduleManagement.jsx';
 import LeaveManagement from './LeaveManagement.jsx';
 import DashboardTab from './DashboardTab.jsx';
 import AdminManagement from './AdminManagement.jsx';
+import PermissionManagement from './PermissionManagement.jsx';
+import WarehouseManagement from './WarehouseManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -68,6 +70,8 @@ function Dashboard({ user, onLogout }) {
   const displayGroups = isSuperAdmin
     ? groups
     : groups.filter(g => assignedGroupIds.includes(g.telegram_group_id));
+  const selectedGroup = groups.find(group => group.telegram_group_id === selectedGroupId) || null;
+  const showWarehouseMenu = isSuperAdmin || displayGroups.some(group => group.bot_role === 'warehouse');
 
   // Modal state
   const [showModal, setShowModal] = useState(false);
@@ -136,7 +140,10 @@ function Dashboard({ user, onLogout }) {
 
   const handleUpdateKpi = async (id, newKpi) => {
     try {
-      await axios.put(`${API_URL}/employees/${id}/kpi`, { kpi_target: newKpi });
+      await axios.put(`${API_URL}/employees/${id}/kpi`, {
+        kpi_target: newKpi,
+        telegram_group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined,
+      });
       setToast('✅ Đã cập nhật Chỉ tiêu KPI!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
@@ -148,7 +155,10 @@ function Dashboard({ user, onLogout }) {
   const handleToggleReportRequirement = async (id, currentNeedReport) => {
     try {
       const nextVal = !currentNeedReport;
-      await axios.put(`${API_URL}/employees/${id}/report-status`, { need_report: nextVal });
+      await axios.put(`${API_URL}/employees/${id}/report-status`, {
+        need_report: nextVal,
+        telegram_group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined,
+      });
       setToast('✅ Đã cập nhật trạng thái nộp báo cáo!');
       fetchData();
       setTimeout(() => setToast(null), 3000);
@@ -225,9 +235,13 @@ function Dashboard({ user, onLogout }) {
 
           <NavItem icon={<LayoutDashboard />} label="Dashboard" active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} />
           <NavItem icon={<UserCheck />} label="Nhân sự (Chấm công)" active={activeTab === 'staff'} onClick={() => setActiveTab('staff')} />
+          <NavItem icon={<Key />} label="Phân quyền thành viên" active={activeTab === 'permissions'} onClick={() => setActiveTab('permissions')} />
           <NavItem icon={<ClipboardCheck />} label="Điểm danh" active={activeTab === 'checkins'} onClick={() => setActiveTab('checkins')} />
           <NavItem icon={<CalendarDays />} label="Lịch làm việc" active={activeTab === 'schedules'} onClick={() => setActiveTab('schedules')} />
           <NavItem icon={<CalendarX />} label="Nghỉ phép & Quỹ phép" active={activeTab === 'leave'} onClick={() => setActiveTab('leave')} />
+          {showWarehouseMenu && (
+            <NavItem icon={<Package />} label="Quản lý kho" active={activeTab === 'warehouse'} onClick={() => setActiveTab('warehouse')} />
+          )}
           <NavItem icon={<Settings />} label="Cấu hình hệ thống" active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} />
           {user?.role === 'SUPER_ADMIN' && (
             <NavItem icon={<Shield />} label="Quản lý Admin" active={activeTab === 'admins'} onClick={() => setActiveTab('admins')} />
@@ -263,8 +277,8 @@ function Dashboard({ user, onLogout }) {
               />
             </div>
 
-            {/* Global Group Selector */}
-            <div className="flex items-center gap-2 bg-[#111827] rounded-full px-4 py-2 border border-white/10 text-sm hover:border-white/20 transition-colors">
+            {/* Global Group Selector: mẫu dịch vụ kho dùng chung, không phụ thuộc nhóm */}
+            {activeTab !== 'warehouse' && <div className="flex items-center gap-2 bg-[#111827] rounded-full px-4 py-2 border border-white/10 text-sm hover:border-white/20 transition-colors">
               <Users className="w-4 h-4 text-cyan-400 flex-shrink-0" />
               <select
                 value={selectedGroupId}
@@ -280,7 +294,7 @@ function Dashboard({ user, onLogout }) {
                   </option>
                 ))}
               </select>
-            </div>
+            </div>}
           </div>
           <div className="flex items-center gap-4">
             <button className="relative p-2 text-slate-400 hover:text-white transition-colors">
@@ -511,6 +525,14 @@ function Dashboard({ user, onLogout }) {
 
           {activeTab === 'leave' && (
             <LeaveManagement selectedGroupId={selectedGroupId} />
+          )}
+
+          {activeTab === 'permissions' && (
+            <PermissionManagement selectedGroupId={selectedGroupId} />
+          )}
+
+          {activeTab === 'warehouse' && (
+            <WarehouseManagement />
           )}
 
           {activeTab === 'settings' && <SettingsTab groups={displayGroups} selectedGroupId={selectedGroupId} handleUpdateGroupSettings={handleUpdateGroupSettings} handleDeleteGroup={handleDeleteGroup} />}

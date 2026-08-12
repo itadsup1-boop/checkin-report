@@ -398,46 +398,55 @@
                 <div class="group-badge">Kho Hàng</div>
             </div>
 
-            <!-- Scan Action Button -->
-            <div class="scan-action-container">
-                <button type="button" class="btn-scan" onclick="startScan()">
-                    📷 Quét mã vạch / QR Code
+            <!-- Chọn Cơ Sở (US / UK) -->
+            <div class="form-group" style="margin-bottom: 20px; text-align: left;">
+                <label style="display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px;">Cơ sở xuất kho ưu tiên</label>
+                <select id="warehouseBranch" style="width: 100%; height: 56px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 12px; color: var(--text-primary); padding: 0 16px; font-size: 16px; outline: none; font-family: 'Outfit', sans-serif;" onchange="validateExportFormState()">
+                    <option value="" disabled selected>-- Chọn cơ sở ưu tiên --</option>
+                    <option value="US">🇺🇸 Cơ sở US</option>
+                    <option value="UK">🇬🇧 Cơ sở UK</option>
+                </select>
+            </div>
+
+            <!-- Scan Action Buttons -->
+            <div style="display: flex; gap: 12px; margin-bottom: 20px;">
+                <button type="button" class="btn-scan" style="flex: 1;" onclick="startScan()">
+                    📷 QUÉT MÃ SẢN PHẨM
+                </button>
+                <button type="button" class="btn-scan" style="flex: 1; background: #475569;" onclick="openManualAdd()">
+                    ✏️ NHẬP THỦ CÔNG
                 </button>
             </div>
 
-            <!-- Alert Notification -->
-            <div id="alertBox" class="alert-box"></div>
+            <!-- Export Items List -->
+            <div id="exportListCard" class="card" style="display: none; margin-bottom: 20px; background: rgba(30, 41, 59, 0.5); border: 1px solid rgba(255, 255, 255, 0.05); padding: 16px; border-radius: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <span style="font-size: 14px; font-weight: bold; color: var(--accent);">DANH SÁCH XUẤT KHO</span>
+                    <span id="itemCountBadge" class="group-badge" style="background: rgba(99, 102, 241, 0.2); color: #818cf8;">0 sản phẩm</span>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px;">
+                        <thead>
+                            <tr style="border-bottom: 1px solid rgba(255,255,255,0.1); color: var(--text-secondary);">
+                                <th style="padding: 8px 4px;">Sản phẩm</th>
+                                <th style="padding: 8px 4px; text-align: center;">Mã vạch</th>
+                                <th style="padding: 8px 4px; text-align: center;">SL Xuất</th>
+                                <th style="padding: 8px 4px; text-align: center;">Xóa</th>
+                            </tr>
+                        </thead>
+                        <tbody id="exportItemsTableBody">
+                            <!-- Dynamic items -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <!-- Main Form -->
             <form id="exportForm" onsubmit="handleFormSubmit(event)">
-                <!-- Dropdown Select Product (Manual options) -->
-                <div class="form-group">
-                    <label for="productDropdown">Chọn sản phẩm có sẵn (Thủ công)</label>
-                    <input type="text" id="productDropdown" list="productsList" placeholder="Tìm kiếm hoặc chọn sản phẩm..." oninput="onProductSelect(this.value)">
-                    <datalist id="productsList">
-                        <!-- Dynamic Options -->
-                    </datalist>
-                </div>
-
-                <!-- Barcode -->
-                <div class="form-group">
-                    <label for="barcode">Mã vạch / Mã sản phẩm</label>
-                    <input type="text" id="barcode" placeholder="Quét mã vạch hoặc nhập thủ công..." required oninput="checkBarcode(this.value.trim())">
-                </div>
-
-                <!-- Product Name -->
-                <div class="form-group">
-                    <label for="productName">Tên sản phẩm</label>
-                    <input type="text" id="productName" placeholder="Tên sản phẩm..." required readonly disabled>
-                </div>
-
-                <!-- Quantity -->
-                <div class="form-group">
-                    <label for="quantity">Số lượng xuất</label>
-                    <input type="number" id="quantity" placeholder="Ví dụ: 5, 20..." required min="1" oninput="validateExportQty(this.value)">
-                </div>
-
-                <button type="submit" id="btnSubmit" class="btn-submit" disabled>📤 GỬI YÊU CẦU XUẤT KHO</button>
+                <datalist id="productsList">
+                    <!-- Dynamic Options -->
+                </datalist>
+                <button type="submit" id="btnSubmitForm" class="btn-submit" style="width: 100%;" disabled>📤 GỬI YÊU CẦU XUẤT KHO (0)</button>
             </form>
         </div>
     </div>
@@ -459,15 +468,68 @@
 
     <!-- Scanner Modal -->
     <div id="scannerModal" class="overlay">
-        <div class="scanner-modal-content">
+        <div class="scanner-modal-content" style="position: relative; min-height: 400px; display: flex; flex-direction: column;">
             <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-primary);">Quét mã vạch sản phẩm</h3>
             <div id="interactive"></div>
-            <button type="button" class="btn-scan" style="background: var(--danger); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3); margin-top: 16px;" onclick="stopScan()">❌ Hủy bỏ</button>
+            <button type="button" class="btn-scan" style="background: var(--danger); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3); margin-top: 16px;" onclick="stopScan()">❌ Đóng / Hoàn tất</button>
+
+            <!-- Scanner Prompt Overlay (Nhập số lượng xuất ngay trên giao diện quét) -->
+            <div id="scannerPromptOverlay" class="scanner-prompt-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #1e293b; border-radius: 20px; z-index: 100; flex-direction: column; justify-content: center; padding: 24px; box-sizing: border-box; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <div style="width: 100%; text-align: left;">
+                    <h4 id="promptTitle" style="color: var(--accent); margin-bottom: 12px; font-size: 16px; font-weight: 600; text-align: center;">Phát hiện sản phẩm</h4>
+                    <p id="promptSubtitle" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);"></p>
+                    
+                    <input type="hidden" id="promptBarcode">
+                    <input type="hidden" id="promptProductName">
+                    
+                    <div class="form-group" style="margin-bottom: 24px;">
+                        <label for="promptQuantity" style="font-size: 12px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Số lượng xuất:</label>
+                        <input type="number" id="promptQuantity" placeholder="Ví dụ: 5..." min="1" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 13px;" oninput="checkQuantityWarning('prompt')">
+                        <span id="promptStockInfo" style="display: block; font-size: 11px; color: var(--accent); margin-top: 6px; font-weight: 500;"></span>
+                        <span id="promptBranchWarning" style="display: block; font-size: 11px; color: var(--warning); margin-top: 6px; font-weight: 500; display: none;"></span>
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" class="btn-scan" style="background: var(--success); flex: 1; font-size: 14px; padding: 12px; border-radius: 10px;" onclick="confirmPromptAdd()">Thêm</button>
+                        <button type="button" class="btn-scan" style="background: var(--danger); flex: 1; font-size: 14px; padding: 12px; border-radius: 10px;" onclick="cancelPromptAdd()">Hủy</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Manual Add Modal -->
+    <div id="manualAddModal" class="overlay">
+        <div class="scanner-modal-content" style="text-align: left;">
+            <h3 style="margin-bottom: 16px; font-size: 16px; color: var(--text-primary); text-align: center;">Nhập sản phẩm thủ công</h3>
+            
+            <div class="form-group">
+                <label for="manualProductSelect">Chọn sản phẩm có sẵn</label>
+                <input type="text" id="manualProductSelect" list="productsList" placeholder="Tìm kiếm hoặc chọn sản phẩm..." oninput="onManualSelectProduct(this.value)" style="width:100%; box-sizing:border-box;">
+            </div>
+            
+            <div class="form-group">
+                <label for="manualBarcode">Mã vạch / Mã sản phẩm</label>
+                <input type="text" id="manualBarcode" placeholder="..." style="width:100%; box-sizing:border-box;" disabled>
+            </div>
+            
+            <div class="form-group">
+                <label for="manualQuantity">Số lượng xuất</label>
+                <input type="number" id="manualQuantity" placeholder="Ví dụ: 5..." min="1" style="width:100%; box-sizing:border-box;" oninput="checkQuantityWarning('manual')">
+                <span id="manualStockInfo" style="display: block; font-size: 11px; color: var(--accent); margin-top: 6px; font-weight: 500;"></span>
+                <span id="manualBranchWarning" style="display: block; font-size: 11px; color: var(--warning); margin-top: 4px; font-weight: 500; display: none;"></span>
+            </div>
+            
+            <div style="display: flex; gap: 12px; margin-top: 20px;">
+                <button type="button" class="btn-scan" style="background: var(--success); flex: 1;" onclick="submitManualAdd()">Thêm</button>
+                <button type="button" class="btn-scan" style="background: var(--danger); flex: 1;" onclick="closeManualAdd()">Hủy</button>
+            </div>
         </div>
     </div>
 
     <!-- Quagga2 Barcode Reader -->
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <script src="/mini-app/vendor/quagga.min.js"></script>
+    <script src="/mini-app/barcode-scanner.js"></script>
     <!-- Telegram SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
@@ -478,10 +540,13 @@
         let chatId = "";
         let payloadTs = "";
         let payloadSig = "";
+
+        function warehouseAuthQuery() {
+            return `initData=${encodeURIComponent(initData)}&chat_id=${encodeURIComponent(chatId)}&ts=${encodeURIComponent(payloadTs)}&sig=${encodeURIComponent(payloadSig)}&action=whexport`;
+        }
         let productsMap = {};
-        let availableQty = 0; // Số lượng tồn kho tối đa của sản phẩm đang chọn
-        let isValidProduct = false;
-        let lastCodes = []; // Bộ đệm lọc kết quả quét trùng lặp
+        let exportItems = []; // Danh sách sản phẩm xuất kho tích lũy
+        let isScanningPaused = false; // Trạng thái dừng quét tạm thời khi mở prompt
 
         document.addEventListener('DOMContentLoaded', () => {
             if (tg) {
@@ -525,7 +590,7 @@
 
         async function loadProductsList() {
             try {
-                const response = await fetch(`/api/warehouse/products?initData=${encodeURIComponent(initData)}`, {
+                const response = await fetch(`/api/warehouse/products?${warehouseAuthQuery()}`, {
                     headers: { 'x-telegram-init-data': initData }
                 });
                 const res = await response.json();
@@ -545,271 +610,293 @@
             }
         }
 
-        function onProductSelect(selectedName) {
-            const barcode = productsMap[selectedName];
-            if (barcode) {
-                document.getElementById('barcode').value = barcode;
-                checkBarcode(barcode);
-            }
-        }
-
-        // Handle barcode scanned results from Quagga
-        function handleBarcode(result) {
-            if (!result || !result.codeResult || !result.codeResult.code) return;
-            const code = result.codeResult.code.trim();
-            
-            // Bộ lọc chống nhận dạng nhầm (yêu cầu lặp lại cùng một mã 3 lần liên tiếp)
-            lastCodes.push(code);
-            if (lastCodes.length > 5) {
-                lastCodes.shift();
-            }
-            
-            const count = lastCodes.filter(c => c === code).length;
-            if (count >= 3) {
-                lastCodes = []; // Reset bộ đệm
-                document.getElementById('barcode').value = code;
-                checkBarcode(code);
-                stopScan();
-            }
-        }
-
-        // Helper to find the best back camera on iOS/Android
-        async function getBestBackCameraId() {
-            try {
-                // Yêu cầu quyền truy cập trước để lấy nhãn (labels)
-                await navigator.mediaDevices.getUserMedia({ video: true });
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const videoDevices = devices.filter(device => device.kind === 'videoinput');
-                const backCameras = videoDevices.filter(device => {
-                    const label = device.label.toLowerCase();
-                    return label.includes('back') || label.includes('sau') || label.includes('environment');
-                });
-                if (backCameras.length === 0) return null;
-                // Tránh các camera phụ như góc siêu rộng (ultra wide) và camera tele
-                const mainCamera = backCameras.find(device => {
-                    const label = device.label.toLowerCase();
-                    return !label.includes('ultra') && !label.includes('wide') && !label.includes('tele');
-                });
-                return mainCamera ? mainCamera.deviceId : backCameras[0].deviceId;
-            } catch (e) {
-                console.warn("Lỗi khi tìm camera sau tối ưu:", e);
-                return null;
-            }
-        }
-
-        // Scan barcode using Quagga2 camera reader
+        // Scan barcode using optimized BarcodeScanner
         async function startScan() {
+            const branchVal = document.getElementById('warehouseBranch').value;
+            if (!branchVal) {
+                alert("Vui lòng chọn cơ sở xuất kho ưu tiên trước khi quét sản phẩm!");
+                return;
+            }
             const modal = document.getElementById('scannerModal');
-            modal.classList.add('active');
-            lastCodes = []; // Reset bộ đệm lọc
-            
             const viewport = document.getElementById('interactive');
-            viewport.innerHTML = `
-                <div class="laser-line"></div>
-                <div style="position: absolute; bottom: 12px; left: 0; width: 100%; text-align: center; color: #ffffff; font-size: 11px; z-index: 10; text-shadow: 0 1px 4px rgba(0,0,0,0.9); font-weight: 600; padding: 0 10px; box-sizing: border-box; line-height: 1.4;">
-                    🔍 Đưa mã vạch vào giữa vạch đỏ và giữ yên để quét
-                </div>
-            `;
+            modal.classList.add('active');
+            isScanningPaused = false;
 
-            // Giám sát và ép thuộc tính playsinline/autoplay cho thẻ video của iOS Safari
-            const observer = new MutationObserver((mutations) => {
-                mutations.forEach((mutation) => {
-                    mutation.addedNodes.forEach((node) => {
-                        if (node.tagName === 'VIDEO') {
-                            node.setAttribute('playsinline', 'true');
-                            node.setAttribute('webkit-playsinline', 'true');
-                            node.setAttribute('muted', 'true');
-                            node.setAttribute('autoplay', 'true');
-                            // Ép chạy video lập tức
-                            node.play().catch(e => console.log("Lỗi ép chạy video:", e));
-                        }
-                    });
-                });
-            });
-            observer.observe(viewport, { childList: true });
-
-            // Tìm camera sau tốt nhất (tránh camera góc siêu rộng bị mờ nét)
-            const bestCameraId = await getBestBackCameraId();
-
-            // Đợi 300ms cho modal hiển thị hoàn toàn để tránh lỗi WebKit màn hình đen do kích thước 0x0 lúc ẩn
-            setTimeout(() => {
-                try {
-                    const constraints = bestCameraId ? {
-                        deviceId: { exact: bestCameraId },
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    } : {
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 },
-                        facingMode: "environment" // Mở camera sau làm phương án dự phòng
-                    };
-
-                    Quagga.init({
-                        inputStream: {
-                            name: "Live",
-                            type: "LiveStream",
-                            target: viewport,
-                            constraints: constraints,
-                            area: { // Giới hạn khu vực quét ở trung tâm
-                                top: "30%",
-                                right: "5%",
-                                left: "5%",
-                                bottom: "30%"
-                            }
-                        },
-                        locate: true,
-                        frequency: 10,
-                        locator: {
-                            patchSize: "medium",
-                            halfSample: false // Tắt halfSample trên iPhone để hình ảnh quét có độ phân giải gốc cao hơn
-                        },
-                        decoder: {
-                            readers: [
-                                "ean_reader",
-                                "code_128_reader",
-                                "ean_8_reader",
-                                "upc_reader",
-                                "upc_e_reader"
-                            ]
-                        }
-                    }, function (err) {
-                        // Hủy giám sát sau khi khởi tạo xong
-                        observer.disconnect();
-
-                        if (err) {
-                            console.error("Lỗi khởi tạo Quagga:", err);
-                            alert("Không thể khởi động camera sau! Chi tiết: " + err.message);
-                            stopScan();
-                            return;
-                        }
-                        Quagga.start();
-                        Quagga.onDetected(handleBarcode);
-                    });
-                } catch (err) {
-                    observer.disconnect();
-                    console.error("Lỗi nạp thư viện Quagga:", err);
-                    alert("Lỗi khởi chạy camera quét!");
+            await BarcodeScanner.start({
+                target: viewport,
+                onDetected: async (code) => {
+                    if (isScanningPaused) return;
+                    isScanningPaused = true;
+                    await showScannerPrompt(code);
+                },
+                onError: (error) => {
+                    alert('Không thể mở camera quét mã vạch: ' + (error.message || error));
                     stopScan();
                 }
-            }, 300);
+            });
         }
 
-        function stopScan() {
-            const modal = document.getElementById('scannerModal');
-            modal.classList.remove('active');
+        async function stopScan() {
+            document.getElementById('scannerModal').classList.remove('active');
+            const promptOverlay = document.getElementById('scannerPromptOverlay');
+            if (promptOverlay) promptOverlay.style.display = 'none';
+            isScanningPaused = false;
+            await BarcodeScanner.stop();
+        }
+
+        // Hiển thị popup nhập số lượng xuất ngay trên giao diện quét
+        async function showScannerPrompt(barcode) {
+            const promptOverlay = document.getElementById('scannerPromptOverlay');
+            const titleEl = document.getElementById('promptTitle');
+            const subtitleEl = document.getElementById('promptSubtitle');
+            const barcodeInput = document.getElementById('promptBarcode');
+            const nameInput = document.getElementById('promptProductName');
+            const qtyInput = document.getElementById('promptQuantity');
+            const stockInfoEl = document.getElementById('promptStockInfo');
+
+            barcodeInput.value = barcode;
+            qtyInput.value = '';
+            stockInfoEl.textContent = '';
             
-            const viewport = document.getElementById('interactive');
-            viewport.innerHTML = '';
-
             try {
-                Quagga.stop();
-                Quagga.offDetected(handleBarcode);
+                const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?${warehouseAuthQuery()}`, {
+                    headers: { 'x-telegram-init-data': initData }
+                });
+                const res = await response.json();
+                
+                if (res.success && res.exists) {
+                    titleEl.innerHTML = `📦 Phát hiện sản phẩm`;
+                    subtitleEl.innerHTML = `<b>Tên SP:</b> ${res.product.product_name}<br><b>Mã vạch:</b> ${barcode}`;
+                    nameInput.value = res.product.product_name;
+                    
+                    qtyInput.dataset.stockUs = res.product.stock_us;
+                    qtyInput.dataset.stockUk = res.product.stock_uk;
+                    qtyInput.dataset.available = res.product.quantity;
+                    
+                    stockInfoEl.innerHTML = `Tổng tồn kho: <b>${res.product.quantity}</b> (US: <b>${res.product.stock_us}</b>, UK: <b>${res.product.stock_uk}</b>)`;
+                    stockInfoEl.style.color = 'var(--text-secondary)';
+                    
+                    const warningEl = document.getElementById('promptBranchWarning');
+                    if (warningEl) warningEl.style.display = 'none';
+                    
+                    if (res.product.quantity <= 0) {
+                        stockInfoEl.textContent = `Tồn kho khả dụng: 0 (Đã hết hàng)`;
+                        stockInfoEl.style.color = 'var(--danger)';
+                    }
+                } else {
+                    titleEl.innerHTML = `❌ Sản phẩm không tồn tại`;
+                    subtitleEl.innerHTML = `Sản phẩm với mã vạch <b>${barcode}</b> chưa từng được nhập kho. Không thể thực hiện xuất!`;
+                    nameInput.value = '';
+                    qtyInput.dataset.available = 0;
+                    stockInfoEl.textContent = 'Không có thông tin tồn kho!';
+                    stockInfoEl.style.color = 'var(--danger)';
+                }
             } catch (e) {
-                // Đã dừng hoặc chưa khởi tạo
+                console.error("Lỗi kiểm tra sản phẩm:", e);
+                titleEl.innerHTML = `❌ Lỗi kết nối`;
+                subtitleEl.innerHTML = `Không thể kiểm tra thông tin sản phẩm từ máy chủ.`;
+                qtyInput.dataset.available = 0;
             }
+
+            promptOverlay.style.display = 'flex';
+            qtyInput.focus();
         }
 
-        let checkTimeout;
-        function checkBarcode(barcode) {
-            clearTimeout(checkTimeout);
-            const alertBox = document.getElementById('alertBox');
-            const productNameInput = document.getElementById('productName');
-            const btnSubmit = document.getElementById('btnSubmit');
+        function confirmPromptAdd() {
+            const barcode = document.getElementById('promptBarcode').value.trim();
+            const productName = document.getElementById('promptProductName').value.trim();
+            const quantity = parseInt(document.getElementById('promptQuantity').value.trim(), 10);
+            const qtyInput = document.getElementById('promptQuantity');
+            const available = parseInt(qtyInput.dataset.available || 0, 10);
 
-            if (!barcode || barcode.trim() === '') {
-                productNameInput.value = '';
-                availableQty = 0;
-                isValidProduct = false;
-                btnSubmit.disabled = true;
-                alertBox.style.display = 'none';
-                alertBox.className = 'alert-box';
+            if (!productName) {
+                alert('Sản phẩm này không hợp lệ để xuất!');
+                return;
+            }
+            if (isNaN(quantity) || quantity <= 0) {
+                alert('Vui lòng nhập số lượng xuất hợp lệ!');
+                return;
+            }
+            if (quantity > available) {
+                alert(`Không đủ tồn kho! Số lượng xuất tối đa: ${available}`);
                 return;
             }
 
-            alertBox.style.display = 'none';
-            alertBox.className = 'alert-box'; // reset class
-            isValidProduct = false;
-            btnSubmit.disabled = true;
+            addOrUpdateExportItem(barcode, productName, quantity, available);
 
-            checkTimeout = setTimeout(async () => {
+            // Đóng popup và tiếp tục quét
+            document.getElementById('scannerPromptOverlay').style.display = 'none';
+            isScanningPaused = false;
+        }
+
+        function cancelPromptAdd() {
+            document.getElementById('scannerPromptOverlay').style.display = 'none';
+            isScanningPaused = false;
+        }
+
+        function addOrUpdateExportItem(barcode, productName, quantity, available) {
+            const existingIndex = exportItems.findIndex(item => item.barcode === barcode);
+            if (existingIndex !== -1) {
+                const newTotal = exportItems[existingIndex].quantity + quantity;
+                if (newTotal > available) {
+                    alert(`Không thể thêm! Tổng số lượng xuất (${newTotal}) vượt quá tồn kho khả dụng (${available})`);
+                    return;
+                }
+                exportItems[existingIndex].quantity = newTotal;
+            } else {
+                exportItems.push({
+                    barcode: barcode,
+                    product_name: productName,
+                    quantity: quantity,
+                    available: available
+                });
+            }
+            renderExportItems();
+        }
+
+        // Render danh sách sản phẩm xuất kho
+        function renderExportItems() {
+            const card = document.getElementById('exportListCard');
+            const tbody = document.getElementById('exportItemsTableBody');
+            const badge = document.getElementById('itemCountBadge');
+
+            tbody.innerHTML = '';
+            
+            if (exportItems.length === 0) {
+                card.style.display = 'none';
+                validateExportFormState();
+                return;
+            }
+
+            card.style.display = 'block';
+            badge.textContent = `${exportItems.length} sản phẩm`;
+            validateExportFormState();
+
+            exportItems.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
+                tr.innerHTML = `
+                    <td style="padding: 10px 8px; font-weight: 500; color: #fff;">${item.product_name}</td>
+                    <td style="padding: 10px 8px; text-align: center; font-family: monospace;">${item.barcode}</td>
+                    <td style="padding: 10px 8px; text-align: center; font-weight: bold; color: var(--danger);">${item.quantity}</td>
+                    <td style="padding: 10px 8px; text-align: center;">
+                        <button type="button" style="background: none; border: none; color: var(--danger); font-size: 16px; cursor: pointer; padding: 0 4px;" onclick="removeExportItem(${index})">×</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function removeExportItem(index) {
+            exportItems.splice(index, 1);
+            renderExportItems();
+        }
+
+        // Nhập thủ công
+        function openManualAdd() {
+            const branchVal = document.getElementById('warehouseBranch').value;
+            if (!branchVal) {
+                alert("Vui lòng chọn cơ sở xuất kho ưu tiên trước khi nhập sản phẩm!");
+                return;
+            }
+            document.getElementById('manualAddModal').classList.add('active');
+            document.getElementById('manualProductSelect').value = '';
+            document.getElementById('manualBarcode').value = '';
+            document.getElementById('manualQuantity').value = '';
+            document.getElementById('manualStockInfo').textContent = '';
+            document.getElementById('manualQuantity').dataset.available = 0;
+            const warningEl = document.getElementById('manualBranchWarning');
+            if (warningEl) warningEl.style.display = 'none';
+        }
+
+        function closeManualAdd() {
+            document.getElementById('manualAddModal').classList.remove('active');
+        }
+
+        // Khi chọn sản phẩm từ dropdown nhập thủ công
+        async function onManualSelectProduct(val) {
+            const barcode = productsMap[val];
+            const barcodeInput = document.getElementById('manualBarcode');
+            const qtyInput = document.getElementById('manualQuantity');
+            const stockInfoEl = document.getElementById('manualStockInfo');
+            
+            if (barcode) {
+                barcodeInput.value = barcode;
+                
+                // Fetch stock info for this product
                 try {
-                    const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?initData=${encodeURIComponent(initData)}`, {
+                    const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?${warehouseAuthQuery()}`, {
                         headers: { 'x-telegram-init-data': initData }
                     });
                     const res = await response.json();
-                    
                     if (res.success && res.exists) {
-                        productNameInput.value = res.product.product_name;
-                        availableQty = res.product.quantity;
-                        isValidProduct = true;
-
-                        alertBox.innerHTML = `📦 <b>Sản phẩm:</b> ${res.product.product_name}<br>📊 <b>Tồn kho khả dụng:</b> <b>${res.product.quantity}</b>`;
-                        alertBox.classList.add('success');
-                        alertBox.style.display = 'block';
-
-                        validateExportQty(document.getElementById('quantity').value);
+                        qtyInput.dataset.stockUs = res.product.stock_us;
+                        qtyInput.dataset.stockUk = res.product.stock_uk;
+                        qtyInput.dataset.available = res.product.quantity;
+                        stockInfoEl.innerHTML = `Tổng tồn kho: <b>${res.product.quantity}</b> (US: <b>${res.product.stock_us}</b>, UK: <b>${res.product.stock_uk}</b>)`;
+                        stockInfoEl.style.color = 'var(--text-secondary)';
+                        
+                        const warningEl = document.getElementById('manualBranchWarning');
+                        if (warningEl) warningEl.style.display = 'none';
                     } else {
-                        productNameInput.value = '';
-                        availableQty = 0;
-                        alertBox.innerHTML = `❌ <b>Sản phẩm này chưa từng được nhập kho!</b> Không thể làm yêu cầu xuất kho.`;
-                        alertBox.classList.add('danger');
-                        alertBox.style.display = 'block';
+                        qtyInput.dataset.stockUs = 0;
+                        qtyInput.dataset.stockUk = 0;
+                        qtyInput.dataset.available = 0;
+                        stockInfoEl.textContent = 'Sản phẩm chưa có hàng!';
+                        stockInfoEl.style.color = 'var(--danger)';
                     }
                 } catch (e) {
-                    console.error("Lỗi kiểm tra mã vạch:", e);
+                    console.error("Lỗi khi kiểm tra tồn kho thủ công:", e);
                 }
-            }, 300);
+            } else {
+                barcodeInput.value = '';
+                qtyInput.dataset.available = 0;
+                stockInfoEl.textContent = '';
+            }
         }
 
-        function validateExportQty(qty) {
-            const btnSubmit = document.getElementById('btnSubmit');
-            const alertBox = document.getElementById('alertBox');
-            const qtyNum = parseInt(qty, 10);
+        function submitManualAdd() {
+            const productName = document.getElementById('manualProductSelect').value.trim();
+            const barcode = document.getElementById('manualBarcode').value.trim();
+            const quantity = parseInt(document.getElementById('manualQuantity').value.trim(), 10);
+            const available = parseInt(document.getElementById('manualQuantity').dataset.available || 0, 10);
 
-            if (!isValidProduct) {
-                btnSubmit.disabled = true;
+            if (!productName || !barcode) {
+                alert('Vui lòng chọn sản phẩm hợp lệ!');
+                return;
+            }
+            if (isNaN(quantity) || quantity <= 0) {
+                alert('Vui lòng nhập số lượng hợp lệ!');
+                return;
+            }
+            if (quantity > available) {
+                alert(`Không đủ tồn kho! Số lượng khả dụng: ${available}`);
                 return;
             }
 
-            if (isNaN(qtyNum) || qtyNum <= 0) {
-                btnSubmit.disabled = true;
-                return;
-            }
-
-            if (qtyNum > availableQty) {
-                btnSubmit.disabled = true;
-                alertBox.innerHTML = `🚨 <b>Vượt quá tồn kho!</b> Số lượng xuất (${qtyNum}) lớn hơn số lượng hiện có (${availableQty}).`;
-                alertBox.className = 'alert-box danger';
-                alertBox.style.display = 'block';
-            } else {
-                btnSubmit.disabled = false;
-                alertBox.innerHTML = `📦 <b>Sản phẩm:</b> ${document.getElementById('productName').value}<br>📊 <b>Tồn kho khả dụng:</b> <b>${availableQty}</b> (Đủ hàng)`;
-                alertBox.className = 'alert-box success';
-                alertBox.style.display = 'block';
-            }
+            addOrUpdateExportItem(barcode, productName, quantity, available);
+            closeManualAdd();
         }
 
         async function handleFormSubmit(event) {
             event.preventDefault();
 
-            const barcode = document.getElementById('barcode').value.trim();
-            const quantity = document.getElementById('quantity').value.trim();
-
-            if (!barcode || !quantity || !isValidProduct) {
-                alert('Yêu cầu không hợp lệ!');
+            if (exportItems.length === 0) {
+                alert('Vui lòng thêm ít nhất một sản phẩm!');
                 return;
             }
 
             document.getElementById('loadingOverlay').classList.add('active');
 
             try {
+                const branch = document.getElementById('warehouseBranch').value;
                 const payloadData = {
                     chat_id: chatId,
-                    barcode: barcode,
-                    quantity: quantity,
+                    items: exportItems,
                     ts: payloadTs,
                     sig: payloadSig,
-                    action: 'whexport'
+                    action: 'whexport',
+                    branch: branch
                 };
 
                 const response = await fetch('/api/warehouse/export/request', {
@@ -852,6 +939,65 @@
                 window.close();
             }
         }
+
+        function validateExportFormState() {
+            const btnSubmit = document.getElementById('btnSubmitForm');
+            const branchVal = document.getElementById('warehouseBranch').value;
+            
+            const hasItems = exportItems.length > 0;
+            const hasBranch = branchVal !== "";
+
+            if (hasItems && hasBranch) {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = `📤 GỬI YÊU CẦU XUẤT KHO (${exportItems.length})`;
+            } else {
+                btnSubmit.disabled = true;
+                let reasons = [];
+                if (!hasItems) reasons.push("chưa có sản phẩm");
+                if (!hasBranch) reasons.push("chưa chọn cơ sở");
+                btnSubmit.textContent = `📤 GỬI YÊU CẦU XUẤT KHO (${reasons.join(', ')})`;
+            }
+        }
+
+        function checkQuantityWarning(type) {
+            const prefix = type === 'prompt' ? 'prompt' : 'manual';
+            const qtyInput = document.getElementById(`${prefix}Quantity`);
+            const warningEl = document.getElementById(`${prefix}BranchWarning`);
+            if (!qtyInput || !warningEl) return;
+
+            const quantity = parseInt(qtyInput.value.trim(), 10);
+            if (isNaN(quantity) || quantity <= 0) {
+                warningEl.style.display = 'none';
+                return;
+            }
+
+            const stockUs = parseInt(qtyInput.dataset.stockUs || 0, 10);
+            const stockUk = parseInt(qtyInput.dataset.stockUk || 0, 10);
+            const available = stockUs + stockUk;
+            const branchVal = document.getElementById('warehouseBranch').value;
+
+            if (quantity > available) {
+                warningEl.innerHTML = `❌ Vượt quá tổng tồn kho khả dụng (${available})`;
+                warningEl.style.color = 'var(--danger)';
+                warningEl.style.display = 'block';
+                return;
+            }
+
+            const prefStock = branchVal === 'US' ? stockUs : stockUk;
+            const otherBranchName = branchVal === 'US' ? 'UK' : 'US';
+
+            if (quantity > prefStock) {
+                const diff = quantity - prefStock;
+                warningEl.innerHTML = `⚠️ Cần lấy thêm <b>${diff}</b> sản phẩm từ cơ sở <b>${otherBranchName}</b> để bù vào.`;
+                warningEl.style.color = 'var(--warning)';
+                warningEl.style.display = 'block';
+            } else {
+                warningEl.style.display = 'none';
+            }
+        }
+
+        // Thiết lập trạng thái ban đầu khi load trang
+        window.addEventListener('DOMContentLoaded', validateExportFormState);
     </script>
 </body>
 

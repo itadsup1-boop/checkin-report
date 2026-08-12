@@ -331,6 +331,11 @@
         const tg = window.Telegram ? window.Telegram.WebApp : null;
         let initData = "";
         let inventoryData = [];
+        const warehouseParams = new URLSearchParams(window.location.search);
+
+        function warehouseAuthQuery() {
+            return `initData=${encodeURIComponent(initData)}&chat_id=${encodeURIComponent(warehouseParams.get('chat_id') || '')}&ts=${encodeURIComponent(warehouseParams.get('ts') || '')}&sig=${encodeURIComponent(warehouseParams.get('sig') || '')}&action=whinventory`;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             if (tg) {
@@ -345,7 +350,7 @@
 
         async function loadInventory() {
             try {
-                const response = await fetch(`/api/warehouse/inventory?initData=${encodeURIComponent(initData)}`, {
+                const response = await fetch(`/api/warehouse/inventory?${warehouseAuthQuery()}`, {
                     headers: { 'x-telegram-init-data': initData }
                 });
                 const res = await response.json();

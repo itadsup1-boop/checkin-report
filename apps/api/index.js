@@ -7,6 +7,8 @@ import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
+import { KPI_GROUP_ROLES } from '../../packages/shared/kpiMembership.js';
+import { registerWarehouseAdminRoutes } from './src/modules/warehouse-admin/index.js';
 
 dotenv.config();
 
@@ -57,6 +59,8 @@ async function getAdminAuthContext(req) {
     const allowedGroupIds = await getAssignedGroupIds(adminId, adminRole);
     return { isSuperAdmin: false, allowedGroupIds };
 }
+
+registerWarehouseAdminRoutes({ app, pool });
 
 app.post('/api/admin/login', async (req, res) => {
     try {
@@ -213,23 +217,61 @@ app.get('/api/admin/tk-users', async (req, res) => {
     try {
         const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
         const { group_id } = req.query;
-        let query = `
-            SELECT u.*, g.group_name 
-            FROM employees u
-            LEFT JOIN telegram_groups g ON u.telegram_group_id = g.telegram_group_id
-            WHERE 1 = 1
-        `;
         const params = [];
+        const hasSelectedGroup = group_id && group_id !== 'ALL';
+        let query;
 
-        if (group_id && group_id !== 'ALL') {
+        if (hasSelectedGroup) {
             if (!isSuperAdmin && !allowedGroupIds.includes(group_id)) {
                 return res.status(403).json({ error: 'Bạn không có quyền xem nhân sự nhóm này' });
             }
             params.push(group_id);
-            query += ` AND u.telegram_group_id = $${params.length}`;
+            query = `
+                SELECT u.*,
+                       selected_group.group_name,
+                       selected_group.bot_role AS selected_group_role,
+                       m.status AS membership_status,
+                       m.pause_reason AS membership_pause_reason,
+                       m.paused_at AS membership_paused_at,
+                       COALESCE(m.need_report, u.need_report, TRUE) AS group_need_report,
+                       COALESCE(m.current_kpi_target, u.current_kpi_target, 0) AS group_kpi_target
+                FROM employees u
+                JOIN telegram_groups selected_group
+                  ON selected_group.telegram_group_id = $1
+                LEFT JOIN employee_group_memberships m
+                  ON m.employee_id = u.id
+                 AND m.telegram_group_id = selected_group.telegram_group_id
+                WHERE (u.telegram_group_id = selected_group.telegram_group_id OR m.employee_id IS NOT NULL)
+            `;
         } else if (!isSuperAdmin) {
             params.push(allowedGroupIds);
-            query += ` AND u.telegram_group_id = ANY($${params.length})`;
+            query = `
+                SELECT u.*, g.group_name, g.bot_role AS selected_group_role,
+                       m.status AS membership_status,
+                       m.pause_reason AS membership_pause_reason,
+                       m.paused_at AS membership_paused_at,
+                       COALESCE(m.need_report, u.need_report, TRUE) AS group_need_report,
+                       COALESCE(m.current_kpi_target, u.current_kpi_target, 0) AS group_kpi_target
+                FROM employees u
+                LEFT JOIN telegram_groups g ON u.telegram_group_id = g.telegram_group_id
+                LEFT JOIN employee_group_memberships m
+                  ON m.employee_id = u.id AND m.telegram_group_id = u.telegram_group_id
+                WHERE u.telegram_group_id = ANY($1)
+            `;
+        } else {
+            query = `
+                SELECT u.*, g.group_name, g.bot_role AS selected_group_role,
+                       m.status AS membership_status,
+                       m.pause_reason AS membership_pause_reason,
+                       m.paused_at AS membership_paused_at,
+                       COALESCE(m.need_report, u.need_report, TRUE) AS group_need_report,
+                       COALESCE(m.current_kpi_target, u.current_kpi_target, 0) AS group_kpi_target
+                FROM employees u
+                LEFT JOIN telegram_groups g ON u.telegram_group_id = g.telegram_group_id
+                LEFT JOIN employee_group_memberships m
+                  ON m.employee_id = u.id AND m.telegram_group_id = u.telegram_group_id
+                WHERE 1 = 1
+            `;
         }
 
         query += ` ORDER BY u.created_at DESC`;
@@ -252,39 +294,195 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
         }
         const currentEmp = empRes.rows[0];
 
-        // 2. Kiểm tra quyền quản lý nhóm
-        if (!isSuperAdmin && (!currentEmp.telegram_group_id || !allowedGroupIds.includes(currentEmp.telegram_group_id))) {
+        const { full_name, role, leave_quota, is_exempt_checkin, is_active, need_report, telegram_group_id } = req.body;
+        const targetGroupId = telegram_group_id || currentEmp.telegram_group_id;
+
+        // 2. Kiểm tra quyền quản lý đúng nhóm đang chỉnh sửa membership
+        if (!isSuperAdmin && (!targetGroupId || !allowedGroupIds.includes(targetGroupId))) {
             return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa nhân sự nhóm này' });
         }
 
-        const { full_name, role, leave_quota, is_exempt_checkin, is_active, need_report } = req.body;
+        const groupResult = targetGroupId
+            ? await pool.query('SELECT bot_role FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [targetGroupId])
+            : { rows: [] };
+        const isKpiGroup = KPI_GROUP_ROLES.includes(groupResult.rows[0]?.bot_role);
+
+        const membershipResult = isKpiGroup
+            ? await pool.query(
+                `SELECT status, need_report, current_kpi_target
+                 FROM employee_group_memberships
+                 WHERE employee_id = $1 AND telegram_group_id = $2`,
+                [currentEmp.id, targetGroupId]
+            )
+            : { rows: [] };
+        const membership = membershipResult.rows[0];
 
         // Giữ nguyên is_active hiện tại nếu body không truyền
         const newIsActive = is_active !== undefined ? !!is_active : (currentEmp.is_active !== false);
-        const newNeedReport = need_report !== undefined ? !!need_report : (currentEmp.need_report !== false);
+        const newNeedReport = need_report !== undefined
+            ? !!need_report
+            : (membership ? membership.need_report : currentEmp.need_report !== false);
 
         await pool.query(
-            `UPDATE employees SET full_name = $1, role = $2, leave_quota = $3, is_exempt_checkin = $4, is_active = $5, need_report = $6 WHERE id = $7`,
+            `UPDATE employees
+             SET full_name = $1, role = $2, leave_quota = $3,
+                 is_exempt_checkin = $4, is_active = $5,
+                 need_report = CASE WHEN $6 THEN need_report ELSE $7 END
+             WHERE id = $8`,
             [
                 full_name !== undefined ? full_name : currentEmp.full_name,
                 role !== undefined ? role : currentEmp.role,
                 leave_quota !== undefined ? leave_quota : (currentEmp.leave_quota || 12),
                 is_exempt_checkin !== undefined ? !!is_exempt_checkin : !!currentEmp.is_exempt_checkin,
                 newIsActive,
+                isKpiGroup,
                 newNeedReport,
                 req.params.id
             ]
         );
 
-        // 3. Nếu nhân viên bị vô hiệu hóa, tự động đóng/hủy tất cả pending_reports của nhân viên đó
-        if ((!newIsActive || !newNeedReport) && currentEmp.telegram_id) {
+        if (isKpiGroup) {
+            await pool.query(
+                `INSERT INTO employee_group_memberships
+                    (employee_id, telegram_group_id, status, need_report,
+                     current_kpi_target, updated_by, updated_at)
+                 VALUES ($1, $2, 'ACTIVE', $3, $4, $5, NOW())
+                 ON CONFLICT (employee_id, telegram_group_id) DO UPDATE SET
+                    need_report = EXCLUDED.need_report,
+                    updated_by = EXCLUDED.updated_by,
+                    updated_at = NOW()`,
+                [
+                    currentEmp.id,
+                    targetGroupId,
+                    newNeedReport,
+                    membership?.current_kpi_target ?? currentEmp.current_kpi_target ?? 0,
+                    `admin:${req.headers['x-admin-id'] || 'super'}`
+                ]
+            );
+        }
+
+        // Vô hiệu hóa tài khoản là toàn cục; tắt báo cáo KPI chỉ dọn đúng nhóm.
+        if (!newIsActive && currentEmp.telegram_id) {
             await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [currentEmp.telegram_id.toString()]);
-            console.log(`[Admin API] Đã dọn pending_reports của nhân viên không còn phải báo cáo (telegram_id: ${currentEmp.telegram_id})`);
+        } else if (isKpiGroup && !newNeedReport && currentEmp.telegram_id) {
+            await pool.query(
+                `DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2`,
+                [currentEmp.telegram_id.toString(), targetGroupId]
+            );
         }
 
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+});
+
+// Tạm dừng/kích hoạt KPI theo đúng một nhóm, không thay đổi tài khoản toàn cục.
+app.put('/api/admin/tk-users/:id/group-membership', async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);
+        const { telegram_group_id, status, pause_reason } = req.body;
+        const normalizedStatus = String(status || '').toUpperCase();
+
+        if (!telegram_group_id || !['ACTIVE', 'PAUSED'].includes(normalizedStatus)) {
+            return res.status(400).json({ error: 'Thiếu nhóm hoặc trạng thái membership không hợp lệ' });
+        }
+        if (!isSuperAdmin && !allowedGroupIds.includes(String(telegram_group_id))) {
+            return res.status(403).json({ error: 'Bạn không có quyền thay đổi nhân sự nhóm này' });
+        }
+
+        await client.query('BEGIN');
+        const employeeResult = await client.query('SELECT * FROM employees WHERE id = $1 FOR UPDATE', [req.params.id]);
+        if (employeeResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Không tìm thấy nhân viên' });
+        }
+        const employee = employeeResult.rows[0];
+
+        const groupResult = await client.query(
+            `SELECT bot_role FROM telegram_groups
+             WHERE telegram_group_id = $1 AND is_active = TRUE
+               AND COALESCE(is_deleted, FALSE) = FALSE
+             LIMIT 1`,
+            [String(telegram_group_id)]
+        );
+        if (!KPI_GROUP_ROLES.includes(groupResult.rows[0]?.bot_role)) {
+            await client.query('ROLLBACK');
+            return res.status(400).json({ error: 'Chỉ áp dụng tạm dừng theo nhóm cho role KPI' });
+        }
+
+        const existingResult = await client.query(
+            `SELECT status, need_report, current_kpi_target
+             FROM employee_group_memberships
+             WHERE employee_id = $1 AND telegram_group_id = $2
+             FOR UPDATE`,
+            [employee.id, String(telegram_group_id)]
+        );
+        const existing = existingResult.rows[0];
+        if (!existing && String(employee.telegram_group_id || '') !== String(telegram_group_id)) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Nhân viên chưa đăng ký trong nhóm này' });
+        }
+
+        const actor = `admin:${req.headers['x-admin-id'] || 'super'}`;
+        await client.query(
+            `INSERT INTO employee_group_memberships
+                (employee_id, telegram_group_id, status, need_report,
+                 current_kpi_target, pause_reason, paused_at, resumed_at,
+                 updated_by, updated_at)
+             VALUES ($1, $2, $3::varchar(20), $4, $5,
+                     CASE WHEN $3::varchar(20) = 'PAUSED' THEN $6 ELSE NULL END,
+                     CASE WHEN $3::varchar(20) = 'PAUSED' THEN NOW() ELSE NULL END,
+                     CASE WHEN $3::varchar(20) = 'ACTIVE' THEN NOW() ELSE NULL END,
+                     $7, NOW())
+             ON CONFLICT (employee_id, telegram_group_id) DO UPDATE SET
+                status = EXCLUDED.status,
+                pause_reason = EXCLUDED.pause_reason,
+                paused_at = CASE WHEN EXCLUDED.status = 'PAUSED' THEN NOW() ELSE employee_group_memberships.paused_at END,
+                resumed_at = CASE WHEN EXCLUDED.status = 'ACTIVE' THEN NOW() ELSE employee_group_memberships.resumed_at END,
+                updated_by = EXCLUDED.updated_by,
+                updated_at = NOW()`,
+            [
+                employee.id,
+                String(telegram_group_id),
+                normalizedStatus,
+                existing?.need_report ?? employee.need_report ?? true,
+                existing?.current_kpi_target ?? employee.current_kpi_target ?? 0,
+                normalizedStatus === 'PAUSED' ? (String(pause_reason || '').trim() || 'Tạm dừng bởi Admin') : null,
+                actor
+            ]
+        );
+
+        if (existing?.status !== normalizedStatus) {
+            await client.query(
+                `INSERT INTO employee_group_membership_events
+                    (employee_id, telegram_group_id, old_status, new_status, reason, actor)
+                 VALUES ($1, $2, $3, $4, $5, $6)`,
+                [employee.id, String(telegram_group_id), existing?.status || null, normalizedStatus, pause_reason || null, actor]
+            );
+        }
+
+        if (normalizedStatus === 'PAUSED' && employee.telegram_id) {
+            await client.query(
+                `DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2`,
+                [String(employee.telegram_id), String(telegram_group_id)]
+            );
+        }
+
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            membership_status: normalizedStatus,
+            message: normalizedStatus === 'PAUSED'
+                ? 'Đã tạm dừng KPI của nhân viên trong nhóm này.'
+                : 'Đã kích hoạt lại KPI của nhân viên trong nhóm này.'
+        });
+    } catch (error) {
+        await client.query('ROLLBACK').catch(() => {});
+        res.status(500).json({ error: error.message });
+    } finally {
+        client.release();
     }
 });
 
@@ -712,14 +910,29 @@ app.post('/api/employees', async (req, res) => {
 app.put('/api/employees/:id/kpi', async (req, res) => {
     try {
         const { id } = req.params;
-        const { kpi_target } = req.body;
+        const { kpi_target, telegram_group_id } = req.body;
         const target = Number(kpi_target);
         if (!Number.isFinite(target) || target < 0) {
             return res.status(400).json({ error: 'KPI phải là số không âm' });
         }
-        const updated = await pool.query('UPDATE employees SET current_kpi_target = $1 WHERE id = $2 RETURNING telegram_id', [target, id]);
+        let updated;
+        if (telegram_group_id && telegram_group_id !== 'ALL') {
+            updated = await pool.query(
+                `UPDATE employee_group_memberships
+                 SET current_kpi_target = $1, updated_at = NOW(), updated_by = $3
+                 WHERE employee_id = $2 AND telegram_group_id = $4
+                 RETURNING (SELECT telegram_id FROM employees WHERE id = $2) AS telegram_id`,
+                [target, id, `admin:${req.headers['x-admin-id'] || 'super'}`, telegram_group_id]
+            );
+        } else {
+            updated = await pool.query('UPDATE employees SET current_kpi_target = $1 WHERE id = $2 RETURNING telegram_id', [target, id]);
+        }
         if (target === 0 && updated.rows[0]?.telegram_id) {
-            await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+            if (telegram_group_id && telegram_group_id !== 'ALL') {
+                await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2', [updated.rows[0].telegram_id, telegram_group_id]);
+            } else {
+                await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+            }
         }
         res.json({ success: true });
     } catch (error) {
@@ -731,10 +944,25 @@ app.put('/api/employees/:id/kpi', async (req, res) => {
 app.put('/api/employees/:id/report-status', async (req, res) => {
     try {
         const { id } = req.params;
-        const { need_report } = req.body;
-        const updated = await pool.query('UPDATE employees SET need_report = $1 WHERE id = $2 RETURNING telegram_id', [!!need_report, id]);
+        const { need_report, telegram_group_id } = req.body;
+        let updated;
+        if (telegram_group_id && telegram_group_id !== 'ALL') {
+            updated = await pool.query(
+                `UPDATE employee_group_memberships
+                 SET need_report = $1, updated_at = NOW(), updated_by = $3
+                 WHERE employee_id = $2 AND telegram_group_id = $4
+                 RETURNING (SELECT telegram_id FROM employees WHERE id = $2) AS telegram_id`,
+                [!!need_report, id, `admin:${req.headers['x-admin-id'] || 'super'}`, telegram_group_id]
+            );
+        } else {
+            updated = await pool.query('UPDATE employees SET need_report = $1 WHERE id = $2 RETURNING telegram_id', [!!need_report, id]);
+        }
         if (!need_report && updated.rows[0]?.telegram_id) {
-            await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+            if (telegram_group_id && telegram_group_id !== 'ALL') {
+                await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2', [updated.rows[0].telegram_id, telegram_group_id]);
+            } else {
+                await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [updated.rows[0].telegram_id]);
+            }
         }
         res.json({ success: true });
     } catch (error) {
@@ -766,6 +994,8 @@ app.get('/api/groups', async (req, res) => {
         const result = await pool.query(`
             SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role, tkg.schedule_registration_open,
                    tkg.kpi_sheet_id, tkg.customer_sheet_id,
+                   tkg.customer_drive_folder_id, tkg.warehouse_drive_folder_id,
+                   COALESCE(tkg.warehouse_service_order_enabled, FALSE) AS warehouse_service_order_enabled,
                    gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
                    gs.penalty_missing_kpi, gs.penalty_per_photo, gs.penalty_missing_report,
                    gs.shift_1_time, gs.shift_2_time

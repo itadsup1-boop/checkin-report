@@ -310,7 +310,7 @@ cron.schedule('* * * * *', async () => {
                 console.log(`⏰ Đến giờ nhắc nhở cho nhóm: ${group.group_name}`);
 
                 const todayStr = new Date().toISOString().split('T')[0];
-                const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
+                const empRes = await pool.query(`SELECT full_name, telegram_id, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1 AND LOWER(role) NOT IN ('quản lý', 'quản lý kho', 'admin')`, [group.telegram_group_id]);
                 const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
                 const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
 
@@ -335,7 +335,7 @@ cron.schedule('* * * * *', async () => {
 
                 if (currentTimeString === penaltyTimeString) {
                     const todayStr = new Date().toISOString().split('T')[0];
-                    const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1`, [group.telegram_group_id]);
+                    const empRes = await pool.query(`SELECT full_name, telegram_id, employee_code, id FROM employees WHERE is_active = true AND need_report = true AND telegram_id IS NOT NULL AND telegram_group_id = $1 AND LOWER(role) NOT IN ('quản lý', 'quản lý kho', 'admin')`, [group.telegram_group_id]);
                     const repRes = await pool.query(`SELECT employee_id FROM daily_reports WHERE telegram_group_id = $1 AND report_date = $2`, [group.telegram_group_id, todayStr]);
                     const reportedIds = new Set(repRes.rows.map(r => r.employee_id));
 
@@ -718,6 +718,7 @@ async function processReport(user, parsedJSON, kpiTarget, telegram_id, group_id,
 // Xử lý khi nhận được ảnh/video minh chứng
 bot.on(['photo', 'video'], async (ctx, next) => {
     const telegram_id = ctx.message.from.id.toString();
+    const group_id = ctx.chat.id.toString();
 
     try {
         // --- CHỐT CHẶN VÂN TAY CHO ẢNH GỬI TRỰC TIẾP ---
@@ -775,9 +776,9 @@ bot.on(['photo', 'video'], async (ctx, next) => {
              SET received_photos = received_photos + 1,
                  last_photo_received_at = NOW(),
                  inactivity_reminded = false
-             WHERE telegram_id = $1 AND status = 'WAITING_PHOTOS' 
+             WHERE telegram_id = $1 AND group_id = $2 AND status = 'WAITING_PHOTOS' 
              RETURNING *`,
-            [telegram_id]
+            [telegram_id, group_id]
         );
 
         if (updateResult.rows.length > 0) {
@@ -786,8 +787,8 @@ bot.on(['photo', 'video'], async (ctx, next) => {
             if (report.received_photos >= report.required_photos) {
                 // Đủ ảnh -> Cập nhật thành DONE an toàn
                 const doneResult = await pool.query(
-                    `UPDATE pending_reports SET status = 'DONE' WHERE telegram_id = $1 AND status = 'WAITING_PHOTOS' RETURNING telegram_id`,
-                    [telegram_id]
+                    `UPDATE pending_reports SET status = 'DONE' WHERE telegram_id = $1 AND group_id = $2 AND status = 'WAITING_PHOTOS' RETURNING telegram_id`,
+                    [telegram_id, group_id]
                 );
 
                 if (doneResult.rowCount > 0) {
@@ -901,8 +902,7 @@ bot.on('text', async (ctx, next) => {
                     `INSERT INTO pending_reports 
                     (telegram_id, group_id, raw_text, kpi_actual, required_photos, received_photos, deadline_at, status, last_reminder_stage) 
                     VALUES ($1, $2, $3, $4, $5, 0, $6, 'WAITING_PHOTOS', 0)
-                    ON CONFLICT (telegram_id) DO UPDATE SET
-                        group_id = EXCLUDED.group_id,
+                    ON CONFLICT (telegram_id, group_id) DO UPDATE SET
                         raw_text = EXCLUDED.raw_text,
                         kpi_actual = EXCLUDED.kpi_actual,
                         required_photos = EXCLUDED.required_photos,
@@ -1424,7 +1424,7 @@ cron.schedule('* * * * *', async () => {
                 };
 
                 // Chuyển status thành DONE_WITH_DEBT
-                await pool.query(`UPDATE pending_reports SET status = 'DONE_WITH_DEBT' WHERE telegram_id = $1`, [report.telegram_id]);
+                await pool.query(`UPDATE pending_reports SET status = 'DONE_WITH_DEBT' WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
 
                 // Gọi processReport đẩy lên DB và Google Sheet với debt_info
                 await processReport(user, parsedJSON, kpiTarget, report.telegram_id, report.group_id, report.raw_text, null, bot, debt_info);
@@ -1434,7 +1434,7 @@ cron.schedule('* * * * *', async () => {
                 const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                 const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                await pool.query(`UPDATE pending_reports SET last_reminder_stage = 2 WHERE telegram_id = $1`, [report.telegram_id]);
+                await pool.query(`UPDATE pending_reports SET last_reminder_stage = 2 WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                 bot.telegram.sendMessage(report.group_id, `🚨 CẢNH BÁO CHÓT: ${fullName} ơi, còn đúng ${diffMinutes} phút nữa là hết hạn nộp ảnh! Bạn đang thiếu ${report.required_photos - report.received_photos} ảnh nữa.`);
             }
             // Nếu còn <= 15 phút (Nhắc nhở giữa kỳ) - Chỉ nhắc 1 lần (stage < 1)
@@ -1442,7 +1442,7 @@ cron.schedule('* * * * *', async () => {
                 const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                 const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                await pool.query(`UPDATE pending_reports SET last_reminder_stage = 1 WHERE telegram_id = $1`, [report.telegram_id]);
+                await pool.query(`UPDATE pending_reports SET last_reminder_stage = 1 WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                 bot.telegram.sendMessage(report.group_id, `⚠️ Nhắc nhở: ${fullName} mới tải lên được ${report.received_photos}/${report.required_photos} ảnh. Bạn còn ${diffMinutes} phút để hoàn thành nhé.`);
             }
             // Nhắc nhở nếu đã nộp ảnh nhưng im lặng 5 phút
@@ -1453,7 +1453,7 @@ cron.schedule('* * * * *', async () => {
                     const userResult = await pool.query(`SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1`, [report.telegram_id]);
                     const fullName = userResult.rows[0]?.full_name || 'Nhân viên';
 
-                    await pool.query(`UPDATE pending_reports SET inactivity_reminded = true WHERE telegram_id = $1`, [report.telegram_id]);
+                    await pool.query(`UPDATE pending_reports SET inactivity_reminded = true WHERE telegram_id = $1 AND group_id = $2`, [report.telegram_id, report.group_id]);
                     bot.telegram.sendMessage(report.group_id, `⚠️ Nhắc nhở: ${fullName} ơi, hệ thống đã ghi nhận ${report.received_photos}/${report.required_photos} ảnh. Còn thiếu ${report.required_photos - report.received_photos} ảnh nữa nhưng đã 5 phút không thấy bạn nộp thêm. Vui lòng gửi nốt để hoàn thành báo cáo nhé!`);
                 }
             }
@@ -2201,8 +2201,7 @@ ${lichKhach}`;
                 `INSERT INTO pending_reports 
                 (telegram_id, group_id, raw_text, kpi_actual, required_photos, received_photos, deadline_at, status, last_reminder_stage, customers_data) 
                 VALUES ($1, $2, $3, $4, $5, $6, $7, 'WAITING_PHOTOS', 0, $8)
-                ON CONFLICT (telegram_id) DO UPDATE SET
-                    group_id = EXCLUDED.group_id,
+                ON CONFLICT (telegram_id, group_id) DO UPDATE SET
                     raw_text = EXCLUDED.raw_text,
                     kpi_actual = EXCLUDED.kpi_actual,
                     required_photos = EXCLUDED.required_photos,

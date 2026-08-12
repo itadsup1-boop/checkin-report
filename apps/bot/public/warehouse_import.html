@@ -447,6 +447,16 @@
                 <div class="group-badge">Kho Hàng</div>
             </div>
 
+            <!-- Chọn Cơ Sở (US / UK) -->
+            <div class="form-group" style="margin-bottom: 20px; text-align: left;">
+                <label style="display: block; font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: 6px;">Cơ sở lưu trữ</label>
+                <select id="warehouseBranch" style="width: 100%; height: 56px; box-sizing: border-box; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 12px; color: var(--text-primary); padding: 0 16px; font-size: 16px; outline: none; font-family: 'Outfit', sans-serif;" onchange="validateImportFormState()">
+                    <option value="" disabled selected>-- Chọn cơ sở nhập kho --</option>
+                    <option value="US">🇺🇸 Cơ sở US</option>
+                    <option value="UK">🇬🇧 Cơ sở UK</option>
+                </select>
+            </div>
+
             <!-- Action Buttons -->
             <div style="display: flex; gap: 12px; margin-bottom: 20px;">
                 <button type="button" class="btn-scan" style="flex: 1;" onclick="startScan()">
@@ -490,10 +500,10 @@
             <form id="importForm" onsubmit="handleFormSubmit(event)">
                 <!-- Media Upload (Photos/Videos) -->
                 <div class="form-group" style="margin-bottom: 24px;">
-                    <label>Hình ảnh / Video chứng minh nhập kho</label>
-                    <input type="file" id="mediaFiles" multiple accept="image/*,video/*" style="display:none;" onchange="handleFileSelect(event)">
+                    <label>Hình ảnh chứng minh nhập kho</label>
+                    <input type="file" id="mediaFiles" multiple accept="image/*" style="display:none;" onchange="handleFileSelect(event)">
                     <button type="button" class="btn-scan" style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: none;" onclick="document.getElementById('mediaFiles').click()">
-                        📷 Chụp / Chọn ảnh & video
+                        📷 Chụp / Chọn ảnh
                     </button>
                     <div id="previewContainer" class="preview-container"></div>
                     
@@ -512,8 +522,8 @@
     <!-- Loading Overlay -->
     <div id="loadingOverlay" class="overlay">
         <div class="spinner"></div>
-        <div class="overlay-title">Đang xử lý nhập kho...</div>
-        <div class="overlay-desc">Vui lòng giữ kết nối Internet ổn định.</div>
+        <div class="overlay-title" id="loadingTitle">Đang chuẩn bị minh chứng...</div>
+        <div class="overlay-desc" id="loadingDesc">Vui lòng giữ kết nối Internet ổn định.</div>
     </div>
 
     <!-- Success Overlay -->
@@ -526,36 +536,36 @@
 
     <!-- Scanner Modal -->
     <div id="scannerModal" class="overlay">
-        <div class="scanner-modal-content" style="position: relative;">
+        <div class="scanner-modal-content" style="position: relative; min-height: 400px; display: flex; flex-direction: column;">
             <h3 style="margin-bottom: 12px; font-size: 16px; color: var(--text-primary);">Quét mã vạch sản phẩm</h3>
-            <div id="interactive" style="position: relative;">
-                <!-- Scanner Prompt Overlay (Nhập số lượng/tên ngay trong giao diện quét) -->
-                <div id="scannerPromptOverlay" class="scanner-prompt-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(15, 23, 42, 0.95); border-radius: 12px; z-index: 100; flex-direction: column; justify-content: center; align-items: center; padding: 20px; box-sizing: border-box;">
-                    <div style="width: 100%; text-align: left;">
-                        <h4 id="promptTitle" style="color: var(--accent); margin-bottom: 12px; font-size: 15px; font-weight: 600;">Phát hiện sản phẩm</h4>
-                        <p id="promptSubtitle" style="font-size: 12px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.4;"></p>
-                        
-                        <input type="hidden" id="promptBarcode">
-                        
-                        <!-- Dành cho sản phẩm mới: cho phép nhập tên sản phẩm -->
-                        <div id="promptNameContainer" class="form-group" style="display: none; margin-bottom: 12px;">
-                            <label for="promptProductName" style="font-size: 12px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Tên sản phẩm mới:</label>
-                            <input type="text" id="promptProductName" placeholder="Nhập tên sản phẩm..." style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 8px 12px; font-size: 13px;">
-                        </div>
-                        
-                        <div class="form-group" style="margin-bottom: 20px;">
-                            <label for="promptQuantity" style="font-size: 12px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Số lượng nhập:</label>
-                            <input type="number" id="promptQuantity" placeholder="Ví dụ: 10..." min="1" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 8px 12px; font-size: 13px;">
-                        </div>
-                        
-                        <div style="display: flex; gap: 10px;">
-                            <button type="button" class="btn-scan" style="background: var(--success); flex: 1; font-size: 13px; padding: 10px;" onclick="confirmPromptAdd()">Thêm</button>
-                            <button type="button" class="btn-scan" style="background: var(--danger); flex: 1; font-size: 13px; padding: 10px;" onclick="cancelPromptAdd()">Hủy</button>
-                        </div>
+            <div id="interactive"></div>
+            <button type="button" class="btn-scan" style="background: var(--danger); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3); margin-top: 16px;" onclick="stopScan()">❌ Đóng / Hoàn tất</button>
+
+            <!-- Scanner Prompt Overlay (Nhập số lượng/tên ngay trong giao diện quét) -->
+            <div id="scannerPromptOverlay" class="scanner-prompt-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: #1e293b; border-radius: 20px; z-index: 100; flex-direction: column; justify-content: center; padding: 24px; box-sizing: border-box; box-shadow: 0 10px 25px rgba(0,0,0,0.5);">
+                <div style="width: 100%; text-align: left;">
+                    <h4 id="promptTitle" style="color: var(--accent); margin-bottom: 12px; font-size: 16px; font-weight: 600; text-align: center;">Phát hiện sản phẩm</h4>
+                    <p id="promptSubtitle" style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px; line-height: 1.5; background: rgba(255,255,255,0.03); padding: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);"></p>
+                    
+                    <input type="hidden" id="promptBarcode">
+                    
+                    <!-- Dành cho sản phẩm mới: cho phép nhập tên sản phẩm -->
+                    <div id="promptNameContainer" class="form-group" style="display: none; margin-bottom: 12px;">
+                        <label for="promptProductName" style="font-size: 12px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Tên sản phẩm mới:</label>
+                        <input type="text" id="promptProductName" placeholder="Nhập tên sản phẩm..." style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 13px;">
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 24px;">
+                        <label for="promptQuantity" style="font-size: 12px; margin-bottom: 4px; display: block; color: var(--text-secondary);">Số lượng nhập:</label>
+                        <input type="number" id="promptQuantity" placeholder="Ví dụ: 10..." min="1" style="width: 100%; box-sizing: border-box; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: #fff; padding: 10px 12px; font-size: 13px;">
+                    </div>
+                    
+                    <div style="display: flex; gap: 12px;">
+                        <button type="button" class="btn-scan" style="background: var(--success); flex: 1; font-size: 14px; padding: 12px; border-radius: 10px;" onclick="confirmPromptAdd()">Thêm</button>
+                        <button type="button" class="btn-scan" style="background: var(--danger); flex: 1; font-size: 14px; padding: 12px; border-radius: 10px;" onclick="cancelPromptAdd()">Hủy</button>
                     </div>
                 </div>
             </div>
-            <button type="button" class="btn-scan" style="background: var(--danger); box-shadow: 0 4px 15px rgba(244, 63, 94, 0.3); margin-top: 16px;" onclick="stopScan()">❌ Đóng / Hoàn tất</button>
         </div>
     </div>
 
@@ -592,7 +602,8 @@
     </div>
 
     <!-- Quagga2 Barcode Reader -->
-    <script src="https://cdn.jsdelivr.net/npm/@ericblade/quagga2/dist/quagga.min.js"></script>
+    <script src="/mini-app/vendor/quagga.min.js"></script>
+    <script src="/mini-app/barcode-scanner.js"></script>
     <!-- Telegram SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script>
@@ -608,6 +619,10 @@
         let importItems = []; // Danh sách các sản phẩm sẽ nhập kho
         let selectedFiles = []; // Danh sách các tệp đa phương tiện đã chọn
         let isScanningPaused = false; // Trạng thái tạm dừng quét khi hiển thị popup nhập liệu
+
+        function warehouseAuthQuery() {
+            return `initData=${encodeURIComponent(initData)}&chat_id=${encodeURIComponent(chatId)}&ts=${encodeURIComponent(payloadTs)}&sig=${encodeURIComponent(payloadSig)}&action=whimport`;
+        }
 
         document.addEventListener('DOMContentLoaded', () => {
             if (tg) {
@@ -655,7 +670,7 @@
         // Load products list from API
         async function loadProductsList() {
             try {
-                const response = await fetch(`/api/warehouse/products?initData=${encodeURIComponent(initData)}`, {
+                const response = await fetch(`/api/warehouse/products?${warehouseAuthQuery()}`, {
                     headers: { 'x-telegram-init-data': initData }
                 });
                 const res = await response.json();
@@ -712,7 +727,7 @@
             nameInput.value = '';
             
             try {
-                const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?initData=${encodeURIComponent(initData)}`, {
+                const response = await fetch(`/api/products/by-barcode/${encodeURIComponent(barcode)}?${warehouseAuthQuery()}`, {
                     headers: { 'x-telegram-init-data': initData }
                 });
                 const res = await response.json();
@@ -761,12 +776,14 @@
             document.getElementById('scannerPromptOverlay').style.display = 'none';
             isScanningPaused = false;
             lastCodes = [];
+            startScan();
         }
 
         function cancelPromptAdd() {
             document.getElementById('scannerPromptOverlay').style.display = 'none';
             isScanningPaused = false;
             lastCodes = [];
+            startScan();
         }
 
         function addOrUpdateImportItem(barcode, productName, quantity) {
@@ -788,21 +805,18 @@
             const card = document.getElementById('importListCard');
             const tbody = document.getElementById('importItemsTableBody');
             const badge = document.getElementById('itemCountBadge');
-            const btnSubmit = document.getElementById('btnSubmitForm');
 
             tbody.innerHTML = '';
             
             if (importItems.length === 0) {
                 card.style.display = 'none';
-                btnSubmit.disabled = true;
-                btnSubmit.textContent = '📥 XÁC NHẬN NHẬP KHO (0)';
+                validateImportFormState();
                 return;
             }
 
             card.style.display = 'block';
             badge.textContent = `${importItems.length} sản phẩm`;
-            btnSubmit.disabled = false;
-            btnSubmit.textContent = `📥 XÁC NHẬN NHẬP KHO (${importItems.length})`;
+            validateImportFormState();
 
             importItems.forEach((item, index) => {
                 const tr = document.createElement('tr');
@@ -907,8 +921,8 @@
             }
         }
 
-        // Scan barcode using Quagga2 camera reader
-        async function startScan() {
+        // Legacy implementation kept temporarily for rollback reference.
+        async function startScanLegacy() {
             const modal = document.getElementById('scannerModal');
             modal.classList.add('active');
             lastCodes = []; // Reset bộ đệm lọc
@@ -1005,7 +1019,7 @@
             }, 300);
         }
 
-        function stopScan() {
+        function stopScanLegacy() {
             const modal = document.getElementById('scannerModal');
             modal.classList.remove('active');
             
@@ -1030,9 +1044,45 @@
         }
 
         // Xử lý khi chọn file
+        // Optimized shared scanner overrides the legacy implementation above.
+        async function startScan() {
+            const modal = document.getElementById('scannerModal');
+            const viewport = document.getElementById('interactive');
+            modal.classList.add('active');
+            isScanningPaused = false;
+
+            await BarcodeScanner.start({
+                target: viewport,
+                onDetected: (code) => {
+                    if (isScanningPaused) return;
+                    isScanningPaused = true;
+                    showScannerPrompt(code);
+                },
+                onError: (error) => {
+                    alert('Không thể mở camera quét mã vạch: ' + (error.message || error));
+                    stopScan();
+                }
+            });
+        }
+
+        async function stopScan() {
+            document.getElementById('scannerModal').classList.remove('active');
+            const promptOverlay = document.getElementById('scannerPromptOverlay');
+            if (promptOverlay) promptOverlay.style.display = 'none';
+            isScanningPaused = false;
+            await BarcodeScanner.stop();
+        }
+
         function handleFileSelect(event) {
-            const files = Array.from(event.target.files);
-            files.forEach(file => {
+            const files = Array.from(event.target.files).filter(file => file.type.startsWith('image/'));
+            if (files.length !== event.target.files.length) {
+                alert('Chức năng nhập kho chỉ nhận hình ảnh. Vui lòng không chọn video.');
+            }
+            const remainingSlots = Math.max(0, MAX_PROOF_IMAGES - selectedFiles.length);
+            if (files.length > remainingSlots) {
+                alert(`Chỉ được chọn tối đa ${MAX_PROOF_IMAGES} ảnh chứng minh.`);
+            }
+            files.slice(0, remainingSlots).forEach(file => {
                 selectedFiles.push(file);
             });
             renderPreviews();
@@ -1046,7 +1096,7 @@
             renderPreviews();
         }
 
-        // Vẽ ảnh/video xem trước
+        // Vẽ ảnh xem trước
         function renderPreviews() {
             const container = document.getElementById('previewContainer');
             container.innerHTML = '';
@@ -1066,20 +1116,91 @@
                     const img = document.createElement('img');
                     img.src = URL.createObjectURL(file);
                     item.appendChild(img);
-                } else if (file.type.startsWith('video/')) {
-                    const video = document.createElement('video');
-                    video.src = URL.createObjectURL(file);
-                    video.muted = true;
-                    video.autoplay = false;
-                    item.appendChild(video);
                 }
 
                 container.appendChild(item);
             });
+            validateImportFormState();
+        }
+
+        const IMAGE_TARGET_MAX_BYTES = 350 * 1024;
+        const IMAGE_MAX_DIMENSION = 1280;
+        const MAX_PROOF_IMAGES = 6;
+
+        function setLoadingState(title, description) {
+            document.getElementById('loadingTitle').textContent = title;
+            document.getElementById('loadingDesc').textContent = description;
+        }
+
+        function canvasToBlob(canvas, type, quality) {
+            return new Promise((resolve, reject) => {
+                canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error('Không thể nén ảnh')), type, quality);
+            });
+        }
+
+        async function loadImageSource(file) {
+            if ('createImageBitmap' in window) {
+                try { return await createImageBitmap(file, { imageOrientation: 'from-image' }); } catch (_) { /* fallback */ }
+            }
+            return new Promise((resolve, reject) => {
+                const image = new Image();
+                const url = URL.createObjectURL(file);
+                image.onload = () => { URL.revokeObjectURL(url); resolve(image); };
+                image.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Không đọc được ảnh')); };
+                image.src = url;
+            });
+        }
+
+        async function compressImage(file) {
+            if (file.size <= IMAGE_TARGET_MAX_BYTES) return file;
+
+            const source = await loadImageSource(file);
+            const sourceWidth = source.width || source.naturalWidth;
+            const sourceHeight = source.height || source.naturalHeight;
+            const initialScale = Math.min(1, IMAGE_MAX_DIMENSION / Math.max(sourceWidth, sourceHeight));
+            let width = Math.max(1, Math.round(sourceWidth * initialScale));
+            let height = Math.max(1, Math.round(sourceHeight * initialScale));
+            let quality = 0.84;
+            let blob = null;
+
+            for (let attempt = 0; attempt < 12; attempt += 1) {
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const context = canvas.getContext('2d', { alpha: false });
+                context.fillStyle = '#fff';
+                context.fillRect(0, 0, width, height);
+                context.drawImage(source, 0, 0, width, height);
+                blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+
+                if (blob.size <= IMAGE_TARGET_MAX_BYTES) break;
+                if (quality > 0.5) quality -= 0.1;
+                else {
+                    width = Math.max(1, Math.round(width * 0.84));
+                    height = Math.max(1, Math.round(height * 0.84));
+                }
+            }
+
+            if (typeof source.close === 'function') source.close();
+            if (!blob || blob.size >= file.size) return file;
+            const outputName = file.name.replace(/\.[^.]+$/, '') + '_compressed.jpg';
+            return new File([blob], outputName, { type: 'image/jpeg', lastModified: Date.now() });
+        }
+
+        async function compressSelectedMedia(files, percentText, progressBar) {
+            const compressed = [];
+            for (let index = 0; index < files.length; index += 1) {
+                const file = files[index];
+                setLoadingState(`Đang nén minh chứng ${index + 1}/${files.length}...`, file.name);
+                percentText.textContent = 'Đang tối ưu dung lượng';
+                progressBar.style.width = '0%';
+                compressed.push(await compressImage(file));
+            }
+            return compressed;
         }
 
         // Gửi Form nhập kho (sử dụng XMLHttpRequest hỗ trợ progress bar)
-        function handleFormSubmit(event) {
+        async function handleFormSubmit(event) {
             event.preventDefault();
 
             if (importItems.length === 0) {
@@ -1087,14 +1208,42 @@
                 return;
             }
 
+            const branch = document.getElementById('warehouseBranch').value;
+            if (!branch) {
+                alert('⚠️ Vui lòng chọn cơ sở lưu trữ trước khi xác nhận nhập kho!');
+                return;
+            }
+
+            if (selectedFiles.length === 0) {
+                alert('⚠️ Bạn bắt buộc phải chụp hoặc chọn ảnh chứng minh nhập sản phẩm!');
+                return;
+            }
+
             const loadingOverlay = document.getElementById('loadingOverlay');
             const progressBarContainer = document.getElementById('uploadProgressContainer');
             const progressBar = document.getElementById('uploadProgressBar');
             const percentText = document.getElementById('uploadPercentText');
+            const submitButton = document.getElementById('btnSubmitForm');
 
             loadingOverlay.classList.add('active');
+            submitButton.disabled = true;
             progressBarContainer.style.display = 'block';
             percentText.style.display = 'block';
+            progressBar.style.width = '0%';
+            percentText.textContent = '0%';
+            let mediaFiles;
+            try {
+                mediaFiles = await compressSelectedMedia(selectedFiles, percentText, progressBar);
+            } catch (error) {
+                loadingOverlay.classList.remove('active');
+                submitButton.disabled = false;
+                alert('Không thể chuẩn bị ảnh: ' + (error.message || error));
+                return;
+            }
+
+            const totalUploadBytes = mediaFiles.reduce((total, file) => total + file.size, 0);
+            const totalUploadKb = Math.max(1, Math.round(totalUploadBytes / 1024));
+            setLoadingState('Đang tải minh chứng lên...', `${mediaFiles.length} ảnh sau nén: khoảng ${totalUploadKb} KB.`);
             progressBar.style.width = '0%';
             percentText.textContent = '0%';
 
@@ -1104,14 +1253,16 @@
             formData.append('ts', payloadTs);
             formData.append('sig', payloadSig);
             formData.append('action', 'whimport');
+            formData.append('branch', branch);
 
-            selectedFiles.forEach(file => {
+            mediaFiles.forEach(file => {
                 formData.append('media_files', file);
             });
 
             const xhr = new XMLHttpRequest();
             const uploadUrl = `/api/warehouse/import?chat_id=${encodeURIComponent(chatId)}&ts=${encodeURIComponent(payloadTs)}&sig=${encodeURIComponent(payloadSig)}&action=whimport`;
             xhr.open('POST', uploadUrl, true);
+            xhr.timeout = 60000;
 
             if (initData) {
                 xhr.setRequestHeader('x-telegram-init-data', initData);
@@ -1119,16 +1270,30 @@
 
             xhr.upload.onprogress = function (e) {
                 if (e.lengthComputable) {
-                    const percent = Math.round((e.loaded / e.total) * 100);
+                    const rawPercent = Math.round((e.loaded / e.total) * 100);
+                    const percent = Math.min(99, rawPercent);
                     progressBar.style.width = percent + '%';
                     percentText.textContent = percent + '%';
+                    document.getElementById('loadingDesc').textContent = `Đã tải ${percent}% minh chứng lên máy chủ.`;
+                    if (rawPercent >= 100) {
+                        progressBar.style.width = '100%';
+                        percentText.textContent = '100%';
+                        setLoadingState('Đang ghi nhận nhập kho...', 'Minh chứng đã tải xong, hệ thống đang lưu dữ liệu.');
+                    }
                 }
+            };
+
+            xhr.upload.onload = function () {
+                progressBar.style.width = '100%';
+                percentText.textContent = '100%';
+                setLoadingState('Đang ghi nhận nhập kho...', 'Minh chứng đã tải xong, hệ thống đang lưu dữ liệu.');
             };
 
             xhr.onload = function () {
                 loadingOverlay.classList.remove('active');
                 progressBarContainer.style.display = 'none';
                 percentText.style.display = 'none';
+                submitButton.disabled = false;
 
                 if (xhr.status >= 200 && xhr.status < 300) {
                     try {
@@ -1155,7 +1320,16 @@
                 loadingOverlay.classList.remove('active');
                 progressBarContainer.style.display = 'none';
                 percentText.style.display = 'none';
+                submitButton.disabled = false;
                 alert('Lỗi kết nối máy chủ!');
+            };
+
+            xhr.ontimeout = function () {
+                loadingOverlay.classList.remove('active');
+                progressBarContainer.style.display = 'none';
+                percentText.style.display = 'none';
+                submitButton.disabled = false;
+                alert('Tải ảnh quá 60 giây nhưng máy chủ chưa phản hồi. Vui lòng kiểm tra mạng và thử lại; không bấm gửi liên tục để tránh nhập kho trùng.');
             };
 
             xhr.send(formData);
@@ -1168,6 +1342,24 @@
                 window.close();
             }
         }
+
+        function validateImportFormState() {
+            const btnSubmit = document.getElementById('btnSubmitForm');
+            const hasItems = importItems.length > 0;
+
+            if (hasItems) {
+                btnSubmit.disabled = false;
+                btnSubmit.textContent = `📥 XÁC NHẬN NHẬP KHO (${importItems.length})`;
+            } else {
+                btnSubmit.disabled = true;
+                btnSubmit.textContent = `📥 XÁC NHẬN NHẬP KHO (0)`;
+            }
+        }
+
+        // Đăng ký sự kiện thay đổi cơ sở để cập nhật trạng thái nút gửi
+        document.getElementById('warehouseBranch').addEventListener('change', validateImportFormState);
+        // Thiết lập trạng thái ban đầu của nút gửi khi load trang
+        window.addEventListener('DOMContentLoaded', validateImportFormState);
     </script>
 </body>
 

@@ -8,3 +8,24 @@ body {
   -moz-osx-font-smoothing: grayscale;
   background-color: #f3f4f6;
 }
+
+/* Warehouse catalog follows the existing dark Admin shell. */
+.warehouse-catalog .bg-white { background-color: #111827 !important; }
+.warehouse-catalog .bg-slate-50 { background-color: #182235 !important; }
+.warehouse-catalog .bg-slate-100 { background-color: #0f172a !important; }
+.warehouse-catalog .text-slate-950,
+.warehouse-catalog .text-slate-900,
+.warehouse-catalog .text-slate-800 { color: #f8fafc !important; }
+.warehouse-catalog .text-slate-700 { color: #e2e8f0 !important; }
+.warehouse-catalog .text-slate-600,
+.warehouse-catalog .text-slate-500 { color: #94a3b8 !important; }
+.warehouse-catalog .border-slate-200,
+.warehouse-catalog .border-slate-300 { border-color: rgba(148, 163, 184, 0.22) !important; }
+.warehouse-catalog input,
+.warehouse-catalog textarea,
+.warehouse-catalog select { background-color: #0b1220 !important; color: #f8fafc !important; border-color: rgba(148, 163, 184, 0.32) !important; }
+.warehouse-catalog input::placeholder,
+.warehouse-catalog textarea::placeholder { color: #64748b !important; }
+.warehouse-catalog [class~="hover:bg-slate-100"]:hover { background-color: #1e293b !important; }
+.warehouse-catalog .divide-slate-100 > :not([hidden]) ~ :not([hidden]),
+.warehouse-catalog .border-slate-100 { border-color: rgba(148, 163, 184, 0.14) !important; }

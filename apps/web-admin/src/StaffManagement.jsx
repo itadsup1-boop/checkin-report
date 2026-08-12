@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
-import { Users, Search, Edit3, Save, X, UserCheck, Briefcase, Calendar, FileDown } from 'lucide-react';
+import { Users, Search, Edit3, Save, X, UserCheck, Briefcase, Calendar, FileDown, PauseCircle, PlayCircle } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -12,20 +12,26 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [editForm, setEditForm] = useState({});
   const [toast, setToast] = useState(null);
 
-  useEffect(() => { fetchStaff(); }, [selectedGroupId]);
-
-  const fetchStaff = async () => {
-    setLoading(true);
+  const fetchStaff = useCallback(async () => {
     try {
       const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${selectedGroupId}` : '';
       const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
-      setStaff(res.data);
+      setStaff(res.data.map(user => ({
+        ...user,
+        need_report: user.group_need_report ?? user.need_report,
+        current_kpi_target: user.group_kpi_target ?? user.current_kpi_target,
+      })));
     } catch (err) {
       console.error('Lỗi tải danh sách nhân viên:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    const requestId = window.setTimeout(fetchStaff, 0);
+    return () => window.clearTimeout(requestId);
+  }, [fetchStaff]);
 
   const startEdit = (user) => {
     setEditingId(user.id);
@@ -46,12 +52,47 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
 
   const saveEdit = async (id) => {
     try {
-      await axios.put(`${API_URL}/admin/tk-users/${id}`, editForm);
+      await axios.put(`${API_URL}/admin/tk-users/${id}`, {
+        ...editForm,
+        telegram_group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined,
+      });
       showToast('✅ Cập nhật thông tin nhân viên thành công!');
       setEditingId(null);
       fetchStaff();
     } catch (err) {
       showToast('❌ Lỗi khi cập nhật: ' + err.message);
+    }
+  };
+
+  const updateMembershipStatus = async (user) => {
+    if (!selectedGroupId || selectedGroupId === 'ALL') {
+      showToast('⚠️ Vui lòng chọn một nhóm KPI cụ thể trước.');
+      return;
+    }
+
+    const currentStatus = user.membership_status || 'ACTIVE';
+    const nextStatus = currentStatus === 'PAUSED' ? 'ACTIVE' : 'PAUSED';
+    let pauseReason = '';
+    if (nextStatus === 'PAUSED') {
+      pauseReason = window.prompt(`Lý do tạm dừng KPI của ${user.full_name} tại nhóm này:`, 'Tạm chuyển cơ sở');
+      if (pauseReason === null) return;
+      if (!window.confirm(`Tạm dừng ${user.full_name} tại nhóm đang chọn? Lịch sử cũ vẫn được giữ nguyên.`)) return;
+    } else if (!window.confirm(`Kích hoạt lại KPI của ${user.full_name} tại nhóm đang chọn?`)) {
+      return;
+    }
+
+    try {
+      await axios.put(`${API_URL}/admin/tk-users/${user.id}/group-membership`, {
+        telegram_group_id: selectedGroupId,
+        status: nextStatus,
+        pause_reason: pauseReason,
+      });
+      showToast(nextStatus === 'PAUSED'
+        ? '⏸ Đã tạm dừng KPI trong nhóm này.'
+        : '▶️ Đã kích hoạt lại KPI trong nhóm này.');
+      fetchStaff();
+    } catch (err) {
+      showToast('❌ ' + (err.response?.data?.error || err.message));
     }
   };
 
@@ -165,6 +206,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                 <th className="py-4 px-6 font-medium text-center">Số phép / năm</th>
                 <th className="py-4 px-6 font-medium text-center">Miễn Check-in</th>
                 <th className="py-4 px-6 font-medium text-center">Báo cáo KPI</th>
+                <th className="py-4 px-6 font-medium text-center">KPI tại nhóm</th>
                 <th className="py-4 px-6 font-medium text-center">Trạng thái</th>
                 <th className="py-4 px-6 font-medium">Ngày đăng ký</th>
                 <th className="py-4 px-6 font-medium text-right">Hành động</th>
@@ -173,13 +215,13 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
             <tbody className="divide-y divide-white/5 text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center">
+                  <td colSpan="12" className="py-12 text-center">
                     <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
                   </td>
                 </tr>
               ) : filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan="10" className="py-12 text-center text-slate-500">
+                  <td colSpan="12" className="py-12 text-center text-slate-500">
                     {searchTerm ? 'Không tìm thấy nhân viên phù hợp.' : 'Chưa có nhân viên nào đăng ký qua Telegram.'}
                   </td>
                 </tr>
@@ -276,6 +318,20 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                         )}
                       </td>
                       <td className="py-4 px-6 text-center">
+                        {selectedGroupId !== 'ALL' && ['report', 'report_tour'].includes(user.selected_group_role) ? (
+                          (user.membership_status || 'ACTIVE') === 'PAUSED' ? (
+                            <div className="flex flex-col items-center gap-1">
+                              <span className="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-md text-xs border border-amber-500/30 font-semibold">⏸ Tạm dừng</span>
+                              {user.membership_pause_reason && <span className="text-[10px] text-slate-500 max-w-32 truncate" title={user.membership_pause_reason}>{user.membership_pause_reason}</span>}
+                            </div>
+                          ) : (
+                            <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">▶️ Đang nhắc</span>
+                          )
+                        ) : (
+                          <span className="text-slate-500 text-xs">—</span>
+                        )}
+                      </td>
+                      <td className="py-4 px-6 text-center">
                         {isEditing ? (
                           <select
                             className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none cursor-pointer"
@@ -315,12 +371,28 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                             </button>
                           </div>
                         ) : (
-                          <button
-                            onClick={() => startEdit(user)}
-                            className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg text-xs font-medium transition-all border border-cyan-500/20 flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" /> Sửa
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {selectedGroupId !== 'ALL' && ['report', 'report_tour'].includes(user.selected_group_role) && (
+                              <button
+                                onClick={() => updateMembershipStatus(user)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-1 ${
+                                  (user.membership_status || 'ACTIVE') === 'PAUSED'
+                                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
+                                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20'
+                                }`}
+                              >
+                                {(user.membership_status || 'ACTIVE') === 'PAUSED'
+                                  ? <><PlayCircle className="w-3.5 h-3.5" /> Kích hoạt</>
+                                  : <><PauseCircle className="w-3.5 h-3.5" /> Tạm dừng</>}
+                              </button>
+                            )}
+                            <button
+                              onClick={() => startEdit(user)}
+                              className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg text-xs font-medium transition-all border border-cyan-500/20 flex items-center gap-1"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" /> Sửa
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>

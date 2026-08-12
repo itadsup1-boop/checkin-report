@@ -16,12 +16,14 @@ import { initLogger, loggerMiddleware, setupLogRotation, overrideGlobals } from 
 import { setupKpiBot } from './kpi_features.js';
 import { reportWizard } from './reportWizard.js';
 import { setupWizard } from './setupWizard.js';
-import { requireGroupRole, sendMessageToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
+import { requireGroupRole, sendMessageToRoleGroup, sendMediaGroupToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
 import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
 import { syncAllTimekeepSheets } from './syncTimekeepSheets.js';
 import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder } from './googleDrive.js';
 import { getCustomerDocForGroup, getDocById } from './sheetManager.js';
 import multer from 'multer';
+import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
+import { registerWarehouseModule } from './src/modules/warehouse/index.js';
 
 // Load environment variables
 dotenv.config({ override: true });
@@ -261,30 +263,61 @@ async function authenticateTelegramMiniApp(req, res, next) {
                 return res.status(403).json({ success: false, message: 'Nhóm Telegram này chưa được đăng ký vào hệ thống.' });
             }
 
+            // Chạy kiểm tra thành viên với timeout 2.5s và cơ chế fail-open khi lỗi mạng
             try {
-                const botMe = await bot.telegram.getMe();
-                const botMember = await bot.telegram.getChatMember(groupId.toString(), botMe.id);
-                if (!['member', 'administrator', 'creator'].includes(botMember.status)) {
+                const runWithTimeout = (promise, ms) => {
+                    const timeout = new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('TIMEOUT')), ms)
+                    );
+                    return Promise.race([promise, timeout]);
+                };
+
+                const checkMembership = async () => {
+                    const botMe = await bot.telegram.getMe();
+                    const botMember = await bot.telegram.getChatMember(groupId.toString(), botMe.id);
+                    if (!['member', 'administrator', 'creator'].includes(botMember.status)) {
+                        throw new Error('BOT_LEFT_GROUP');
+                    }
+
+                    const userMember = await bot.telegram.getChatMember(groupId.toString(), parseInt(verifiedId, 10));
+                    if (['left', 'kicked'].includes(userMember.status)) {
+                        throw new Error('USER_NOT_MEMBER');
+                    }
+                };
+
+                await runWithTimeout(checkMembership(), 2500);
+            } catch (err) {
+                console.warn('[Security] Membership verification skipped/failed:', err.message);
+                
+                if (err.message === 'BOT_LEFT_GROUP') {
                     return res.status(403).json({ success: false, message: 'Bot đã không còn nằm trong nhóm này.' });
                 }
-
-                const userMember = await bot.telegram.getChatMember(groupId.toString(), parseInt(verifiedId, 10));
-                if (['left', 'kicked'].includes(userMember.status)) {
+                if (err.message === 'USER_NOT_MEMBER') {
                     return res.status(403).json({ success: false, message: 'Bạn không phải là thành viên nhóm này.' });
                 }
-            } catch (err) {
-                console.error('[Security] Membership verification failed (Fail Closed):', err.message);
-                const errMsg = err.message || '';
-                const errDesc = err.response?.description || '';
                 
-                // If Telegram cannot resolve the ID (PARTICIPANT_ID_INVALID), bypass because signature is already verified.
-                if (errMsg.includes('PARTICIPANT_ID_INVALID') || errDesc.includes('PARTICIPANT_ID_INVALID')) {
-                    console.warn(`[Security] getChatMember returned PARTICIPANT_ID_INVALID for user=${verifiedId} group=${groupId}, bypassing block.`);
+                // Nếu là lỗi TIMEOUT hoặc lỗi kết nối mạng Telegram, ta cho phép bỏ qua (vì đã xác thực chữ ký Signed Payload ở trên)
+                const isNetworkError = err.message === 'TIMEOUT' || 
+                                       err.code === 'ETIMEDOUT' || 
+                                       err.code === 'ECONNRESET' || 
+                                       err.code === 'ENOTFOUND' || 
+                                       err.code === 'EAI_AGAIN' ||
+                                       err.message.includes('connect ETIMEDOUT') ||
+                                       err.message.includes('read ECONNRESET');
+
+                if (isNetworkError) {
+                    console.warn(`[Security] Telegram API network issue (${err.message}). Bypassing membership check as signature is valid.`);
                 } else {
-                    return res.status(403).json({
-                        success: false,
-                        message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
-                    });
+                    const errMsg = err.message || '';
+                    const errDesc = err.response?.description || '';
+                    if (errMsg.includes('PARTICIPANT_ID_INVALID') || errDesc.includes('PARTICIPANT_ID_INVALID')) {
+                        console.warn(`[Security] getChatMember returned PARTICIPANT_ID_INVALID, bypassing.`);
+                    } else {
+                        return res.status(403).json({
+                            success: false,
+                            message: 'Xác thực thành viên nhóm thất bại: ' + (err.response?.description || err.message)
+                        });
+                    }
                 }
             }
         }
@@ -328,7 +361,7 @@ botApp.use('/api/timekeep', async (req, res, next) => {
     if (groupId) {
         const role = await getGroupRole(groupId);
         const isRegistration = req.path === '/register';
-        const allowedRoles = isRegistration ? ['timekeep', 'report', 'report_tour', 'customer'] : ['timekeep'];
+        const allowedRoles = isRegistration ? ['timekeep', 'report', 'report_tour', 'customer', 'warehouse'] : ['timekeep'];
         if (!allowedRoles.includes(role)) {
             return res.status(403).json({
                 success: false,
@@ -363,16 +396,95 @@ botApp.post('/api/timekeep/register', async (req, res) => {
         }
 
         // Get or create group in telegram_groups
-        let groupRes = await pool.query('SELECT id FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
+        let groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
         let groupId;
+        let groupRecord;
         if (groupRes.rows.length > 0) {
             groupId = groupRes.rows[0].id;
+            groupRecord = groupRes.rows[0];
         } else {
             const insertGroup = await pool.query(
-                'INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2) RETURNING id',
+                'INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2) RETURNING *',
                 [telegram_group_id, 'Nhóm làm việc']
             );
             groupId = insertGroup.rows[0].id;
+            groupRecord = insertGroup.rows[0];
+        }
+
+        // Nhóm KPI dùng tài khoản nhân viên toàn cục + membership theo từng nhóm.
+        // Đăng ký MEDITECH không tạo bản sao và không kích hoạt lại UK đang PAUSED.
+        if (KPI_GROUP_ROLES.includes(groupRecord.bot_role)) {
+            const client = await pool.connect();
+            try {
+                await client.query('BEGIN');
+                let employeeResult = await client.query(
+                    'SELECT * FROM employees WHERE telegram_id = $1 ORDER BY created_at ASC LIMIT 1 FOR UPDATE',
+                    [String(telegram_id)]
+                );
+
+                if (employeeResult.rows.length === 0) {
+                    employeeResult = await client.query(
+                        `SELECT * FROM employees
+                         WHERE group_id = $1
+                           AND LOWER(TRIM(full_name)) = LOWER(TRIM($2))
+                           AND (telegram_id IS NULL OR telegram_id = '')
+                         ORDER BY created_at ASC
+                         LIMIT 1
+                         FOR UPDATE`,
+                        [groupId, full_name]
+                    );
+                }
+
+                let employee;
+                if (employeeResult.rows.length > 0) {
+                    employee = employeeResult.rows[0];
+                    if (employee.is_active === false) {
+                        await client.query('ROLLBACK');
+                        return res.status(403).json({ success: false, message: 'Tài khoản đã bị vô hiệu hóa toàn hệ thống. Vui lòng liên hệ Admin.' });
+                    }
+                    const updated = await client.query(
+                        `UPDATE employees
+                         SET telegram_id = $1, telegram_username = $2,
+                             full_name = $3, role = COALESCE(NULLIF(role, ''), $4)
+                         WHERE id = $5
+                         RETURNING *`,
+                        [String(telegram_id), telegram_username || '', full_name, role, employee.id]
+                    );
+                    employee = updated.rows[0];
+                } else {
+                    const employeeCode = `EMP-${telegram_id}-${Date.now().toString().slice(-4)}`;
+                    const inserted = await client.query(
+                        `INSERT INTO employees
+                            (group_id, telegram_group_id, telegram_id, telegram_username,
+                             full_name, role, employee_code, department, position,
+                             current_kpi_target, need_report, is_active)
+                         VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, 40, TRUE, TRUE)
+                         RETURNING *`,
+                        [groupId, String(telegram_id), telegram_username || '', full_name, role, employeeCode, 'Chưa xếp', 'Nhân viên']
+                    );
+                    employee = inserted.rows[0];
+                }
+
+                const registration = await registerEmployeeInKpiGroup(client, employee, telegram_group_id, 'mini_app_registration');
+                if (!registration.ok) {
+                    await client.query('ROLLBACK');
+                    if (registration.reason === 'PAUSED') {
+                        return res.status(409).json({
+                            success: false,
+                            message: 'Bạn đang được Admin tạm dừng KPI trong nhóm này. Bạn vẫn có thể đăng ký và hoạt động tại nhóm KPI khác.'
+                        });
+                    }
+                    return res.status(400).json({ success: false, message: 'Nhóm này không phải nhóm KPI đang hoạt động.' });
+                }
+
+                await client.query('COMMIT');
+                return res.json({ success: true, message: 'Đăng ký hoạt động KPI trong nhóm thành công!' });
+            } catch (error) {
+                await client.query('ROLLBACK');
+                throw error;
+            } finally {
+                client.release();
+            }
         }
 
         // Check if user already exists in employees for this group
@@ -442,30 +554,35 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
         }
 
         // 1. Get user details
-        let userRes;
-        if (chat_id) {
-            userRes = await pool.query(
-                `SELECT u.*, g.schedule_registration_open FROM employees u 
-                 JOIN telegram_groups g ON u.group_id = g.id 
-                 WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-                [telegram_id, chat_id]
-            );
-        } else {
-            userRes = await pool.query(
-                `SELECT u.*, g.schedule_registration_open FROM employees u
-                 LEFT JOIN telegram_groups g ON u.group_id = g.id
-                 WHERE u.telegram_id = $1 LIMIT 1`,
-                [telegram_id]
-            );
-        }
-
-        if (userRes.rows.length === 0) {
+        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (employeeRes.rows.length === 0) {
             return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
         }
+        const user = employeeRes.rows[0];
 
-        const user = userRes.rows[0];
-        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
+        const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
         user.is_admin = isAdmin;
+
+        let schedule_registration_open = true;
+        if (chat_id) {
+            const groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [chat_id]);
+            if (groupRes.rows.length > 0) {
+                const groupRecord = groupRes.rows[0];
+                schedule_registration_open = groupRecord.schedule_registration_open;
+                
+                if (!isAdmin && user.group_id !== groupRecord.id) {
+                    return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' });
+                }
+            } else if (!isAdmin) {
+                return res.status(404).json({ success: false, message: 'Nhóm Telegram này chưa được đăng ký trong hệ thống!' });
+            }
+        } else if (user.group_id) {
+            const groupRes = await pool.query('SELECT schedule_registration_open FROM telegram_groups WHERE id = $1 LIMIT 1', [user.group_id]);
+            if (groupRes.rows.length > 0) {
+                schedule_registration_open = groupRes.rows[0].schedule_registration_open;
+            }
+        }
+        user.schedule_registration_open = schedule_registration_open;
 
         // Determine target user if admin is viewing someone else's schedule
         let targetUser = user;
@@ -582,7 +699,7 @@ botApp.post('/api/timekeep/schedule/toggle', async (req, res) => {
         const caller = callerRes.rows[0];
         const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
 
-        if (!isAdmin && caller.role !== 'Quản lý') {
+        if (!isAdmin && !['Quản lý', 'Quản lý kho'].includes(caller.role)) {
             return res.status(403).json({ success: false, message: 'Bạn không có quyền thao tác tính năng này!' });
         }
 
@@ -608,28 +725,35 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dữ liệu không hợp lệ!' });
         }
 
-        let callerRes;
+        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (employeeRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Tài khoản yêu cầu không tồn tại trong hệ thống!' });
+        }
+        const caller = employeeRes.rows[0];
+
+        const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || caller.role === 'admin';
+        
+        let schedule_registration_open = true;
         if (chat_id) {
-            callerRes = await pool.query(
-                `SELECT u.*, g.schedule_registration_open FROM employees u 
-                 JOIN telegram_groups g ON u.group_id = g.id 
-                 WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-                [telegram_id, chat_id]
-            );
-        } else {
-            callerRes = await pool.query(
-                `SELECT u.*, g.schedule_registration_open FROM employees u
-                 LEFT JOIN telegram_groups g ON u.group_id = g.id
-                 WHERE u.telegram_id = $1`,
-                [telegram_id]
-            );
+            const groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [chat_id]);
+            if (groupRes.rows.length > 0) {
+                const groupRecord = groupRes.rows[0];
+                schedule_registration_open = groupRecord.schedule_registration_open;
+                
+                if (!isAdmin && caller.group_id !== groupRecord.id) {
+                    return res.status(404).json({ success: false, message: 'Tài khoản yêu cầu không tồn tại trong nhóm này!' });
+                }
+            } else if (!isAdmin) {
+                return res.status(404).json({ success: false, message: 'Nhóm Telegram này chưa được đăng ký trong hệ thống!' });
+            }
+        } else if (caller.group_id) {
+            const groupRes = await pool.query('SELECT schedule_registration_open FROM telegram_groups WHERE id = $1 LIMIT 1', [caller.group_id]);
+            if (groupRes.rows.length > 0) {
+                schedule_registration_open = groupRes.rows[0].schedule_registration_open;
+            }
         }
-        if (callerRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Tài khoản yêu cầu không tồn tại trong nhóm này!' });
-        }
-        const caller = callerRes.rows[0];
-        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
-        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [telegram_id]);
+        caller.schedule_registration_open = schedule_registration_open;
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role IN ('Quản lý', 'Quản lý kho') LIMIT 1", [telegram_id]);
         const isManager = managerCheckRes.rows.length > 0;
 
         // Identify target user
@@ -948,21 +1072,25 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
         // 1. Get user details
         console.log(`[DEBUG API XIN NGHỈ] Đang query DB employees...`);
         let userRes;
+        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (employeeRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
+        }
+        const user = employeeRes.rows[0];
+
+        const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
+
         if (chat_id) {
-            userRes = await pool.query(
-                `SELECT u.* FROM employees u 
-                 JOIN telegram_groups g ON u.group_id = g.id 
-                 WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-                [telegram_id, chat_id]
-            );
-        } else {
-            userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1', [telegram_id]);
+            const groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [chat_id]);
+            if (groupRes.rows.length > 0) {
+                const groupRecord = groupRes.rows[0];
+                if (!isAdmin && user.group_id !== groupRecord.id) {
+                    return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' });
+                }
+            } else if (!isAdmin) {
+                return res.status(404).json({ success: false, message: 'Nhóm Telegram này chưa được đăng ký trong hệ thống!' });
+            }
         }
-        console.log(`[DEBUG API XIN NGHỈ] Result DB: found ${userRes.rows.length} rows`);
-        if (userRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' });
-        }
-        const user = userRes.rows[0];
 
         // 2. Identify group
         let groupId = user.group_id;
@@ -1080,21 +1208,25 @@ botApp.post('/api/timekeep/checkin/save', uploadCheckin.single('video_file'), as
         }
 
         // 1. Get user details
-        let userRes;
+        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
+        if (employeeRes.rows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
+        }
+        const user = employeeRes.rows[0];
+
+        const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
+
         if (chat_id) {
-            userRes = await pool.query(
-                `SELECT u.* FROM employees u 
-                 JOIN telegram_groups g ON u.group_id = g.id 
-                 WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-                [telegram_id, chat_id]
-            );
-        } else {
-            userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1', [telegram_id]);
+            const groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [chat_id]);
+            if (groupRes.rows.length > 0) {
+                const groupRecord = groupRes.rows[0];
+                if (!isAdmin && user.group_id !== groupRecord.id) {
+                    return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' });
+                }
+            } else if (!isAdmin) {
+                return res.status(404).json({ success: false, message: 'Nhóm Telegram này chưa được đăng ký trong hệ thống!' });
+            }
         }
-        if (userRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' });
-        }
-        const user = userRes.rows[0];
 
         // 2. Identify group
         let groupId = user.group_id;
@@ -1407,6 +1539,9 @@ async function startHandler(ctx) {
                         reply_markup: {
                             inline_keyboard: [
                                 [
+                                    { text: '👤 Đăng ký tài khoản', url: registerUrl }
+                                ],
+                                [
                                     { text: '📥 Nhập kho', url: whImportUrl },
                                     { text: '📤 Xuất kho', url: whExportUrl }
                                 ],
@@ -1618,7 +1753,17 @@ async function startHandler(ctx) {
                 const groupId = payloadParts[1];
                 const ts = payloadParts[2];
                 const sig = payloadParts[3];
-                const formUrl = `${miniAppUrl}/mini-app/warehouse_export.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whexport`;
+                const warehouseConfig = await pool.query(
+                    `SELECT warehouse_service_order_enabled
+                     FROM telegram_groups
+                     WHERE telegram_group_id = $1 AND bot_role = 'warehouse'
+                     LIMIT 1`,
+                    [groupId]
+                );
+                const exportPage = warehouseConfig.rows[0]?.warehouse_service_order_enabled
+                    ? 'warehouse_order.html'
+                    : 'warehouse_export.html';
+                const formUrl = `${miniAppUrl}/mini-app/${exportPage}?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whexport`;
 
                 await ctx.reply(
                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
@@ -1700,7 +1845,7 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
 
         // 1. Verify clicker is Admin or Manager
         const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [clickerId]);
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role IN ('Quản lý', 'Quản lý kho') LIMIT 1", [clickerId]);
         const isManager = managerCheckRes.rows.length > 0;
 
         if (!isAdmin && !isManager) {
@@ -1900,7 +2045,7 @@ bot.action(/^excuse_penalty_(\d+)$/, async (ctx) => {
         const clickerId = ctx.from.id.toString();
 
         const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role = 'Quản lý' LIMIT 1", [clickerId]);
+        const managerCheckRes = await pool.query("SELECT 1 FROM employees WHERE telegram_id = $1 AND role IN ('Quản lý', 'Quản lý kho') LIMIT 1", [clickerId]);
         const isManager = managerCheckRes.rows.length > 0;
 
         if (!isAdmin && !isManager) {
@@ -1985,8 +2130,7 @@ cron.schedule('*/1 * * * *', async () => {
             for (const shift of shifts) {
                 // Parse giờ bắt đầu ca
                 const shiftStartMoment = moment(shift.startStr, 'HH:mm:ss');
-                const isPmWork = shift.types.includes('HALF_DAY_PM_WORK');
-                const remindMinutes = isPmWork ? 5 : 3;
+                const remindMinutes = 5;
                 const remindTime = shiftStartMoment.clone().subtract(remindMinutes, 'minutes').format('HH:mm');
                 const lateTime = shiftStartMoment.clone().add(1, 'minutes').format('HH:mm');
 
@@ -2181,13 +2325,13 @@ cron.schedule('*/1 * * * *', async () => {
                     } else {
                         if (lateMinutes < 15) {
                             amount = 20000;
-                            reason = `Đi muộn lần ${prevCount + 1} trong tháng (${lateMinutes} phút < 15p)`;
+                            reason = `Đi muộn lần ${prevCount + 1} trong tháng (${lateMinutes} phút - dưới 15p)`;
                         } else if (lateMinutes < 90) {
                             amount = 20000 + (lateMinutes - 15) * 2000;
                             reason = `Đi muộn lần ${prevCount + 1} trong tháng (${lateMinutes} phút - phạt 2k/phút từ phút 16)`;
                         } else {
                             amount = 200000;
-                            reason = `Đi muộn lần ${prevCount + 1} trong tháng (${lateMinutes} phút >= 90p)`;
+                            reason = `Đi muộn lần ${prevCount + 1} trong tháng (${lateMinutes} phút - từ 90p trở lên)`;
                         }
                     }
 
@@ -2406,15 +2550,21 @@ botApp.get('/api/timekeep/personal-stats', async (req, res) => {
         }
         const group = groupRes.rows[0];
 
-        // 2. Tìm nhân sự trong nhóm
-        const userRes = await pool.query(
-            'SELECT id, full_name, role FROM employees WHERE telegram_id = $1 AND group_id = $2',
-            [telegram_id, group.id]
+        // 2. Tìm nhân sự
+        const employeeRes = await pool.query(
+            'SELECT id, full_name, role, group_id FROM employees WHERE telegram_id = $1 LIMIT 1',
+            [telegram_id]
         );
-        if (userRes.rows.length === 0) {
+        if (employeeRes.rows.length === 0) {
+            return res.status(404).json({ error: 'Tài khoản chưa được đăng ký trong hệ thống' });
+        }
+        const user = employeeRes.rows[0];
+
+        const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
+
+        if (!isAdmin && user.group_id !== group.id) {
             return res.status(404).json({ error: 'Tài khoản chưa được đăng ký trong nhóm này' });
         }
-        const user = userRes.rows[0];
 
         // 3. Tính toán khoảng thời gian cho tuần hiện tại và tuần kế tiếp theo giờ UTC+7
         const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
@@ -3237,6 +3387,82 @@ const escapeHtml = (str) => {
         .replace(/'/g, '&#039;');
 };
 
+const CUSTOMER_REPLY_ROLES = ['customer', 'customer_record'];
+const TELEGRAM_BOT_DOWNLOAD_LIMIT = 20 * 1024 * 1024;
+const customerReplyAlbumTargets = new Map();
+const customerReplyAckTimers = new Map();
+const customerRecordInitializationJobs = new Map();
+
+function buildCustomerRecordNotification(data, recordId, replyMode = false) {
+    const displayDate = moment().utcOffset(7).format('DD/MM/YYYY HH:mm');
+    const customerTypeDisplay = data.customerType === 'NEW' ? 'Khách mới ☘️' : 'Khách cũ 🔁';
+
+    let message = `☘️ <b>GHI NHẬN THÔNG TIN KHÁCH HÀNG</b> ☘️\n\n` +
+        `📅 <b>Ngày ghi nhận:</b> ${displayDate}\n` +
+        `👤 <b>Nhân viên báo cáo:</b> ${escapeHtml(data.employeeName)}\n` +
+        `👩‍💼 <b>Tư vấn:</b> ${escapeHtml(data.consultant)}\n` +
+        `📊 <b>Loại khách:</b> ${customerTypeDisplay}\n` +
+        `👤 <b>Tên khách hàng:</b> ${escapeHtml(data.customerName)}\n` +
+        `📞 <b>Điện thoại:</b> ${escapeHtml(data.phone)}\n` +
+        `📍 <b>Địa chỉ:</b> ${escapeHtml(data.address) || 'Không có'}\n` +
+        `🛠️ <b>Dịch vụ:</b> ${escapeHtml(data.service)}\n` +
+        `🎁 <b>Tặng kèm:</b> ${escapeHtml(data.gift) || 'Không có'}\n` +
+        `💸 <b>Tổng Bill:</b> ${data.billAmount.toLocaleString('vi-VN')}đ\n` +
+        `💳 <b>Đã thanh toán:</b> ${data.paidAmount.toLocaleString('vi-VN')}đ\n` +
+        `🚨 <b>Còn nợ:</b> ${data.debtAmount.toLocaleString('vi-VN')}đ\n` +
+        `🧑‍⚕️ <b>Người thực hiện:</b> ${escapeHtml(data.operator)}\n` +
+        `🛡️ <b>Bảo hành:</b> ${escapeHtml(data.warranty) || 'Không có'}`;
+
+    if (replyMode) {
+        message += `\n\n📎 <b>GỬI ẢNH/VIDEO BẰNG TELEGRAM</b>\n` +
+            `Reply trực tiếp tin nhắn này rồi gửi ảnh/video của đúng khách hàng. Bot sẽ tiếp nhận từng file và tự đồng bộ Google Drive trong nền.\n` +
+            `⚠️ Video cần được Telegram nén xuống dưới 20 MB.\n` +
+            `🆔 <b>Mã hồ sơ:</b> <code>CR:${recordId}</code>`;
+    }
+
+    return message;
+}
+
+function getCustomerReplyRecordId(message) {
+    const match = String(message || '').match(/CR:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+    return match ? match[1] : null;
+}
+
+function scheduleCustomerReplyAcknowledgement(ctx, recordId) {
+    const mediaGroupId = ctx.message.media_group_id;
+    if (!mediaGroupId) {
+        return ctx.reply(
+            '✅ Đã tiếp nhận file. Bot đang đồng bộ lên Google Drive trong nền; dấu ✅ sẽ xuất hiện trên file khi hoàn tất.',
+            { reply_to_message_id: ctx.message.message_id }
+        ).catch(() => {});
+    }
+
+    const key = `${ctx.chat.id}:${recordId}:${mediaGroupId}`;
+    const current = customerReplyAckTimers.get(key) || { count: 0, timer: null };
+    current.count += 1;
+    if (current.timer) clearTimeout(current.timer);
+    current.timer = setTimeout(() => {
+        customerReplyAckTimers.delete(key);
+        ctx.telegram.sendMessage(
+            ctx.chat.id,
+            `✅ Đã tiếp nhận ${current.count} ảnh/video. Bot đang đồng bộ lên Google Drive trong nền; từng file sẽ có dấu ✅ khi hoàn tất.`,
+            { reply_to_message_id: ctx.message.message_id }
+        ).catch(() => {});
+    }, 1200);
+    customerReplyAckTimers.set(key, current);
+}
+
+function inferCustomerMediaExtension(mimeType, mediaType) {
+    const known = {
+        'image/jpeg': '.jpg',
+        'image/png': '.png',
+        'image/webp': '.webp',
+        'video/mp4': '.mp4',
+        'video/quicktime': '.mov'
+    };
+    return known[mimeType] || (mediaType === 'video' ? '.mp4' : '.jpg');
+}
+
 // Route nhận thông tin từ Mini App Form và lưu trữ
 botApp.post('/api/customer/save', authenticateTelegramMiniApp, uploadCustomerMedia.array('media_files', 20), async (req, res) => {
     try {
@@ -3254,8 +3480,11 @@ botApp.post('/api/customer/save', authenticateTelegramMiniApp, uploadCustomerMed
             paid_amount,
             debt_amount,
             operator,
-            warranty
+            warranty,
+            media_mode
         } = req.body;
+
+        const useTelegramReply = media_mode === 'telegram_reply';
 
         if (!telegram_id) {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin Telegram ID!' });
@@ -3277,36 +3506,26 @@ botApp.post('/api/customer/save', authenticateTelegramMiniApp, uploadCustomerMed
                 groupRecord = groupRes.rows[0];
             }
         }
-        const dbGroupId = groupRecord ? groupRecord.id : null;
 
-        // 3. Xử lý Google Drive (Tải ảnh/video lên thư mục của riêng khách hàng)
-        const parentFolderId = (groupRecord && groupRecord.customer_drive_folder_id) || process.env.CUSTOMER_DRIVE_PARENT_FOLDER_ID || '1efnVoB6tQXrHKAeTcm3lcqzJqBoGg3QF';
-        
-        // Tạo hoặc tìm thư mục con đặt tên theo SĐT của khách hàng
-        const cleanPhone = phone.replace(/[^0-9+]/g, '');
-        const customerFolder = await getOrCreateCustomerFolder(parentFolderId, cleanPhone);
-        const driveFolderLink = customerFolder.webViewLink;
-
-        // Tải các file tạm từ Multer lên thư mục vừa tạo (không xóa file tạm ngay để gửi lên Telegram)
-        const mediaUrls = [];
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                const buffer = fs.readFileSync(file.path);
-                const uploadResult = await uploadToDrive(buffer, file.originalname, file.mimetype, customerFolder.id);
-                mediaUrls.push(uploadResult.webViewLink);
-            }
+        if (!groupRecord || !CUSTOMER_REPLY_ROLES.includes(groupRecord.bot_role) || groupRecord.is_active !== true || groupRecord.is_deleted === true) {
+            return res.status(403).json({
+                success: false,
+                message: 'Chức năng hồ sơ khách hàng không được bật trong nhóm này.'
+            });
         }
+        const dbGroupId = groupRecord ? groupRecord.id : null;
 
         const currentDate = moment().utcOffset(7).format('YYYY-MM-DD');
         const billVal = parseFloat(bill_amount) || 0;
         const paidVal = parseFloat(paid_amount) || 0;
         const debtVal = parseFloat(debt_amount) || 0;
 
-        // 4. Ghi nhận vào cơ sở dữ liệu (Lưu bản ghi gốc không escape để bảo toàn dữ liệu)
-        await pool.query(
+        // 3. Ghi nhận vào cơ sở dữ liệu ngay lập tức để phản hồi nhanh
+        const insertRes = await pool.query(
             `INSERT INTO public.customer_records 
              (group_id, creator_employee_id, record_date, consultant, customer_type, customer_name, address, phone, service, gift, bill_amount, paid_amount, debt_amount, operator, warranty, drive_folder_link, media_urls)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, NULL, NULL)
+             RETURNING id`,
             [
                 dbGroupId,
                 user.id,
@@ -3322,90 +3541,448 @@ botApp.post('/api/customer/save', authenticateTelegramMiniApp, uploadCustomerMed
                 paidVal,
                 debtVal,
                 operator,
-                warranty || null,
-                driveFolderLink,
-                JSON.stringify(mediaUrls)
+                warranty || null
             ]
         );
+        const recordId = insertRes.rows[0].id;
 
-        // 5. Gửi thông báo tức thời lên nhóm Telegram (Dưới dạng Album ảnh/video đính kèm nội dung báo cáo làm caption)
-        if (tgGroupId) {
-            const displayDate = moment().utcOffset(7).format('DD/MM/YYYY HH:mm');
-            const custTypeDisplay = customer_type === 'NEW' ? 'Khách mới ☘️' : 'Khách cũ 🔁';
-
-            const notifyMsg = `☘️ <b>GHI NHẬN THÔNG TIN KHÁCH HÀNG</b> ☘️\n\n` +
-                `📅 <b>Ngày ghi nhận:</b> ${displayDate}\n` +
-                `👤 <b>Nhân viên báo cáo:</b> ${escapeHtml(user.full_name)}\n` +
-                `👩‍💼 <b>Tư vấn:</b> ${escapeHtml(consultant)}\n` +
-                `📊 <b>Loại khách:</b> ${custTypeDisplay}\n` +
-                `👤 <b>Tên khách hàng:</b> ${escapeHtml(customer_name)}\n` +
-                `📞 <b>Điện thoại:</b> ${escapeHtml(phone)}\n` +
-                `📍 <b>Địa chỉ:</b> ${escapeHtml(address) || 'Không có'}\n` +
-                `🛠️ <b>Dịch vụ:</b> ${escapeHtml(service)}\n` +
-                `🎁 <b>Tặng kèm:</b> ${escapeHtml(gift) || 'Không có'}\n` +
-                `💸 <b>Tổng Bill:</b> ${billVal.toLocaleString('vi-VN')}đ\n` +
-                `💳 <b>Đã thanh toán:</b> ${paidVal.toLocaleString('vi-VN')}đ\n` +
-                `🚨 <b>Còn nợ:</b> ${debtVal.toLocaleString('vi-VN')}đ\n` +
-                `🧑‍⚕️ <b>Người thực hiện:</b> ${escapeHtml(operator)}\n` +
-                `🛡️ <b>Bảo hành:</b> ${escapeHtml(warranty) || 'Không có'}`;
-
-            if (req.files && req.files.length > 0) {
-                const mediaGroup = req.files.slice(0, 10).map((file, idx) => {
-                    const isVideo = file.mimetype.startsWith('video');
-                    const mediaObj = {
-                        type: isVideo ? 'video' : 'photo',
-                        media: { source: file.path }
-                    };
-                    if (idx === 0) {
-                        mediaObj.caption = notifyMsg;
-                        mediaObj.parse_mode = 'HTML';
-                    }
-                    return mediaObj;
-                });
-                await bot.telegram.sendMediaGroup(tgGroupId, mediaGroup);
-            } else {
-                await bot.telegram.sendMessage(tgGroupId, notifyMsg, { parse_mode: 'HTML', disable_web_page_preview: true });
-            }
-        }
-
-        // 6. Xóa các file tạm sau khi đã hoàn tất gửi lên Telegram
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                try {
-                    fs.unlinkSync(file.path);
-                } catch (err) {
-                    console.error('Lỗi khi xóa tệp tạm:', err);
-                }
-            }
-        }
-
-        // 7. Đồng bộ lên Google Sheet của nhóm
-        syncCustomerRecordToSheet(tgGroupId, {
-            date: moment().utcOffset(7).format('DD/MM/YYYY'),
+        const notificationData = {
             employeeName: user.full_name,
-            employeeCode: user.employee_code || '',
             consultant,
-            customerType: customer_type === 'NEW' ? 'Khách mới' : 'Khách cũ',
+            customerType: customer_type,
             customerName: customer_name,
-            address,
             phone,
+            address,
             service,
             gift,
             billAmount: billVal,
             paidAmount: paidVal,
             debtAmount: debtVal,
             operator,
-            warranty,
-            driveFolderLink
-        }).catch(err => console.error('[Sheet Sync Error] Lỗi khi đồng bộ khách hàng lên Google Sheet:', err));
+            warranty
+        };
 
-        res.json({ success: true, message: 'Ghi nhận thông tin khách hàng thành công!' });
+        // Với lựa chọn Reply Telegram, tạo tin nhắn đích trước khi đóng Mini App
+        // để nhân viên luôn có đúng hồ sơ mà họ cần reply.
+        if (useTelegramReply) {
+            try {
+                await bot.telegram.sendMessage(
+                    tgGroupId,
+                    buildCustomerRecordNotification(notificationData, recordId, true),
+                    { parse_mode: 'HTML', disable_web_page_preview: true }
+                );
+            } catch (telegramError) {
+                await pool.query('DELETE FROM public.customer_records WHERE id = $1', [recordId]).catch(() => {});
+                console.error('[Customer Reply Mode] Không thể tạo tin nhắn nhận media:', telegramError);
+                return res.status(502).json({
+                    success: false,
+                    message: 'Không thể tạo tin nhắn nhận ảnh/video trong nhóm. Vui lòng thử lại.'
+                });
+            }
+        }
+
+        // Phản hồi thành công ngay lập tức cho client!
+        res.json({
+            success: true,
+            media_mode: useTelegramReply ? 'telegram_reply' : 'mini_app',
+            message: useTelegramReply
+                ? 'Đã tạo hồ sơ. Vui lòng quay lại nhóm và reply ảnh/video vào tin nhắn Bot vừa gửi.'
+                : 'Ghi nhận thông tin khách hàng thành công!'
+        });
+
+        // CHẠY TOÀN BỘ PHẦN UPLOAD DRIVE, SEND TELEGRAM, VÀ SYNC SHEET TRONG BACKGROUND
+        const customerInitializationJob = (async () => {
+            const parentFolderId = (groupRecord && groupRecord.customer_drive_folder_id) || process.env.CUSTOMER_DRIVE_PARENT_FOLDER_ID || '1efnVoB6tQXrHKAeTcm3lcqzJqBoGg3QF';
+            const cleanPhone = phone.replace(/[^0-9+]/g, '');
+            const customerFolder = await getOrCreateCustomerFolder(parentFolderId, cleanPhone);
+            const driveFolderLink = customerFolder.webViewLink;
+
+            const mediaUrls = [];
+            if (req.files && req.files.length > 0) {
+                for (const file of req.files) {
+                    try {
+                        const buffer = fs.readFileSync(file.path);
+                        const uploadResult = await uploadToDrive(buffer, file.originalname, file.mimetype, customerFolder.id);
+                        mediaUrls.push(uploadResult.webViewLink);
+                    } catch (driveErr) {
+                        console.error('[Customer Save Drive Upload Error]:', driveErr);
+                    }
+                }
+            }
+
+            // Reply mode có thể đã nhận media từ Telegram trong lúc khởi tạo
+            // folder, vì vậy không được ghi đè mảng media_urls về rỗng.
+            if (useTelegramReply) {
+                await pool.query(
+                    `UPDATE public.customer_records
+                     SET drive_folder_link = $1,
+                         media_urls = COALESCE(media_urls, '[]'::jsonb)
+                     WHERE id = $2`,
+                    [driveFolderLink, recordId]
+                );
+            } else {
+                await pool.query(
+                    `UPDATE public.customer_records
+                     SET drive_folder_link = $1, media_urls = $2
+                     WHERE id = $3`,
+                    [driveFolderLink, JSON.stringify(mediaUrls), recordId]
+                );
+            }
+
+            // Chế độ Reply đã gửi tin nhắn đích trước khi trả response; không gửi lặp lại.
+            if (tgGroupId && !useTelegramReply) {
+                const notifyMsg = buildCustomerRecordNotification(notificationData, recordId, false);
+
+                if (req.files && req.files.length > 0) {
+                    try {
+                        const mediaGroup = req.files.slice(0, 10).map((file, idx) => {
+                            const isVideo = file.mimetype.startsWith('video');
+                            const mediaObj = {
+                                type: isVideo ? 'video' : 'photo',
+                                media: { source: file.path }
+                            };
+                            if (idx === 0) {
+                                mediaObj.caption = notifyMsg;
+                                mediaObj.parse_mode = 'HTML';
+                            }
+                            return mediaObj;
+                        });
+                        await bot.telegram.sendMediaGroup(tgGroupId, mediaGroup);
+                    } catch (tgErr) {
+                        console.error('[Customer Save Telegram Media Error] Thất bại khi gửi media group, gửi tin nhắn text dự phòng:', tgErr);
+                        await bot.telegram.sendMessage(tgGroupId, notifyMsg, { parse_mode: 'HTML', disable_web_page_preview: true });
+                    } finally {
+                        // Xóa các file tạm
+                        for (const file of req.files) {
+                            try { fs.unlinkSync(file.path); } catch (e) {}
+                        }
+                    }
+                } else {
+                    await bot.telegram.sendMessage(tgGroupId, notifyMsg, { parse_mode: 'HTML', disable_web_page_preview: true });
+                }
+            }
+
+            // Đồng bộ lên Google Sheet của nhóm
+            try {
+                await syncCustomerRecordToSheet(tgGroupId, {
+                    date: moment().utcOffset(7).format('DD/MM/YYYY'),
+                    employeeName: user.full_name,
+                    employeeCode: user.employee_code || '',
+                    consultant,
+                    customerType: customer_type === 'NEW' ? 'Khách mới' : 'Khách cũ',
+                    customerName: customer_name,
+                    address,
+                    phone,
+                    service,
+                    gift,
+                    billAmount: billVal,
+                    paidAmount: paidVal,
+                    debtAmount: debtVal,
+                    operator,
+                    warranty,
+                    driveFolderLink
+                });
+            } catch (sheetErr) {
+                console.error('[Sheet Sync Error] Lỗi khi đồng bộ khách hàng lên Google Sheet:', sheetErr);
+            }
+        })();
+        customerRecordInitializationJobs.set(recordId, customerInitializationJob);
+        customerInitializationJob.catch(err => {
+            console.error('[Customer Save Background Error]:', err);
+        }).finally(() => {
+            if (customerRecordInitializationJobs.get(recordId) === customerInitializationJob) {
+                customerRecordInitializationJobs.delete(recordId);
+            }
+        });
 
     } catch (error) {
         console.error('[Save Customer Record Error]:', error);
         res.status(500).json({ success: false, message: 'Lỗi máy chủ: ' + error.message });
     }
 });
+
+// Chỉ nhận media reply trong nhóm hồ sơ khách hàng. Các role khác luôn được
+// chuyển tiếp cho handler riêng của chúng bằng next().
+bot.on(['photo', 'video', 'document'], async (ctx, next) => {
+    try {
+        if (!ctx.chat || !['group', 'supergroup'].includes(ctx.chat.type)) return next();
+
+        const groupRole = await getGroupRole(ctx.chat.id);
+        if (!CUSTOMER_REPLY_ROLES.includes(groupRole)) return next();
+
+        const mediaGroupId = ctx.message.media_group_id || null;
+        const albumKey = mediaGroupId ? `${ctx.chat.id}:${mediaGroupId}` : null;
+        const replyMessage = ctx.message.reply_to_message;
+        const isReplyToThisBot = replyMessage?.from?.is_bot && replyMessage.from.id === ctx.botInfo?.id;
+
+        let recordId = isReplyToThisBot
+            ? getCustomerReplyRecordId(replyMessage.text || replyMessage.caption || '')
+            : null;
+
+        // Một số Telegram client chỉ gắn reply_to_message cho phần tử đầu album.
+        if (recordId && albumKey) {
+            customerReplyAlbumTargets.set(albumKey, recordId);
+            const cleanupTimer = setTimeout(() => customerReplyAlbumTargets.delete(albumKey), 2 * 60 * 1000);
+            cleanupTimer.unref?.();
+        } else if (!recordId && albumKey) {
+            recordId = customerReplyAlbumTargets.get(albumKey) || null;
+        }
+
+        if (!recordId) return next();
+
+        const recordRes = await pool.query(
+            `SELECT r.*, tg.telegram_group_id, tg.bot_role,
+                    e.telegram_id AS creator_telegram_id
+             FROM public.customer_records r
+             JOIN public.telegram_groups tg ON tg.id = r.group_id
+             LEFT JOIN public.employees e ON e.id = r.creator_employee_id
+             WHERE r.id = $1
+             LIMIT 1`,
+            [recordId]
+        );
+
+        if (recordRes.rows.length === 0) {
+            return ctx.reply('⚠️ Không tìm thấy hồ sơ khách hàng tương ứng.', {
+                reply_to_message_id: ctx.message.message_id
+            });
+        }
+
+        const record = recordRes.rows[0];
+        if (
+            String(record.telegram_group_id) !== String(ctx.chat.id) ||
+            !CUSTOMER_REPLY_ROLES.includes(record.bot_role)
+        ) {
+            return ctx.reply('⚠️ Hồ sơ này không thuộc nhóm hồ sơ khách hàng hiện tại.', {
+                reply_to_message_id: ctx.message.message_id
+            });
+        }
+
+        if (String(record.creator_telegram_id || '') !== String(ctx.from.id)) {
+            return ctx.reply('⚠️ Chỉ nhân viên đã tạo hồ sơ này mới được gửi bổ sung ảnh/video.', {
+                reply_to_message_id: ctx.message.message_id
+            });
+        }
+
+        let telegramFile = null;
+        let mediaType = null;
+        let mimeType = null;
+        let fileName = null;
+
+        if (ctx.message.photo?.length) {
+            telegramFile = ctx.message.photo[ctx.message.photo.length - 1];
+            mediaType = 'photo';
+            mimeType = 'image/jpeg';
+        } else if (ctx.message.video) {
+            telegramFile = ctx.message.video;
+            mediaType = 'video';
+            mimeType = ctx.message.video.mime_type || 'video/mp4';
+            fileName = ctx.message.video.file_name || null;
+        } else if (ctx.message.document) {
+            const document = ctx.message.document;
+            mimeType = document.mime_type || '';
+            if (!mimeType.startsWith('image/') && !mimeType.startsWith('video/')) {
+                return ctx.reply('⚠️ Hồ sơ khách hàng chỉ nhận hình ảnh hoặc video.', {
+                    reply_to_message_id: ctx.message.message_id
+                });
+            }
+            telegramFile = document;
+            mediaType = mimeType.startsWith('video/') ? 'video' : 'photo';
+            fileName = document.file_name || null;
+        }
+
+        if (!telegramFile) return next();
+
+        const fileSize = Number(telegramFile.file_size || 0);
+        if (fileSize > TELEGRAM_BOT_DOWNLOAD_LIMIT) {
+            return ctx.reply(
+                '⚠️ File lớn hơn 20 MB nên Bot Telegram không thể tải xuống. Hãy gửi video ở chế độ nén của Telegram hoặc dùng cách tải trực tiếp trong Mini App.',
+                { reply_to_message_id: ctx.message.message_id }
+            );
+        }
+
+        if (!fileName) {
+            fileName = `Customer_${recordId.slice(0, 8)}_${Date.now()}${inferCustomerMediaExtension(mimeType, mediaType)}`;
+        }
+
+        const queued = await pool.query(
+            `INSERT INTO public.customer_record_telegram_media
+             (customer_record_id, telegram_file_id, telegram_file_unique_id,
+              telegram_chat_id, telegram_message_id, telegram_media_group_id,
+              media_type, mime_type, file_name, file_size)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+             ON CONFLICT (customer_record_id, telegram_file_unique_id) DO NOTHING
+             RETURNING id`,
+            [
+                recordId,
+                telegramFile.file_id,
+                telegramFile.file_unique_id,
+                String(ctx.chat.id),
+                ctx.message.message_id,
+                mediaGroupId,
+                mediaType,
+                mimeType,
+                fileName,
+                fileSize
+            ]
+        );
+
+        if (queued.rows.length === 0) {
+            return ctx.reply('ℹ️ File này đã được tiếp nhận trước đó, Bot không tải trùng.', {
+                reply_to_message_id: ctx.message.message_id
+            });
+        }
+
+        scheduleCustomerReplyAcknowledgement(ctx, recordId);
+    } catch (error) {
+        console.error('[Customer Telegram Reply Receive Error]:', error);
+        return ctx.reply('❌ Không thể tiếp nhận file lúc này. Vui lòng thử lại.', {
+            reply_to_message_id: ctx.message.message_id
+        }).catch(() => {});
+    }
+});
+
+let customerTelegramMediaWorkerBusy = false;
+
+async function claimNextCustomerTelegramMedia() {
+    const result = await pool.query(`
+        WITH next_job AS (
+            SELECT id
+            FROM public.customer_record_telegram_media
+            WHERE (status = 'PENDING')
+               OR (status = 'FAILED' AND next_retry_at <= NOW())
+               OR (status = 'PROCESSING' AND updated_at < NOW() - INTERVAL '10 minutes')
+            ORDER BY created_at ASC
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        UPDATE public.customer_record_telegram_media queue
+        SET status = 'PROCESSING',
+            attempts = attempts + 1,
+            updated_at = NOW(),
+            last_error = NULL
+        FROM next_job
+        WHERE queue.id = next_job.id
+        RETURNING queue.*
+    `);
+    return result.rows[0] || null;
+}
+
+async function uploadQueuedCustomerTelegramMedia(job) {
+    const initializationJob = customerRecordInitializationJobs.get(job.customer_record_id);
+    if (initializationJob) {
+        await initializationJob;
+    }
+
+    const detailsRes = await pool.query(
+        `SELECT r.*, tg.customer_drive_folder_id, tg.telegram_group_id, tg.bot_role
+         FROM public.customer_records r
+         JOIN public.telegram_groups tg ON tg.id = r.group_id
+         WHERE r.id = $1
+         LIMIT 1`,
+        [job.customer_record_id]
+    );
+
+    if (detailsRes.rows.length === 0) throw new Error('Hồ sơ khách hàng không còn tồn tại.');
+    const record = detailsRes.rows[0];
+    if (!CUSTOMER_REPLY_ROLES.includes(record.bot_role)) {
+        throw new Error('Nhóm không còn thuộc role hồ sơ khách hàng.');
+    }
+
+    const fileLink = await bot.telegram.getFileLink(job.telegram_file_id);
+    const downloadResponse = await fetch(fileLink.href, { signal: AbortSignal.timeout(120000) });
+    if (!downloadResponse.ok) {
+        throw new Error(`Telegram download HTTP ${downloadResponse.status}`);
+    }
+    const buffer = Buffer.from(await downloadResponse.arrayBuffer());
+
+    const parentFolderId = record.customer_drive_folder_id || process.env.CUSTOMER_DRIVE_PARENT_FOLDER_ID || '1efnVoB6tQXrHKAeTcm3lcqzJqBoGg3QF';
+    const cleanPhone = String(record.phone || '').replace(/[^0-9+]/g, '');
+    const customerFolder = await getOrCreateCustomerFolder(parentFolderId, cleanPhone);
+    const uploadResult = await uploadToDrive(
+        buffer,
+        job.file_name,
+        job.mime_type || (job.media_type === 'video' ? 'video/mp4' : 'image/jpeg'),
+        customerFolder.id
+    );
+
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        await client.query(
+            `UPDATE public.customer_record_telegram_media
+             SET status = 'UPLOADED', drive_url = $2, uploaded_at = NOW(), updated_at = NOW()
+             WHERE id = $1`,
+            [job.id, uploadResult.webViewLink]
+        );
+        await client.query(
+            `UPDATE public.customer_records
+             SET drive_folder_link = $2,
+                 media_urls = COALESCE(media_urls, '[]'::jsonb) || jsonb_build_array($3::text)
+             WHERE id = $1`,
+            [job.customer_record_id, customerFolder.webViewLink, uploadResult.webViewLink]
+        );
+        await client.query('COMMIT');
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+
+    await bot.telegram.setMessageReaction(
+        job.telegram_chat_id,
+        Number(job.telegram_message_id),
+        [{ type: 'emoji', emoji: '✅' }]
+    ).catch(() => {});
+}
+
+async function markCustomerTelegramMediaFailed(job, error) {
+    const retryMinutes = [1, 5, 15, 30][Math.min(Math.max(job.attempts - 1, 0), 3)];
+    await pool.query(
+        `UPDATE public.customer_record_telegram_media
+         SET status = 'FAILED',
+             last_error = $2,
+             next_retry_at = NOW() + ($3 * INTERVAL '1 minute'),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [job.id, String(error.message || error).slice(0, 2000), retryMinutes]
+    );
+
+    if (job.attempts === 3) {
+        await bot.telegram.sendMessage(
+            job.telegram_chat_id,
+            '⚠️ Một file hồ sơ khách hàng chưa đồng bộ được lên Drive. Bot vẫn đang tự động thử lại; bạn không cần gửi lại file lúc này.',
+            { reply_to_message_id: Number(job.telegram_message_id) }
+        ).catch(() => {});
+    }
+}
+
+async function processCustomerTelegramMediaQueue() {
+    if (customerTelegramMediaWorkerBusy) return;
+    customerTelegramMediaWorkerBusy = true;
+    try {
+        for (let processed = 0; processed < 3; processed += 1) {
+            const job = await claimNextCustomerTelegramMedia();
+            if (!job) break;
+            try {
+                await uploadQueuedCustomerTelegramMedia(job);
+                console.log(`[Customer Telegram Reply] Đã đồng bộ media ${job.id} lên Drive.`);
+            } catch (error) {
+                console.error(`[Customer Telegram Reply] Lỗi đồng bộ media ${job.id}:`, error);
+                await markCustomerTelegramMediaFailed(job, error);
+            }
+        }
+    } catch (error) {
+        // Khi migration chưa chạy hoặc DB tạm lỗi, không làm tiến trình Bot bị dừng.
+        console.error('[Customer Telegram Reply Worker Error]:', error.message);
+    } finally {
+        customerTelegramMediaWorkerBusy = false;
+    }
+}
+
+const customerTelegramMediaWorkerTimer = setInterval(processCustomerTelegramMediaQueue, 5000);
+customerTelegramMediaWorkerTimer.unref?.();
+setTimeout(processCustomerTelegramMediaQueue, 1500).unref?.();
 
 // Hàm hỗ trợ ghi thông tin khách hàng vào Google Sheet
 async function syncCustomerRecordToSheet(telegramGroupId, data) {
@@ -3511,587 +4088,22 @@ cron.schedule('0 22 * * *', async () => {
     }
 });
 
-// Express APIs for Warehouse
-botApp.get('/api/products/by-barcode/:barcode', authenticateTelegramMiniApp, async (req, res) => {
-    try {
-        const { barcode } = req.params;
-        const productRes = await pool.query('SELECT * FROM tk_products WHERE barcode = $1 LIMIT 1', [barcode]);
-        
-        if (productRes.rows.length > 0) {
-            const product = productRes.rows[0];
-            const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [product.id]);
-            const quantity = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
-            return res.json({
-                success: true,
-                exists: true,
-                product: {
-                    id: product.id,
-                    barcode: product.barcode,
-                    product_name: product.product_name,
-                    quantity: quantity
-                }
-            });
-        }
-        
-        return res.json({ success: true, exists: false });
-    } catch (e) {
-        console.error('Lỗi check barcode API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi tra cứu mã vạch' });
-    }
-});
-
-botApp.get('/api/warehouse/products', authenticateTelegramMiniApp, async (req, res) => {
-    try {
-        const productsRes = await pool.query('SELECT id, barcode, product_name FROM tk_products ORDER BY product_name ASC');
-        res.json({ success: true, products: productsRes.rows });
-    } catch (e) {
-        console.error('Lỗi get products list API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy danh sách sản phẩm' });
-    }
-});
-
-botApp.get('/api/warehouse/inventory', authenticateTelegramMiniApp, async (req, res) => {
-    try {
-        const query = `
-            SELECT p.id, p.barcode, p.product_name, COALESCE(i.quantity, 0) as quantity, i.updated_at
-            FROM tk_products p
-            LEFT JOIN tk_inventory i ON p.id = i.product_id
-            ORDER BY p.product_name ASC
-        `;
-        const inventoryRes = await pool.query(query);
-        res.json({ success: true, inventory: inventoryRes.rows });
-    } catch (e) {
-        console.error('Lỗi get inventory list API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy dữ liệu tồn kho' });
-    }
-});
-
-botApp.get('/api/warehouse/check-stock', authenticateTelegramMiniApp, async (req, res) => {
-    try {
-        const { barcode } = req.query;
-        if (!barcode) {
-            return res.status(400).json({ success: false, message: 'Thiếu mã vạch!' });
-        }
-        
-        const productRes = await pool.query('SELECT id FROM tk_products WHERE barcode = $1 LIMIT 1', [barcode]);
-        if (productRes.rows.length === 0) {
-            return res.json({ success: true, quantity: 0 });
-        }
-        
-        const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productRes.rows[0].id]);
-        const quantity = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
-        res.json({ success: true, quantity });
-    } catch (e) {
-        console.error('Lỗi check stock API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi kiểm tra tồn kho' });
-    }
-});
-
-botApp.post('/api/warehouse/import', authenticateTelegramMiniApp, uploadCustomerMedia.array('media_files', 20), async (req, res) => {
-    try {
-        const telegram_id = req.verifiedTelegramId;
-        const { chat_id, items: itemsStr } = req.body;
-        
-        if (!chat_id) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin ID nhóm!' });
-        }
-        
-        let items = [];
-        try {
-            items = JSON.parse(itemsStr);
-        } catch (e) {
-            return res.status(400).json({ success: false, message: 'Danh sách sản phẩm không hợp lệ!' });
-        }
-
-        if (!Array.isArray(items) || items.length === 0) {
-            return res.status(400).json({ success: false, message: 'Danh sách sản phẩm trống!' });
-        }
-
-        // 1. Kiểm tra nhân viên
-        const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (userRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
-        }
-        const user = userRes.rows[0];
-
-        // 2. Kiểm tra nhóm
-        const groupRes = await pool.query("SELECT * FROM telegram_groups WHERE telegram_group_id = $1 AND bot_role = 'warehouse' LIMIT 1", [chat_id]);
-        if (groupRes.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'Nhóm chưa được phân quyền Quản lý kho!' });
-        }
-        const group = groupRes.rows[0];
-
-        // 3. Xử lý tải hình ảnh + video lên Google Drive (Dùng chung cho cả phiên giao dịch này)
-        let folderUrl = null;
-        if (req.files && req.files.length > 0) {
-            try {
-                // Định dạng tên thư mục: HH[h]mm_DD-MM-YYYY (ví dụ: 14h11_10-08-2026)
-                const folderName = moment().utcOffset(7).format('HH[h]mm_DD-MM-YYYY');
-                const parentFolderId = group.customer_drive_folder_id || process.env.WAREHOUSE_DRIVE_PARENT_FOLDER_ID || '1VDcvrEc5nvVrvYsz1ShImZ21GsK7dQ8P';
-                
-                const folder = await createWarehouseFolder(parentFolderId, folderName);
-                folderUrl = folder.webViewLink;
-
-                for (const file of req.files) {
-                    const buffer = fs.readFileSync(file.path);
-                    await uploadToDrive(buffer, file.originalname, file.mimetype, folder.id);
-                    // Dọn dẹp tệp tạm
-                    try { fs.unlinkSync(file.path); } catch (uErr) {}
-                }
-            } catch (driveErr) {
-                console.error('[Warehouse Upload Error] Thất bại khi upload ảnh lên Drive:', driveErr);
-            }
-        }
-
-        // 4. Xử lý từng sản phẩm
-        const resultItems = [];
-        for (const item of items) {
-            if (!item.barcode || !item.barcode.trim() || !item.product_name || !item.product_name.trim()) {
-                continue;
-            }
-            const cleanBarcode = item.barcode.trim();
-            const cleanProductName = item.product_name.trim();
-            const qtyNum = parseInt(item.quantity, 10);
-            if (isNaN(qtyNum) || qtyNum <= 0) {
-                continue;
-            }
-
-            // A. Tìm hoặc tạo sản phẩm
-            const newProd = await pool.query(
-                `INSERT INTO tk_products (barcode, product_name)
-                 VALUES ($1, $2)
-                 ON CONFLICT (barcode) 
-                 DO UPDATE SET product_name = COALESCE(NULLIF(EXCLUDED.product_name, ''), tk_products.product_name)
-                 RETURNING id`,
-                [cleanBarcode, cleanProductName]
-            );
-            const productId = newProd.rows[0].id;
-
-            // B. Cộng kho
-            await pool.query(
-                `INSERT INTO tk_inventory (product_id, quantity, updated_at)
-                 VALUES ($1, $2, NOW())
-                 ON CONFLICT (product_id) 
-                 DO UPDATE SET quantity = tk_inventory.quantity + EXCLUDED.quantity, updated_at = NOW()`,
-                [productId, qtyNum]
-            );
-
-            // C. Ghi giao dịch
-            const txRes = await pool.query(
-                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status, proof_folder_url)
-                 VALUES ($1, $2, 'IMPORT', $3, $4, 'APPROVED', $5)
-                 RETURNING id`,
-                [group.id, user.id, productId, qtyNum, folderUrl]
-            );
-            const txId = txRes.rows[0].id;
-
-            // D. Lấy tồn mới
-            const stockCheck = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productId]);
-            const newStock = stockCheck.rows[0].quantity;
-
-            resultItems.push({
-                product_name: cleanProductName,
-                barcode: cleanBarcode,
-                quantity: qtyNum,
-                newStock: newStock
-            });
-
-            // E. Đồng bộ Google Sheets cho sản phẩm này
-            try {
-                await syncWarehouseSheets(productId, txId);
-            } catch (sheetErr) {
-                console.error(`[Warehouse Sync Error] Đồng bộ Sheet thất bại cho sản phẩm ${cleanProductName}:`, sheetErr);
-            }
-        }
-
-        if (resultItems.length === 0) {
-            return res.status(400).json({ success: false, message: 'Không có sản phẩm nào hợp lệ được xử lý!' });
-        }
-
-        // 5. Gửi thông báo đến nhóm
-        let message = `📥 <b>[NHẬP KHO THÀNH CÔNG]</b>\n\n` +
-            `👤 <b>Người thực hiện:</b> ${escapeHtml(user.full_name)}\n` +
-            `📦 <b>Danh sách sản phẩm nhập:</b>\n`;
-        
-        resultItems.forEach((item, idx) => {
-            message += `${idx + 1}. <b>${escapeHtml(item.product_name)}</b> (<code>${escapeHtml(item.barcode)}</code>): +${item.quantity} (Tồn: <b>${item.newStock}</b>)\n`;
-        });
-
-        if (folderUrl) {
-            message += `\n🔗 <b>Chứng minh nhập kho:</b> <a href="${folderUrl}">Xem thư mục Drive</a>`;
-        }
-
-        await bot.telegram.sendMessage(chat_id, message, { parse_mode: 'HTML', disable_web_page_preview: true });
-
-        res.json({ success: true, message: 'Nhập kho thành công!' });
-    } catch (e) {
-        console.error('Lỗi nhập kho API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xử lý nhập kho' });
-    }
-});
-
-botApp.post('/api/warehouse/export/request', authenticateTelegramMiniApp, async (req, res) => {
-    try {
-        const telegram_id = req.verifiedTelegramId;
-        const { chat_id, barcode, quantity } = req.body;
-        
-        if (!chat_id) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin ID nhóm!' });
-        }
-        if (!barcode || !barcode.trim()) {
-            return res.status(400).json({ success: false, message: 'Mã vạch hoặc mã sản phẩm không được để trống!' });
-        }
-
-        const qtyNum = parseInt(quantity, 10);
-        if (isNaN(qtyNum) || qtyNum <= 0) {
-            return res.status(400).json({ success: false, message: 'Số lượng xuất phải lớn hơn 0!' });
-        }
-
-        // 1. Kiểm tra nhân viên
-        const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (userRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
-        }
-        const user = userRes.rows[0];
-
-        // 2. Kiểm tra nhóm
-        const groupRes = await pool.query("SELECT * FROM telegram_groups WHERE telegram_group_id = $1 AND bot_role = 'warehouse' LIMIT 1", [chat_id]);
-        if (groupRes.rows.length === 0) {
-            return res.status(403).json({ success: false, message: 'Nhóm chưa được phân quyền Quản lý kho!' });
-        }
-        const group = groupRes.rows[0];
-
-        // 3. Tìm sản phẩm
-        const cleanBarcode = barcode.trim();
-        const prodCheck = await pool.query('SELECT * FROM tk_products WHERE barcode = $1 LIMIT 1', [cleanBarcode]);
-        if (prodCheck.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Sản phẩm chưa từng tồn tại trong hệ thống kho!' });
-        }
-        const product = prodCheck.rows[0];
-        const productId = product.id;
-
-        // 4. Kiểm tra tồn kho tức thời
-        const stockCheck = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [productId]);
-        const currentStock = stockCheck.rows.length > 0 ? stockCheck.rows[0].quantity : 0;
-
-        if (currentStock < qtyNum) {
-            return res.status(400).json({ success: false, message: `Không đủ số lượng trong kho! (Tồn hiện tại: ${currentStock})` });
-        }
-
-        // 5. Kiểm tra vai trò nhân viên
-        const isManager = user.role === 'Quản lý' || user.role === 'admin';
-        const isAdminId = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(telegram_id);
-
-        if (isManager || isAdminId) {
-            // DUYỆT TỰ ĐỘNG cho Quản lý / Admin
-            try {
-                await pool.query('UPDATE tk_inventory SET quantity = quantity - $2, updated_at = NOW() WHERE product_id = $1', [productId, qtyNum]);
-            } catch (err) {
-                if (err.code === '23514') { // check constraint negative violation
-                    return res.status(400).json({ success: false, message: `Số lượng tồn kho không đủ để thực hiện xuất kho (Có thay đổi kho trong lúc bạn thao tác)!` });
-                }
-                throw err;
-            }
-            
-            const txRes = await pool.query(
-                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status, approved_by, approved_at)
-                 VALUES ($1, $2, 'EXPORT', $3, $4, 'APPROVED', $2, NOW())
-                 RETURNING id`,
-                [group.id, user.id, productId, qtyNum]
-            );
-            const txId = txRes.rows[0].id;
-            
-            const newStock = currentStock - qtyNum;
-
-            const message = `📤 <b>[XUẤT KHO THÀNH CÔNG]</b>\n\n` +
-                `👤 <b>Người thực hiện (Quản lý):</b> ${escapeHtml(user.full_name)}\n` +
-                `📦 <b>Sản phẩm:</b> ${escapeHtml(product.product_name)} (<code>${escapeHtml(cleanBarcode)}</code>)\n` +
-                `➖ <b>Số lượng xuất:</b> -${qtyNum}\n` +
-                `📊 <b>Tồn kho hiện tại:</b> <b>${newStock}</b>`;
-
-            await bot.telegram.sendMessage(chat_id, message, { parse_mode: 'HTML' });
-
-            // Đồng bộ Sheets
-            await syncWarehouseSheets(productId, txId);
-
-            return res.json({ success: true, auto_approved: true, message: 'Đã xuất kho thành công!' });
-        } else {
-            // YÊU CẦU CHỜ DUYỆT cho Nhân viên thường
-            const txRes = await pool.query(
-                `INSERT INTO tk_warehouse_transactions (group_id, user_id, transaction_type, product_id, quantity, status)
-                 VALUES ($1, $2, 'EXPORT', $3, $4, 'PENDING')
-                 RETURNING id`,
-                [group.id, user.id, productId, qtyNum]
-            );
-            const txId = txRes.rows[0].id;
-
-            const message = `⚠️ <b>[YÊU CẦU XUẤT KHO CHỜ DUYỆT]</b>\n\n` +
-                `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(user.full_name)}\n` +
-                `📦 <b>Sản phẩm:</b> ${escapeHtml(product.product_name)} (<code>${escapeHtml(cleanBarcode)}</code>)\n` +
-                `➖ <b>Số lượng xuất:</b> ${qtyNum}\n` +
-                `📊 <b>Tồn kho hiện tại:</b> ${currentStock}\n\n` +
-                `👉 Quản lý hoặc Admin vui lòng nhấn nút bên dưới để duyệt yêu cầu:`;
-
-            await bot.telegram.sendMessage(chat_id, message, {
-                parse_mode: 'HTML',
-                reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Duyệt Xuất Kho', callback_data: `wh_approve_${txId}` },
-                            { text: '❌ Từ Chối', callback_data: `wh_reject_${txId}` }
-                        ]
-                    ]
-                }
-            });
-
-            return res.json({ success: true, auto_approved: false, message: 'Đã gửi yêu cầu xuất kho chờ Quản lý duyệt!' });
-        }
-    } catch (e) {
-        console.error('Lỗi xuất kho API:', e);
-        res.status(500).json({ success: false, message: 'Lỗi máy chủ khi xử lý xuất kho' });
-    }
-});
-
-// Google Sheets Sync helpers for Warehouse
-async function getWarehouseDocForGroup(telegram_group_id) {
-    if (telegram_group_id) {
-        const res = await pool.query('SELECT customer_sheet_id, kpi_sheet_id FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
-        if (res.rows.length > 0) {
-            const sheetId = res.rows[0].customer_sheet_id || res.rows[0].kpi_sheet_id;
-            if (sheetId) {
-                return await getDocById(sheetId);
-            }
-        }
-    }
-    return await getDocById(process.env.WAREHOUSE_SPREADSHEET_ID || process.env.CUSTOMER_SPREADSHEET_ID);
-}
-
-async function syncWarehouseSheets(productId, transactionId) {
-    try {
-        console.log(`[Warehouse Sync] Bắt đầu đồng bộ cho sản phẩm ${productId}...`);
-        
-        // 1. Lấy thông tin sản phẩm và tồn kho hiện tại
-        const productRes = await pool.query(`
-            SELECT p.barcode, p.product_name, COALESCE(i.quantity, 0) as quantity
-            FROM tk_products p
-            LEFT JOIN tk_inventory i ON p.id = i.product_id
-            WHERE p.id = $1
-        `, [productId]);
-        
-        if (productRes.rows.length === 0) return;
-        const product = productRes.rows[0];
-
-        // 2. Lấy thông tin giao dịch hiện tại
-        const txRes = await pool.query(`
-            SELECT t.*, e.full_name as emp_name, g.telegram_group_id
-            FROM tk_warehouse_transactions t
-            JOIN employees e ON t.user_id = e.id
-            JOIN telegram_groups g ON t.group_id = g.id
-            WHERE t.id = $1
-        `, [transactionId]);
-
-        if (txRes.rows.length === 0) return;
-        const tx = txRes.rows[0];
-
-        // 3. Lấy Google Sheet Document
-        const doc = await getWarehouseDocForGroup(tx.telegram_group_id);
-        if (!doc) {
-            console.error('[Warehouse Sync Error] Không tìm thấy Spreadsheet!');
-            return;
-        }
-
-        await doc.loadInfo();
-
-        // 4. Đồng bộ Tab 1: Lịch sử xuất nhập kho
-        let sheetHistory = doc.sheetsByTitle['Lịch sử xuất nhập kho'];
-        if (!sheetHistory) {
-            sheetHistory = await doc.addSheet({
-                title: 'Lịch sử xuất nhập kho',
-                headerValues: ['Mã giao dịch', 'Người thực hiện', 'Loại giao dịch', 'Tên sản phẩm', 'Mã vạch', 'Số lượng', 'Ảnh chứng minh nhập kho', 'Trạng thái', 'Người duyệt', 'Ngày giờ']
-            });
-            await new Promise(r => setTimeout(r, 1000));
-        } else {
-            await sheetHistory.loadHeaderRow();
-            if (!sheetHistory.headerValues.includes('Ảnh chứng minh nhập kho')) {
-                const newHeaders = [...sheetHistory.headerValues];
-                const statusIdx = newHeaders.indexOf('Trạng thái');
-                if (statusIdx !== -1) {
-                    newHeaders.splice(statusIdx, 0, 'Ảnh chứng minh nhập kho');
-                } else {
-                    newHeaders.push('Ảnh chứng minh nhập kho');
-                }
-                await sheetHistory.setHeaderRow(newHeaders);
-                await new Promise(r => setTimeout(r, 1000));
-            }
-        }
-
-        const timeStr = moment(tx.created_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-        
-        let approverName = '';
-        if (tx.approved_by) {
-            const appRes = await pool.query('SELECT full_name FROM employees WHERE id = $1', [tx.approved_by]);
-            if (appRes.rows.length > 0) {
-                approverName = appRes.rows[0].full_name;
-            } else {
-                approverName = 'Admin';
-            }
-        }
-
-        const typeStr = tx.transaction_type === 'IMPORT' ? 'Nhập kho 📥' : 'Xuất kho 📤';
-        const statusStr = tx.status === 'APPROVED' ? 'Đã duyệt ✅' : (tx.status === 'PENDING' ? 'Chờ duyệt ⏳' : 'Từ chối ❌');
-
-        await sheetHistory.addRow({
-            'Mã giao dịch': tx.id.substring(0, 8).toUpperCase(),
-            'Người thực hiện': tx.emp_name,
-            'Loại giao dịch': typeStr,
-            'Tên sản phẩm': product.product_name,
-            'Mã vạch': product.barcode,
-            'Số lượng': tx.quantity,
-            'Ảnh chứng minh nhập kho': tx.proof_folder_url || '',
-            'Trạng thái': statusStr,
-            'Người duyệt': approverName,
-            'Ngày giờ': timeStr
-        });
-        await new Promise(r => setTimeout(r, 1000));
-
-        // 5. Đồng bộ Tab 2: Tình trạng các sản phẩm
-        let sheetStock = doc.sheetsByTitle['Tình trạng các sản phẩm'];
-        if (!sheetStock) {
-            sheetStock = await doc.addSheet({
-                title: 'Tình trạng các sản phẩm',
-                headerValues: ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối']
-            });
-            await new Promise(r => setTimeout(r, 1000));
-        }
-
-        const rows = await sheetStock.getRows();
-        let existingRow = rows.find(r => r.get('Mã vạch') === product.barcode);
-
-        const updateTimeStr = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-
-        if (existingRow) {
-            existingRow.set('Số lượng tồn kho', product.quantity);
-            existingRow.set('Cập nhật cuối', updateTimeStr);
-            existingRow.set('Tên sản phẩm', product.product_name);
-            await existingRow.save();
-        } else {
-            await sheetStock.addRow({
-                'Mã vạch': product.barcode,
-                'Tên sản phẩm': product.product_name,
-                'Số lượng tồn kho': product.quantity,
-                'Cập nhật cuối': updateTimeStr
-            });
-        }
-
-        console.log(`[Warehouse Sync] Đồng bộ thành công lên Sheet cho sản phẩm: ${product.product_name}`);
-    } catch (e) {
-        console.error('[Warehouse Sync Error] Thất bại khi đồng bộ lên Google Sheet:', e);
-    }
-}
-
-bot.action(/^(wh_approve|wh_reject)_(.+)$/, async (ctx) => {
-    try {
-        const action = ctx.match[1]; // 'wh_approve' or 'wh_reject'
-        const transactionId = ctx.match[2];
-        const clickerId = ctx.from.id.toString();
-
-        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-        const managerCheckRes = await pool.query("SELECT * FROM employees WHERE telegram_id = $1 AND (role = 'Quản lý' OR role = 'admin') LIMIT 1", [clickerId]);
-        const isManager = managerCheckRes.rows.length > 0;
-
-        if (!isAdmin && !isManager) {
-            return ctx.answerCbQuery('⚠️ Bạn không có quyền phê duyệt yêu cầu này!', { show_alert: true });
-        }
-
-        const manager = managerCheckRes.rows[0];
-        const managerName = manager ? manager.full_name : 'Admin';
-        const managerId = manager ? manager.id : null;
-
-        const txRes = await pool.query(`
-            SELECT t.*, p.product_name, p.barcode, e.full_name as emp_name, e.telegram_id as emp_tg_id
-            FROM tk_warehouse_transactions t
-            JOIN tk_products p ON t.product_id = p.id
-            JOIN employees e ON t.user_id = e.id
-            WHERE t.id = $1
-        `, [transactionId]);
-
-        if (txRes.rows.length === 0) {
-            return ctx.answerCbQuery('⚠️ Yêu cầu không tồn tại hoặc đã bị xóa!', { show_alert: true });
-        }
-
-        const tx = txRes.rows[0];
-
-        if (tx.status !== 'PENDING') {
-            return ctx.answerCbQuery(`⚠️ Yêu cầu này đã được xử lý từ trước! (Trạng thái: ${tx.status})`, { show_alert: true });
-        }
-
-        if (action === 'wh_reject') {
-            await pool.query(`
-                UPDATE tk_warehouse_transactions
-                SET status = 'REJECTED', approved_by = $2, approved_at = NOW()
-                WHERE id = $1
-            `, [transactionId, managerId]);
-
-            await ctx.answerCbQuery('❌ Đã từ chối yêu cầu xuất kho!', { show_alert: true });
-            
-            await ctx.editMessageText(
-                `❌ <b>[YÊU CẦU XUẤT KHO BỊ TỪ CHỐI]</b>\n\n` +
-                `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(tx.emp_name)}\n` +
-                `📦 <b>Sản phẩm:</b> ${escapeHtml(tx.product_name)} (<code>${escapeHtml(tx.barcode)}</code>)\n` +
-                `➖ <b>Số lượng xuất:</b> ${tx.quantity}\n` +
-                `----------------------------------\n` +
-                `🚫 <b>Trạng thái:</b> Đã bị từ chối bởi <b>${escapeHtml(managerName)}</b>`,
-                { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
-            );
-
-            // Sync to sheets to log rejection
-            await syncWarehouseSheets(tx.product_id, transactionId);
-            return;
-        }
-
-        const stockRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1', [tx.product_id]);
-        const currentQty = stockRes.rows.length > 0 ? stockRes.rows[0].quantity : 0;
-
-        if (currentQty < tx.quantity) {
-            return ctx.answerCbQuery(`❌ Lỗi duyệt: Kho không đủ hàng! (Hiện chỉ còn: ${currentQty})`, { show_alert: true });
-        }
-
-        try {
-            await pool.query('UPDATE tk_inventory SET quantity = quantity - $2, updated_at = NOW() WHERE product_id = $1', [tx.product_id, tx.quantity]);
-        } catch (updateErr) {
-            if (updateErr.code === '23514') { // check constraint negative violation
-                return ctx.answerCbQuery(`❌ Lỗi duyệt: Kho không đủ hàng để đáp ứng yêu cầu xuất kho này!`, { show_alert: true });
-            }
-            throw updateErr;
-        }
-        
-        await pool.query(`
-            UPDATE tk_warehouse_transactions
-            SET status = 'APPROVED', approved_by = $2, approved_at = NOW()
-            WHERE id = $1
-        `, [transactionId, managerId]);
-
-        await ctx.answerCbQuery('✅ Đã duyệt xuất kho thành công!', { show_alert: true });
-
-        const updatedQty = currentQty - tx.quantity;
-
-        await ctx.editMessageText(
-            `🟢 <b>[YÊU CẦU XUẤT KHO ĐÃ DUYỆT]</b>\n\n` +
-            `👤 <b>Nhân viên yêu cầu:</b> ${escapeHtml(tx.emp_name)}\n` +
-            `📦 <b>Sản phẩm:</b> ${escapeHtml(tx.product_name)} (<code>${escapeHtml(tx.barcode)}</code>)\n` +
-            `➖ <b>Số lượng xuất:</b> ${tx.quantity}\n` +
-            `📊 <b>Tồn kho hiện tại:</b> <b>${updatedQty}</b>\n` +
-            `----------------------------------\n` +
-            `✅ <b>Người duyệt:</b> <b>${escapeHtml(managerName)}</b>`,
-            { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
-        );
-
-        await syncWarehouseSheets(tx.product_id, transactionId);
-
-    } catch (e) {
-        console.error('Lỗi bot.action warehouse:', e);
-        ctx.answerCbQuery('❌ Lỗi hệ thống khi xử lý yêu cầu!', { show_alert: true });
-    }
+// Module kho được lắp ghép tại một điểm duy nhất để không trộn nghiệp vụ kho
+// với các role chấm công, KPI và hồ sơ khách hàng.
+registerWarehouseModule({
+    botApp,
+    bot,
+    pool,
+    authenticateTelegramMiniApp,
+    warehouseTempUploadDir: path.join(__dirname, 'public/uploads/temp'),
+    moment,
+    fs,
+    createWarehouseFolder,
+    uploadToDrive,
+    escapeHtml,
+    getDocById,
+    sendMessageToRoleGroup,
+    sendMediaGroupToRoleGroup
 });
 
 // Enable graceful stop

@@ -269,7 +269,7 @@ CREATE TABLE public.penalty_records (
 
 CREATE TABLE public.pending_reports (
     telegram_id character varying(50) NOT NULL,
-    group_id character varying(50),
+    group_id character varying(50) NOT NULL,
     raw_text text,
     kpi_actual integer,
     required_photos integer DEFAULT 0,
@@ -579,7 +579,7 @@ ALTER TABLE ONLY public.penalty_records
 --
 
 ALTER TABLE ONLY public.pending_reports
-    ADD CONSTRAINT pending_reports_pkey PRIMARY KEY (telegram_id);
+    ADD CONSTRAINT pending_reports_pkey PRIMARY KEY (telegram_id, group_id);
 
 
 --
@@ -924,10 +924,47 @@ CREATE INDEX IF NOT EXISTS idx_tour_makeup_status ON public.tour_makeup_requests
 CREATE INDEX IF NOT EXISTS idx_tour_makeup_work_date ON public.tour_makeup_requests(work_date);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_tour_makeup_dedupe ON public.tour_makeup_requests(telegram_id, telegram_group_id, work_date, customer_phone) WHERE status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'NOTIFICATION_FAILED');
 
+-- KPI membership is isolated by employee and Telegram group. Pausing one group
+-- must never disable the employee account or another KPI group.
+CREATE TABLE IF NOT EXISTS public.employee_group_memberships (
+    employee_id uuid NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+    telegram_group_id character varying NOT NULL REFERENCES public.telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    status character varying(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'PAUSED')),
+    need_report boolean NOT NULL DEFAULT true,
+    current_kpi_target numeric NOT NULL DEFAULT 0,
+    pause_reason text,
+    paused_at timestamp with time zone,
+    resumed_at timestamp with time zone,
+    last_registered_at timestamp with time zone DEFAULT now(),
+    updated_by character varying(255),
+    created_at timestamp with time zone NOT NULL DEFAULT now(),
+    updated_at timestamp with time zone NOT NULL DEFAULT now(),
+    PRIMARY KEY (employee_id, telegram_group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_group_memberships_group_status
+    ON public.employee_group_memberships(telegram_group_id, status, need_report);
+
+CREATE TABLE IF NOT EXISTS public.employee_group_membership_events (
+    id uuid PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+    employee_id uuid NOT NULL REFERENCES public.employees(id) ON DELETE CASCADE,
+    telegram_group_id character varying NOT NULL REFERENCES public.telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    old_status character varying(20),
+    new_status character varying(20) NOT NULL,
+    reason text,
+    actor character varying(255),
+    created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_group_membership_events_lookup
+    ON public.employee_group_membership_events(employee_id, telegram_group_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_pending_reports_group_status
+    ON public.pending_reports(group_id, status, deadline_at);
+
 
 --
 -- PostgreSQL database dump complete
 --
 
 \unrestrict ljNR8mRgJ3yfP2BJnmiEowOX0qR4ZQYfQskDpOPYU5Uo8oyQEN6vWE9avYrKHrJ
-
