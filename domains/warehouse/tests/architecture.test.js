@@ -92,6 +92,41 @@ test('tầng application không được phụ thuộc tầng giao tiếp', () =
     }
 });
 
+test('chỉ tầng infrastructure được viết SQL', () => {
+    // ADR-0001 quy định Express -> use case -> repository -> PostgreSQL.
+    // Trước đây warehouse-order-service.js có 54 câu SQL viết thẳng trong tầng
+    // application, tức là bỏ qua repository. Test này chặn việc đó quay lại.
+    const CAU_SQL = /\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM)\b/;
+
+    // Đã đạt: domain/ và application/ hoàn toàn sạch SQL (trước đây
+    // warehouse-order-service.js có 54 câu SQL, nay còn 0).
+    //
+    // Nợ kỹ thuật còn lại, tầng interfaces vẫn tự truy vấn:
+    //   interfaces/admin-api    ~40 dòng  (CRUD danh mục cho Web Admin)
+    //   interfaces/miniapp-api  ~34 dòng  (route Mini App)
+    //   interfaces/telegram     ~26 dòng  (callback duyệt đơn)
+    //
+    // Ưu tiên thấp hơn vì chúng không đụng lõi trừ tồn kho. Danh sách này chỉ
+    // được phép NGẮN ĐI, không được dài thêm.
+    const MIEN_TRU = ['interfaces/'];
+
+    for (const file of domainFiles()) {
+        if (file.startsWith('infrastructure/')) continue;
+        if (MIEN_TRU.some(prefix => file.startsWith(prefix))) continue;
+        const source = readFile(file);
+
+        // Bỏ chú thích để không báo nhầm khi tài liệu nhắc tới tên bảng.
+        const code = source
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/^\s*\/\/.*$/gm, '');
+
+        assert.ok(
+            !CAU_SQL.test(code),
+            `${file} chứa SQL — mọi truy vấn phải nằm trong infrastructure/postgres/`
+        );
+    }
+});
+
 test('app bên ngoài chỉ được đi qua cổng index.js của domain', () => {
     const NGOAI = [
         fileURLToPath(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url)),

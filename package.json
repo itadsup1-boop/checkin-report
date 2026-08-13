@@ -24,7 +24,9 @@
     "migrate:warehouse-v19": "node packages/database/run_migrations_v19.js",
     "verify:warehouse-v19": "node packages/database/verify_warehouse_v19.js",
     "test": "echo \"Error: no test specified\" && exit 1",
-    "test:warehouse-architecture": "node --experimental-test-isolation=none --test domains/warehouse/tests/architecture.test.js"
+    "test:warehouse-architecture": "node --experimental-test-isolation=none --test domains/warehouse/tests/architecture.test.js",
+    "setup:test-db": "node scripts/setup-test-db.mjs",
+    "test:db": "node scripts/run-integration-tests.mjs"
   },
   "keywords": [],
   "author": "",

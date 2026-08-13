@@ -77,6 +77,20 @@ export function createWarehouseQueryRepository(pool) {
         return new Set(result.rows.map(row => row.permission_code));
     }
 
+    /** Tìm group kho theo id nội bộ, dùng cho thao tác phát sinh từ Web Admin. */
+    async function getWarehouseGroupById(groupId, db = pool) {
+        const result = await db.query(
+            `SELECT id, telegram_group_id, group_name, bot_role,
+                    warehouse_service_order_enabled
+             FROM telegram_groups
+             WHERE id = $1 AND bot_role = 'warehouse'
+               AND is_active = TRUE AND COALESCE(is_deleted, FALSE) = FALSE
+             LIMIT 1`,
+            [groupId]
+        );
+        return result.rows[0] || null;
+    }
+
     async function getBootstrap(chatId) {
         const group = await getActiveGroup(chatId);
         if (!group.warehouse_service_order_enabled) {
@@ -219,6 +233,7 @@ export function createWarehouseQueryRepository(pool) {
 
     return {
         getActiveGroup,
+        getWarehouseGroupById,
         getActiveEmployee,
         hasActiveGroupMembership,
         getPermissionSet,
