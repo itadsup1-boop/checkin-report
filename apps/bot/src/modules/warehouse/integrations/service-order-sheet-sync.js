@@ -1,3 +1,5 @@
+import { rebuildStockSheets } from './stock-sheet.js';
+
 export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
     const exportHeaders = [
         'Mã giao dịch',
@@ -44,28 +46,6 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
             await sheet.setHeaderRow(headers);
         }
         return sheet;
-    }
-
-    async function updateStockSheet(doc, product, branch, quantity) {
-        const title = branch === 'US' ? '3. Tồn kho US' : '4. Tồn kho UK';
-        const headers = ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối'];
-        const sheet = await ensureSheet(doc, title, headers);
-        const rows = await sheet.getRows();
-        const row = rows.find(value => value.get('Mã vạch') === product.barcode);
-        const timestamp = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-        if (row) {
-            row.set('Tên sản phẩm', product.product_name);
-            row.set('Số lượng tồn kho', quantity);
-            row.set('Cập nhật cuối', timestamp);
-            await row.save();
-        } else {
-            await sheet.addRow({
-                'Mã vạch': product.barcode,
-                'Tên sản phẩm': product.product_name,
-                'Số lượng tồn kho': quantity,
-                'Cập nhật cuối': timestamp
-            });
-        }
     }
 
     async function syncWarehouseOrder(orderId) {
@@ -218,35 +198,10 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
             }
         }
 
-        for (const product of productsResult.rows) {
-            await updateStockSheet(doc, product, 'US', product.stock_us);
-            await updateStockSheet(doc, product, 'UK', product.stock_uk);
-        }
-
-        const totalSheet = await ensureSheet(
-            doc,
-            '5. Tổng kho',
-            ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối']
-        );
-        const totalRows = await totalSheet.getRows();
-        for (const product of productsResult.rows) {
-            const row = totalRows.find(value => value.get('Mã vạch') === product.barcode);
-            const total = Number(product.stock_us) + Number(product.stock_uk);
-            const timestamp = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-            if (row) {
-                row.set('Tên sản phẩm', product.product_name);
-                row.set('Số lượng tồn kho', total);
-                row.set('Cập nhật cuối', timestamp);
-                await row.save();
-            } else {
-                await totalSheet.addRow({
-                    'Mã vạch': product.barcode,
-                    'Tên sản phẩm': product.product_name,
-                    'Số lượng tồn kho': total,
-                    'Cập nhật cuối': timestamp
-                });
-            }
-        }
+        // Ghi lại ba tab tồn kho từ database thay vì dò sửa từng dòng.
+        // Quy tắc ba trường hợp (có hàng / từng có nhưng hết / chưa bao giờ có)
+        // nằm trong integrations/stock-sheet.js.
+        await rebuildStockSheets({ pool, moment, doc });
 
         await pool.query(
             `UPDATE tk_warehouse_orders

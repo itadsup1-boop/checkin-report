@@ -22,15 +22,20 @@ export function createWarehouseQueryRepository(pool) {
         return result.rows[0];
     }
 
-    async function getActiveEmployee(telegramId, db = pool) {
-        const result = await db.query(
-            `SELECT id, telegram_id, telegram_group_id, full_name, role, is_active
-             FROM employees
-             WHERE telegram_id = $1 AND is_active = TRUE
-             ORDER BY created_at ASC
-             LIMIT 1`,
-            [String(telegramId)]
-        );
+    async function getActiveEmployee(telegramId, chatId = null, db = pool) {
+        const query = chatId
+            ? `SELECT id, telegram_id, telegram_group_id, full_name, role, is_active
+               FROM employees
+               WHERE telegram_id = $1 AND is_active = TRUE
+               ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
+               LIMIT 1`
+            : `SELECT id, telegram_id, telegram_group_id, full_name, role, is_active
+               FROM employees
+               WHERE telegram_id = $1 AND is_active = TRUE
+               ORDER BY created_at ASC
+               LIMIT 1`;
+        const params = chatId ? [String(telegramId), String(chatId)] : [String(telegramId)];
+        const result = await db.query(query, params);
         if (!result.rows[0]) {
             throw new WarehouseError('Nhân sự chưa đăng ký hoặc đã bị vô hiệu hóa.', {
                 status: 403,

@@ -56,8 +56,11 @@ export function registerWarehouseImportRoutes({
                 await client.query('BEGIN');
                 const [userResult, groupResult] = await Promise.all([
                     client.query(
-                        'SELECT * FROM employees WHERE telegram_id = $1 AND is_active = TRUE ORDER BY created_at LIMIT 1',
-                        [telegramId]
+                        `SELECT * FROM employees
+                         WHERE telegram_id = $1 AND is_active = TRUE
+                         ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
+                         LIMIT 1`,
+                        [telegramId, String(chatId)]
                     ),
                     client.query(
                         `SELECT * FROM telegram_groups
@@ -97,19 +100,79 @@ export function registerWarehouseImportRoutes({
                     throw Object.assign(new Error('Bạn không phải thành viên của nhóm kho này.'), { status: 403 });
                 }
 
+                // Chặn trùng mã vạch trước khi ghi bất cứ thứ gì.
+                //
+                // Trước đây câu upsert dùng ON CONFLICT (barcode) DO UPDATE product_name,
+                // nên nhập mã đã tồn tại với tên khác sẽ ÂM THẦM đổi tên sản phẩm cũ và
+                // gộp tồn kho của hai mặt hàng khác nhau làm một. Thực tế đã xảy ra:
+                // UK nhập "Cannula 23g" mã 002, sau đó US nhập "Kim canula27g" cũng mã
+                // 002 -> tên "Cannula 23g" biến mất, 5 cái của UK bị dán nhãn sai.
+                //
+                // Giờ hệ thống từ chối và nói rõ mã đang thuộc về sản phẩm nào để người
+                // nhập tự quyết, thay vì tự ý gộp.
+                const normalizeName = value => String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+                const existingProducts = await client.query(
+                    'SELECT barcode, product_name FROM tk_products WHERE barcode = ANY($1::text[])',
+                    [normalizedItems.map(item => item.barcode)]
+                );
+                const barcodeConflicts = [];
+                for (const row of existingProducts.rows) {
+                    const typed = normalizedItems.find(item => item.barcode === row.barcode);
+                    if (!typed) continue;
+                    if (normalizeName(typed.productName) !== normalizeName(row.product_name)) {
+                        barcodeConflicts.push(
+                            `• Mã "${row.barcode}" đang là sản phẩm "${row.product_name}", ` +
+                            `nhưng bạn đang nhập tên "${typed.productName}".`
+                        );
+                    }
+                }
+                if (barcodeConflicts.length) {
+                    throw Object.assign(
+                        new Error(
+                            'Mã vạch đã thuộc về sản phẩm khác:\n' +
+                            barcodeConflicts.join('\n') +
+                            '\n\nNếu đúng là sản phẩm đó, hãy nhập lại đúng tên cũ. ' +
+                            'Nếu là sản phẩm mới, hãy dùng mã vạch khác.'
+                        ),
+                        { status: 409 }
+                    );
+                }
+
                 const resultItems = [];
                 const transactionItems = [];
                 for (const item of normalizedItems) {
+                    // Chốt chặn cuối cùng, nằm ở tầng database nên chống được cả tình
+                    // huống hai cơ sở nhập cùng lúc:
+                    //
+                    // Kiểm tra ở phía trên chỉ đọc dữ liệu tại một thời điểm. Nếu US và
+                    // UK cùng nhận mã đề xuất "014" rồi cùng bấm lưu, cả hai đều thấy mã
+                    // còn trống. Người lưu sau sẽ rơi vào ON CONFLICT, và nếu cho DO
+                    // UPDATE vô điều kiện thì hàng của họ bị gắn nhầm vào sản phẩm của
+                    // người lưu trước.
+                    //
+                    // Mệnh đề WHERE dưới đây chỉ cho phép "nhận" sản phẩm đã tồn tại khi
+                    // TÊN khớp nhau. Khác tên thì không dòng nào được trả về -> báo lỗi.
+                    // So sánh bỏ qua hoa/thường và khoảng trắng thừa cho giống phía trên.
                     const productResult = await client.query(
                         `INSERT INTO tk_products (barcode, product_name, is_active)
                          VALUES ($1, $2, TRUE)
                          ON CONFLICT (barcode) DO UPDATE SET
-                            product_name = COALESCE(NULLIF(EXCLUDED.product_name, ''), tk_products.product_name),
                             is_active = TRUE
+                         WHERE lower(regexp_replace(btrim(tk_products.product_name), '[[:space:]]+', ' ', 'g'))
+                             = lower(regexp_replace(btrim(EXCLUDED.product_name), '[[:space:]]+', ' ', 'g'))
                          RETURNING id, barcode, product_name`,
                         [item.barcode, item.productName]
                     );
                     const product = productResult.rows[0];
+                    if (!product) {
+                        throw Object.assign(
+                            new Error(
+                                `Mã vạch "${item.barcode}" vừa được người khác dùng cho một sản phẩm khác ` +
+                                `trong lúc bạn đang nhập.\n\nHãy đóng và mở lại màn hình nhập kho để lấy mã mới.`
+                            ),
+                            { status: 409 }
+                        );
+                    }
                     const inventoryResult = await client.query(
                         `INSERT INTO tk_inventory (product_id, branch, quantity, updated_at)
                          VALUES ($1, $2, $3, NOW())

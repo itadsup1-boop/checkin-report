@@ -615,6 +615,14 @@
         let payloadTs = "";
         let payloadSig = "";
         let productsMap = {}; // Lưu trữ map sản phẩm theo tên để lấy mã vạch
+        // Map ngược mã vạch -> tên sản phẩm đang sở hữu mã đó.
+        // Dùng để chặn nhập tay một mã đã thuộc về sản phẩm khác: trước đây gõ trùng
+        // mã sẽ ghi đè tên sản phẩm cũ và gộp tồn kho của hai mặt hàng làm một.
+        let barcodeOwnerMap = {};
+
+        function normalizeProductName(value) {
+            return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+        }
         let lastCodes = []; // Bộ đệm lọc kết quả quét trùng lặp
         let importItems = []; // Danh sách các sản phẩm sẽ nhập kho
         let selectedFiles = []; // Danh sách các tệp đa phương tiện đã chọn
@@ -678,11 +686,13 @@
                     const dataList = document.getElementById('productsList');
                     dataList.innerHTML = '';
                     productsMap = {};
+                    barcodeOwnerMap = {};
                     res.products.forEach(p => {
                         const option = document.createElement('option');
                         option.value = p.product_name;
                         dataList.appendChild(option);
                         productsMap[p.product_name] = p.barcode;
+                        barcodeOwnerMap[String(p.barcode || '').trim()] = p.product_name;
                     });
                 }
             } catch (e) {
@@ -732,7 +742,18 @@
                 });
                 const res = await response.json();
                 
-                if (res.success && res.exists) {
+                if (!res.success) {
+                    // Server từ chối (hết phiên, mất quyền...): không được coi là
+                    // sản phẩm mới, vì có thể mã đó đã tồn tại và sẽ bị ghi đè tên.
+                    alert(
+                        'Không kiểm tra được mã vạch "' + barcode + '".\n' +
+                        (res.message || 'Máy chủ từ chối yêu cầu.') +
+                        '\n\nHãy thử lại để tránh đặt nhầm tên cho sản phẩm đã có.'
+                    );
+                    return;
+                }
+
+                if (res.exists) {
                     // Sản phẩm cũ
                     titleEl.innerHTML = `📦 Phát hiện sản phẩm cũ`;
                     subtitleEl.innerHTML = `<b>Tên SP:</b> ${res.product.product_name}<br><b>Mã vạch:</b> ${barcode}`;
@@ -746,10 +767,14 @@
                 }
             } catch (e) {
                 console.error("Lỗi kiểm tra sản phẩm:", e);
-                // Xem như sản phẩm mới nếu lỗi mạng
-                titleEl.innerHTML = `✨ Phát hiện sản phẩm mới`;
-                subtitleEl.innerHTML = `<b>Mã vạch:</b> ${barcode}`;
-                nameContainer.style.display = 'block';
+                // KHÔNG được mặc định coi là sản phẩm mới khi tra cứu thất bại.
+                // Trước đây lỗi mạng cũng mở ô nhập tên, nên nhân sự có thể đặt tên
+                // mới cho một mã đã tồn tại -> ghi đè tên sản phẩm cũ.
+                alert(
+                    'Không kiểm tra được mã vạch "' + barcode + '" do lỗi kết nối.\n\n' +
+                    'Hãy thử lại để tránh đặt nhầm tên cho sản phẩm đã có.'
+                );
+                return;
             }
 
             promptOverlay.style.display = 'flex';
@@ -854,22 +879,46 @@
         }
 
         // Khi chọn sản phẩm từ dropdown nhập thủ công
-        function onManualSelectProduct(val) {
+        // Xin máy chủ một mã vạch chưa ai dùng.
+        // Chỉ là gợi ý cho đỡ phải tự nghĩ mã; nhân sự vẫn sửa được, và lúc lưu
+        // máy chủ vẫn kiểm tra lại lần nữa để chặn trùng.
+        async function suggestNewBarcode() {
+            try {
+                const response = await fetch(`/api/warehouse/next-barcode?${warehouseAuthQuery()}`, {
+                    headers: { 'x-telegram-init-data': initData }
+                });
+                const res = await response.json();
+                return res.success ? res.barcode : '';
+            } catch (e) {
+                console.error('Lỗi lấy mã vạch đề xuất:', e);
+                return '';
+            }
+        }
+
+        async function onManualSelectProduct(val) {
             const barcode = productsMap[val];
             const barcodeInput = document.getElementById('manualBarcode');
             const nameInput = document.getElementById('manualProductName');
-            
+
             if (barcode) {
+                // Sản phẩm đã có: khoá cả hai ô để không sửa được mã lẫn tên.
                 barcodeInput.value = barcode;
                 barcodeInput.disabled = true;
                 nameInput.value = val;
                 nameInput.disabled = true;
-            } else {
-                barcodeInput.value = '';
-                barcodeInput.disabled = false;
-                nameInput.value = val;
-                nameInput.disabled = false;
+                return;
             }
+
+            // Sản phẩm mới: tự điền mã đề xuất nhưng vẫn cho sửa thành mã mong muốn.
+            nameInput.value = val;
+            nameInput.disabled = false;
+            barcodeInput.disabled = false;
+            barcodeInput.value = '';
+            barcodeInput.placeholder = 'Đang lấy mã đề xuất…';
+            const suggested = await suggestNewBarcode();
+            // Không ghi đè nếu nhân sự đã kịp tự gõ mã trong lúc chờ.
+            if (!barcodeInput.value) barcodeInput.value = suggested;
+            barcodeInput.placeholder = suggested ? 'Mã đề xuất, sửa được' : 'Nhập mã vạch';
         }
 
         function submitManualAdd() {
@@ -890,6 +939,21 @@
             }
             if (isNaN(quantity) || quantity <= 0) {
                 alert('Vui lòng nhập số lượng hợp lệ!');
+                return;
+            }
+
+            // Chặn ghi đè mã vạch của sản phẩm khác.
+            // Sự cố thật: UK nhập "Cannula 23g" mã 002, sau đó US nhập tay
+            // "Kim canula27g" cũng gõ mã 002 -> tên cũ bị ghi đè, tồn kho hai mặt
+            // hàng gộp làm một. Server cũng đã chặn, nhưng báo ở đây để nhân sự
+            // biết ngay lúc nhập thay vì bị từ chối sau khi điền xong cả đơn.
+            const owner = barcodeOwnerMap[barcode];
+            if (owner && normalizeProductName(owner) !== normalizeProductName(productName)) {
+                alert(
+                    'Mã vạch "' + barcode + '" đã là sản phẩm "' + owner + '".\n\n' +
+                    'Nếu đúng là sản phẩm đó, hãy chọn "' + owner + '" trong danh sách gợi ý.\n' +
+                    'Nếu là sản phẩm mới, hãy dùng mã vạch khác.'
+                );
                 return;
             }
 

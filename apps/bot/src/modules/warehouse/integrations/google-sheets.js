@@ -2,6 +2,8 @@
  * Adapter đồng bộ báo cáo kho lên Google Sheets.
  * Database vẫn là nguồn dữ liệu chính; lỗi Sheet không rollback giao dịch kho.
  */
+import { rebuildStockSheets } from './stock-sheet.js';
+
 export function createWarehouseSheetSync({ pool, moment, getDocById }) {
     // Google Sheets Sync helpers for Warehouse
     async function getWarehouseDocForGroup(telegram_group_id) {
@@ -96,80 +98,11 @@ export function createWarehouseSheetSync({ pool, moment, getDocById }) {
             }
             await new Promise(r => setTimeout(r, 1000));
 
-            // 5. Đồng bộ Tab 3 & 4: 3. Tồn kho US / 4. Tồn kho UK
-            const branches = ['US', 'UK'];
-            for (const br of branches) {
-                const sheetStockTitle = br === 'US' ? '3. Tồn kho US' : '4. Tồn kho UK';
-                let sheetStock = doc.sheetsByTitle[sheetStockTitle];
-                const headersStock = ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối'];
-                if (!sheetStock) {
-                    sheetStock = await doc.addSheet({
-                        title: sheetStockTitle,
-                        headerValues: headersStock
-                    });
-                    await new Promise(r => setTimeout(r, 1000));
-                } else {
-                    await sheetStock.setHeaderRow(headersStock);
-                }
-
-                const brRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1 AND branch = $2', [productId, br]);
-                const brQty = brRes.rows.length > 0 ? brRes.rows[0].quantity : 0;
-
-                const rows = await sheetStock.getRows();
-                let existingRow = rows.find(r => r.get('Mã vạch') === product.barcode);
-                const updateTimeStr = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-
-                if (existingRow) {
-                    existingRow.set('Số lượng tồn kho', brQty);
-                    existingRow.set('Cập nhật cuối', updateTimeStr);
-                    existingRow.set('Tên sản phẩm', product.product_name);
-                    await existingRow.save();
-                } else {
-                    await sheetStock.addRow({
-                        'Mã vạch': product.barcode,
-                        'Tên sản phẩm': product.product_name,
-                        'Số lượng tồn kho': brQty,
-                        'Cập nhật cuối': updateTimeStr
-                    });
-                }
-                await new Promise(r => setTimeout(r, 1000));
-            }
-
-            // 6. Đồng bộ Tab 5: 5. Tổng kho (Tổng hợp tồn kho của cả US & UK)
-            const sheetTotalTitle = '5. Tổng kho';
-            let sheetTotal = doc.sheetsByTitle[sheetTotalTitle];
-            const headersTotal = ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối'];
-            if (!sheetTotal) {
-                sheetTotal = await doc.addSheet({
-                    title: sheetTotalTitle,
-                    headerValues: headersTotal
-                });
-                await new Promise(r => setTimeout(r, 1000));
-            } else {
-                await sheetTotal.setHeaderRow(headersTotal);
-            }
-
-            const totalRes = await pool.query('SELECT SUM(quantity) as total FROM tk_inventory WHERE product_id = $1', [productId]);
-            const totalQty = totalRes.rows.length > 0 ? (parseInt(totalRes.rows[0].total) || 0) : 0;
-
-            const totalRows = await sheetTotal.getRows();
-            let existingTotalRow = totalRows.find(r => r.get('Mã vạch') === product.barcode);
-            const totalUpdateTimeStr = moment().utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-
-            if (existingTotalRow) {
-                existingTotalRow.set('Số lượng tồn kho', totalQty);
-                existingTotalRow.set('Cập nhật cuối', totalUpdateTimeStr);
-                existingTotalRow.set('Tên sản phẩm', product.product_name);
-                await existingTotalRow.save();
-            } else {
-                await sheetTotal.addRow({
-                    'Mã vạch': product.barcode,
-                    'Tên sản phẩm': product.product_name,
-                    'Số lượng tồn kho': totalQty,
-                    'Cập nhật cuối': totalUpdateTimeStr
-                });
-            }
-            await new Promise(r => setTimeout(r, 1000));
+            // 5. Ghi lại ba tab tồn kho (3. Tồn kho US / 4. Tồn kho UK / 5. Tổng kho)
+            // từ database. Xem quy tắc ba trường hợp trong integrations/stock-sheet.js.
+            // Cách cũ dò và sửa từng dòng cho mỗi sản phẩm × mỗi cơ sở nên vừa sinh ra
+            // dòng tồn 0 ở cơ sở chưa từng nhập, vừa hay bị Google trả 429 quota.
+            await rebuildStockSheets({ pool, moment, doc });
 
             console.log(`[Warehouse Sync] Đồng bộ thành công lên Sheet cho sản phẩm: ${product.product_name}`);
         } catch (e) {

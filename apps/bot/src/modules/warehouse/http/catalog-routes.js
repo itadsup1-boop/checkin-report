@@ -85,6 +85,65 @@ export function registerWarehouseCatalogRoutes({
         }
     });
 
+    // Đề xuất mã vạch mới chưa ai dùng, cho trường hợp nhân sự nhập tay sản phẩm mới.
+    //
+    // Đây chỉ là GỢI Ý để đỡ phải tự nghĩ mã và giảm khả năng trùng. Nhân sự vẫn
+    // sửa được thành mã mong muốn, và dù chọn mã nào thì lúc lưu vẫn bị kiểm tra
+    // lại ở tầng database (xem import-routes.js) để chặn trường hợp hai cơ sở
+    // cùng lúc nhận cùng một mã đề xuất rồi cùng lưu.
+    botApp.get('/api/warehouse/next-barcode', authenticateTelegramMiniApp, async (req, res) => {
+        try {
+            if (!await requireWarehouseGroup(req, res)) return;
+            const result = await pool.query('SELECT barcode FROM tk_products');
+
+            // Coi '1', '01', '001' là cùng một mã: Google Sheet hay cắt số 0 đầu nên
+            // nhân sự có thể đã nhập lẫn lộn các dạng này.
+            const used = new Set();
+            for (const row of result.rows) {
+                const barcode = String(row.barcode || '').trim();
+                if (!barcode) continue;
+                used.add(barcode);
+                if (/^\d+$/.test(barcode)) used.add(String(Number(barcode)));
+            }
+
+            let next = 1;
+            while (used.has(String(next)) || used.has(String(next).padStart(3, '0'))) {
+                next += 1;
+            }
+
+            res.json({ success: true, barcode: String(next).padStart(3, '0') });
+        } catch (e) {
+            console.error('Lỗi đề xuất mã vạch mới:', e);
+            res.status(500).json({ success: false, message: 'Lỗi máy chủ khi đề xuất mã vạch' });
+        }
+    });
+
+    // Tồn kho tách theo từng cơ sở cho TOÀN BỘ danh mục trong một lần gọi.
+    // Mini App xuất kho cần dữ liệu này để hiển thị danh sách kèm tồn thực tế;
+    // `/api/warehouse/inventory` cũ trả về một dòng mỗi branch nên không dùng được.
+    botApp.get('/api/warehouse/stock-overview', authenticateTelegramMiniApp, async (req, res) => {
+        try {
+            if (!await requireWarehouseGroup(req, res)) return;
+            const result = await pool.query(
+                `SELECT p.id AS product_id,
+                        p.barcode,
+                        p.product_name,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0)::int AS stock_us,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0)::int AS stock_uk,
+                        MAX(i.updated_at) AS updated_at
+                 FROM tk_products p
+                 LEFT JOIN tk_inventory i ON i.product_id = p.id
+                 WHERE p.is_active = TRUE
+                 GROUP BY p.id, p.barcode, p.product_name
+                 ORDER BY p.product_name`
+            );
+            res.json({ success: true, products: result.rows });
+        } catch (e) {
+            console.error('Lỗi get stock overview API:', e);
+            res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy tồn kho theo cơ sở' });
+        }
+    });
+
     botApp.get('/api/warehouse/check-stock', authenticateTelegramMiniApp, async (req, res) => {
         try {
             if (!await requireWarehouseGroup(req, res)) return;

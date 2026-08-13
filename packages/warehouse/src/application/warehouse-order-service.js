@@ -30,7 +30,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
         const isAdmin = adminTelegramIds.has(String(telegramId));
         let employee = null;
         try {
-            employee = await repository.getActiveEmployee(telegramId, client);
+            employee = await repository.getActiveEmployee(telegramId, chatId, client);
         } catch (error) {
             if (!isAdmin || requireEmployee) throw error;
         }

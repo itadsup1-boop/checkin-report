@@ -333,8 +333,38 @@
         let inventoryData = [];
         const warehouseParams = new URLSearchParams(window.location.search);
 
+        // Chữ ký đến từ bot theo ba đường khác nhau và cả ba đều phải hoạt động:
+        //  1. Nút trong nhóm là deep link ?startapp=... -> Telegram đưa vào initDataUnsafe.start_param
+        //  2. router.html chuyển hướng sang trang này kèm ?payload=<action>_<gid>_<ts>_<sig>
+        //  3. Lệnh /start whinventory_ mở trực tiếp với ?chat_id=&ts=&sig=
+        // Trước đây chỉ đọc dạng 3 nên mở từ nút trong nhóm luôn bị API trả 400.
+        let warehouseAuth = { chatId: '', ts: '', sig: '' };
+
+        function resolveWarehouseAuth() {
+            const packed =
+                (tg && tg.initDataUnsafe && tg.initDataUnsafe.start_param) ||
+                warehouseParams.get('payload') ||
+                warehouseParams.get('startapp') ||
+                warehouseParams.get('tgWebAppStartParam') ||
+                '';
+
+            if (packed) {
+                const parts = String(packed).split('_');
+                if (parts.length >= 4) {
+                    warehouseAuth = { chatId: parts[1], ts: parts[2], sig: parts[3] };
+                    return;
+                }
+            }
+
+            warehouseAuth = {
+                chatId: warehouseParams.get('chat_id') || '',
+                ts: warehouseParams.get('ts') || '',
+                sig: warehouseParams.get('sig') || ''
+            };
+        }
+
         function warehouseAuthQuery() {
-            return `initData=${encodeURIComponent(initData)}&chat_id=${encodeURIComponent(warehouseParams.get('chat_id') || '')}&ts=${encodeURIComponent(warehouseParams.get('ts') || '')}&sig=${encodeURIComponent(warehouseParams.get('sig') || '')}&action=whinventory`;
+            return `initData=${encodeURIComponent(initData)}&chat_id=${encodeURIComponent(warehouseAuth.chatId)}&ts=${encodeURIComponent(warehouseAuth.ts)}&sig=${encodeURIComponent(warehouseAuth.sig)}&action=whinventory`;
         }
 
         document.addEventListener('DOMContentLoaded', () => {
@@ -344,24 +374,39 @@
                 initData = tg.initData || "";
             }
 
+            // Phải giải mã chữ ký SAU khi tg.ready() để đọc được start_param.
+            resolveWarehouseAuth();
+
             // Fetch inventory data
             loadInventory();
         });
 
         async function loadInventory() {
             try {
-                const response = await fetch(`/api/warehouse/inventory?${warehouseAuthQuery()}`, {
+                // Dùng stock-overview thay cho /api/warehouse/inventory: endpoint cũ
+                // LEFT JOIN tk_inventory mà không lọc branch nên trả một dòng cho mỗi
+                // cơ sở -> sản phẩm có hàng ở cả US và UK bị hiện hai lần và không
+                // biết dòng nào của cơ sở nào. stock-overview gộp đúng một dòng mỗi
+                // sản phẩm kèm tồn tách theo từng cơ sở.
+                const response = await fetch(`/api/warehouse/stock-overview?${warehouseAuthQuery()}`, {
                     headers: { 'x-telegram-init-data': initData }
                 });
                 const res = await response.json();
-                
-                if (res.success && res.inventory) {
-                    inventoryData = res.inventory;
+
+                if (res.success && Array.isArray(res.products)) {
+                    inventoryData = res.products.map(row => ({
+                        product_name: row.product_name || '',
+                        barcode: row.barcode || '',
+                        stock_us: Number(row.stock_us) || 0,
+                        stock_uk: Number(row.stock_uk) || 0,
+                        quantity: (Number(row.stock_us) || 0) + (Number(row.stock_uk) || 0),
+                        updated_at: row.updated_at
+                    }));
                     renderInventory(inventoryData);
                 } else {
                     document.getElementById('inventoryContainer').innerHTML = `
                         <div class="empty-state">
-                            Lỗi: Không thể lấy dữ liệu tồn kho.
+                            Lỗi: ${escapeHtml(res.message || 'Không thể lấy dữ liệu tồn kho.')}
                         </div>
                     `;
                 }
@@ -414,6 +459,7 @@
                         <div class="item-details">
                             <span class="item-name" title="${escapeHtml(item.product_name)}">${escapeHtml(item.product_name)}</span>
                             <span class="item-barcode">⚡ ${escapeHtml(item.barcode)}</span>
+                            <span class="item-time">🏢 US: ${item.stock_us} &nbsp;·&nbsp; UK: ${item.stock_uk}</span>
                             <span class="item-time">🕒 Cập nhật: ${updatedTime}</span>
                         </div>
                         <div class="stock-badge">

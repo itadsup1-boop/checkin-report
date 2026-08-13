@@ -25,6 +25,10 @@ import multer from 'multer';
 import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseModule } from './src/modules/warehouse/index.js';
 
+// Tạm tắt phụ phí 100.000đ khi đi muộn mà không có đơn báo trước.
+// Giữ thành cờ riêng để có thể bật lại mà không ảnh hưởng mức phạt đi muộn gốc.
+const EXTRA_UNANNOUNCED_LATE_PENALTY_ENABLED = false;
+
 // Load environment variables
 dotenv.config({ override: true });
 
@@ -346,6 +350,67 @@ botApp.use(express.urlencoded({ limit: '200mb', extended: true }));
 // Serve Web Admin React App & Mini App
 const webAdminDistPath = path.join(__dirname, '../web-admin/dist');
 botApp.use(express.static(webAdminDistPath));
+
+// ---------------------------------------------------------------------------
+// Chống cache cho Mini App xuất kho (nạp code dạng ES module).
+//
+// Origin đã trả Cache-Control: max-age=0 nhưng Cloudflare ghi đè thành
+// max-age=14400 (4 giờ), nên client giữ file .js cũ và không hỏi lại server.
+// Sửa bằng header là vô ích — phải đổi URL. Asset được nạp qua tiền tố
+// /mini-app/_v<token>/... với token tính theo mtime mới nhất của thư mục module,
+// nên mỗi lần sửa code là URL đổi và client tải lại ngay.
+// Chỉ ảnh hưởng đường dẫn có tiền tố /_v; các Mini App khác giữ nguyên.
+// ---------------------------------------------------------------------------
+const warehouseExportDir = path.join(__dirname, 'public', 'warehouse-export');
+const warehouseExportShell = path.join(__dirname, 'public', 'warehouse_export.html');
+let warehouseAssetVersionCache = { token: '0', checkedAt: 0 };
+
+function getWarehouseAssetVersion() {
+    const now = Date.now();
+    if (now - warehouseAssetVersionCache.checkedAt < 5000) {
+        return warehouseAssetVersionCache.token;
+    }
+
+    let newestMtime = 0;
+    try {
+        const walk = directory => {
+            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+                const fullPath = path.join(directory, entry.name);
+                if (entry.isDirectory()) walk(fullPath);
+                else newestMtime = Math.max(newestMtime, fs.statSync(fullPath).mtimeMs);
+            }
+        };
+        walk(warehouseExportDir);
+    } catch (error) {
+        newestMtime = now;
+    }
+
+    warehouseAssetVersionCache = { token: Math.floor(newestMtime).toString(36), checkedAt: now };
+    return warehouseAssetVersionCache.token;
+}
+
+// Bỏ tiền tố phiên bản khỏi URL đầy đủ (middleware không mount để req.url giữ nguyên
+// thay đổi cho các layer sau).
+botApp.use((req, res, next) => {
+    const match = req.url.match(/^\/mini-app\/_v[^/]+(\/.*)$/);
+    if (match) req.url = `/mini-app${match[1]}`;
+    next();
+});
+
+// Shell xuất kho: chèn token phiên bản và không cho cache, để client luôn nhận
+// đúng URL asset mới nhất. Đặt trước express.static để thắng file tĩnh.
+botApp.get('/mini-app/warehouse_export.html', (req, res, next) => {
+    try {
+        const html = fs.readFileSync(warehouseExportShell, 'utf8')
+            .replace(/__ASSET_V__/g, getWarehouseAssetVersion());
+        res.setHeader('Content-Type', 'text/html; charset=utf-8');
+        res.setHeader('Cache-Control', 'no-store, must-revalidate');
+        res.send(html);
+    } catch (error) {
+        next();
+    }
+});
+
 botApp.use('/mini-app', express.static(path.join(__dirname, 'public')));
 botApp.get('/', (req, res) => {
     res.sendFile(path.join(webAdminDistPath, 'index.html'));
@@ -1753,17 +1818,11 @@ async function startHandler(ctx) {
                 const groupId = payloadParts[1];
                 const ts = payloadParts[2];
                 const sig = payloadParts[3];
-                const warehouseConfig = await pool.query(
-                    `SELECT warehouse_service_order_enabled
-                     FROM telegram_groups
-                     WHERE telegram_group_id = $1 AND bot_role = 'warehouse'
-                     LIMIT 1`,
-                    [groupId]
-                );
-                const exportPage = warehouseConfig.rows[0]?.warehouse_service_order_enabled
-                    ? 'warehouse_order.html'
-                    : 'warehouse_export.html';
-                const formUrl = `${miniAppUrl}/mini-app/${exportPage}?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whexport`;
+                // Mini App xuất kho tự đọc cờ warehouse_service_order_enabled qua
+                // /api/warehouse/service-order/bootstrap rồi bật hoặc khóa luồng đơn
+                // theo dịch vụ ngay trong màn hình chọn loại đơn. Bot không cần truy
+                // vấn cờ để chọn trang nữa nên bỏ được một query mỗi lần mở link.
+                const formUrl = `${miniAppUrl}/mini-app/warehouse_export.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=whexport`;
 
                 await ctx.reply(
                     `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
@@ -2346,7 +2405,7 @@ cron.schedule('*/1 * * * *', async () => {
                     if (leaveReqRes.rows.length > 0 && amount > 0) {
                         amount = amount / 2;
                         reason += ` (Đã giảm 50% do có đơn báo trước)`;
-                    } else if (amount > 0) {
+                    } else if (amount > 0 && EXTRA_UNANNOUNCED_LATE_PENALTY_ENABLED) {
                         amount += 100000;
                         reason += ` (Phạt thêm 100k do không có đơn báo trước)`;
                     }

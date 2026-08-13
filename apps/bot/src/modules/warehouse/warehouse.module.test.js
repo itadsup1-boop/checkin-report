@@ -68,6 +68,8 @@ test('module kho đăng ký đủ endpoint cũ và không truy cập database l�
             'GET /api/products/by-barcode/:barcode',
             'GET /api/warehouse/products',
             'GET /api/warehouse/inventory',
+            'GET /api/warehouse/next-barcode',
+            'GET /api/warehouse/stock-overview',
             'GET /api/warehouse/check-stock',
             'POST /api/warehouse/import',
             'POST /api/warehouse/export/request',
@@ -145,4 +147,71 @@ test('luồng xuất kho cũ cũng dùng quyền Web Admin và khóa transaction
     assert.match(singleAction, /BEGIN/);
     assert.match(proofHandler, /bot_role = 'warehouse'/);
     assert.match(proofHandler, /t\.group_id = \$2/);
+});
+
+test('nhập kho chặn trùng mã vạch thay vì âm thầm đổi tên sản phẩm', () => {
+    const source = fs.readFileSync(
+        new URL('./http/import-routes.js', import.meta.url),
+        'utf8'
+    );
+
+    // Sự cố thật: UK nhập "Cannula 23g" mã 002, sau đó US nhập "Kim canula27g"
+    // cũng mã 002 -> upsert ghi đè product_name, tên cũ biến mất và tồn kho của
+    // hai mặt hàng bị gộp làm một. Ba sản phẩm đã bị mất tên vì lỗi này.
+    assert.doesNotMatch(
+        source,
+        /ON CONFLICT \(barcode\) DO UPDATE SET\s*\n\s*product_name/,
+        'không được ghi đè product_name khi trùng mã vạch'
+    );
+
+    // Phải phát hiện và từ chối trước khi ghi bất cứ thứ gì.
+    assert.match(source, /barcodeConflicts/);
+    assert.match(source, /SELECT barcode, product_name FROM tk_products WHERE barcode = ANY/);
+    assert.match(source, /status: 409/);
+    assert.match(source, /Mã vạch đã thuộc về sản phẩm khác/);
+
+    // So tên phải bỏ qua hoa/thường và khoảng trắng thừa để không báo nhầm.
+    assert.match(source, /normalizeName/);
+    assert.match(source, /toLowerCase\(\)/);
+
+    // Chốt chặn phải nằm TRƯỚC vòng lặp ghi sản phẩm.
+    const guardIndex = source.indexOf('barcodeConflicts.length');
+    const upsertIndex = source.indexOf('INSERT INTO tk_products');
+    assert.ok(guardIndex > 0 && guardIndex < upsertIndex, 'chốt chặn phải chạy trước khi ghi');
+});
+
+test('nhập kho chống trùng mã ngay ở tầng database khi hai cơ sở lưu cùng lúc', () => {
+    const source = fs.readFileSync(
+        new URL('./http/import-routes.js', import.meta.url),
+        'utf8'
+    );
+
+    // Kiểm tra đọc trước chỉ thấy dữ liệu tại một thời điểm. Nếu US và UK cùng
+    // nhận mã đề xuất rồi cùng lưu, người lưu sau vẫn lọt qua vòng kiểm tra đó.
+    // Mệnh đề WHERE trên ON CONFLICT là chốt chặn cuối, chạy nguyên tử trong DB.
+    assert.match(source, /ON CONFLICT \(barcode\) DO UPDATE SET[\s\S]*?WHERE lower\(regexp_replace/);
+
+    // Dùng lớp ký tự POSIX thay vì \s để không bị nuốt dấu backslash qua các lớp
+    // escape — đã từng khiến biểu thức biến thành 's+' và so tên sai.
+    assert.match(source, /\[\[:space:\]\]\+/);
+    assert.doesNotMatch(source, /regexp_replace\([^)]*'\\s\+'/);
+
+    // Không có dòng trả về nghĩa là mã đã thuộc sản phẩm khác -> phải báo lỗi,
+    // tuyệt đối không được đi tiếp và cộng tồn vào nhầm sản phẩm.
+    assert.match(source, /if \(!product\)/);
+    assert.match(source, /vừa được người khác dùng cho một sản phẩm khác/);
+});
+
+test('có API đề xuất mã vạch mới và mã đề xuất không đụng mã đã dùng', () => {
+    const source = fs.readFileSync(
+        new URL('./http/catalog-routes.js', import.meta.url),
+        'utf8'
+    );
+
+    assert.match(source, /\/api\/warehouse\/next-barcode/);
+    // Phải coi '1', '01', '001' là cùng một mã vì Google Sheet hay cắt số 0 đầu.
+    assert.match(source, /padStart\(3, '0'\)/);
+    assert.match(source, /String\(Number\(barcode\)\)/);
+    // Phải dò tới khi tìm được mã trống, không chỉ lấy max + 1.
+    assert.match(source, /while \(used\.has/);
 });

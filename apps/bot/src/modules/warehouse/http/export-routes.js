@@ -22,7 +22,13 @@ export function registerWarehouseExportRoutes({
             }
 
             // 1. Kiểm tra nhân viên
-            const userRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 AND is_active = TRUE LIMIT 1', [telegram_id]);
+            const userRes = await pool.query(
+                `SELECT * FROM employees
+                 WHERE telegram_id = $1 AND is_active = TRUE
+                 ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
+                 LIMIT 1`,
+                [telegram_id, String(chat_id)]
+            );
             if (userRes.rows.length === 0) {
                 return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
             }

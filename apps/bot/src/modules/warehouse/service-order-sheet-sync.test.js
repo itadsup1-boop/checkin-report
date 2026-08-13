@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import moment from 'moment';
 import { createServiceOrderSheetSync } from './integrations/service-order-sheet-sync.js';
 
@@ -20,6 +21,15 @@ class FakeRow {
     async save() {
         this.saveCount += 1;
     }
+
+    async delete() {
+        this.deleted = true;
+        const rows = this.sheet?.rows;
+        if (rows) {
+            const index = rows.indexOf(this);
+            if (index >= 0) rows.splice(index, 1);
+        }
+    }
 }
 
 class FakeSheet {
@@ -39,6 +49,7 @@ class FakeSheet {
 
     async addRow(data) {
         const row = new FakeRow(data);
+        row.sheet = this;
         this.rows.push(row);
         return row;
     }
@@ -150,4 +161,89 @@ test('đồng bộ Sheet giữ 6 tab, chống ghi trùng và phản ánh hoàn t
     assert.equal(doc.sheetsByTitle['3. Tồn kho US'].rows[0].get('Số lượng tồn kho'), 10);
     assert.equal(doc.sheetsByTitle['4. Tồn kho UK'].rows[0].get('Số lượng tồn kho'), 5);
     assert.equal(syncUpdates, 3);
+});
+
+test('tab tồn kho từng cơ sở chỉ chứa sản phẩm còn hàng tại cơ sở đó', async () => {
+    const doc = {
+        sheetsByTitle: { '2. Nhập kho': new FakeSheet('2. Nhập kho') },
+        async loadInfo() {},
+        async addSheet({ title, headerValues }) {
+            const sheet = new FakeSheet(title, headerValues);
+            this.sheetsByTitle[title] = sheet;
+            return sheet;
+        }
+    };
+
+    // Hàng chỉ nằm ở US, UK không có gì.
+    let stockUs = 8;
+    let stockUk = 0;
+
+    const pool = {
+        async query(sql) {
+            if (sql.includes('SELECT o.*')) {
+                return { rows: [{
+                    id: 'order-1', order_code: 'ORD-002', status: 'APPROVED', branch: 'US',
+                    customer_name: 'Khách test', customer_phone: '0900000000',
+                    creator_name: 'Nhân viên A', approver_name: 'Quản lý B',
+                    approved_at: new Date('2026-08-12T01:00:00Z'),
+                    created_at: new Date('2026-08-12T00:00:00Z'),
+                    reversed_by_admin_id: null, reversed_at: null
+                }] };
+            }
+            if (sql.includes('SELECT oi.id')) {
+                return { rows: [{
+                    id: 'item-1', product_id: 'product-1',
+                    product_name_snapshot: 'Chỉ carelon6', barcode_snapshot: '003',
+                    actual_quantity: 3, local_allocated_quantity: 3,
+                    transfer_allocated_quantity: 0, transfer_from_branch: null,
+                    service_name_snapshot: 'Căng da'
+                }] };
+            }
+            if (sql.includes('SELECT t.transfer_code')) return { rows: [] };
+            if (sql.includes('SELECT p.id')) {
+                return { rows: [{
+                    id: 'product-1', barcode: '003', product_name: 'Chỉ carelon6',
+                    stock_us: stockUs, stock_uk: stockUk
+                }] };
+            }
+            if (sql.includes('UPDATE tk_warehouse_orders')) return { rowCount: 1, rows: [] };
+            throw new Error(`Query không được mô phỏng: ${sql}`);
+        }
+    };
+
+    const sync = createServiceOrderSheetSync({ pool, moment, getDocById: async () => doc });
+    await sync.syncWarehouseOrder('order-1');
+
+    assert.equal(doc.sheetsByTitle['3. Tồn kho US'].rows.length, 1, 'US còn hàng thì phải có dòng');
+    assert.equal(
+        doc.sheetsByTitle['4. Tồn kho UK'].rows.length, 0,
+        'UK không có hàng thì KHÔNG được tạo dòng số lượng 0'
+    );
+    assert.equal(doc.sheetsByTitle['5. Tổng kho'].rows.length, 1, 'tổng kho vẫn ghi chung mọi sản phẩm');
+
+    // Chuyển hết hàng sang UK.
+    stockUs = 0;
+    stockUk = 6;
+    await sync.syncWarehouseOrder('order-1');
+
+    // Dòng cũ ở tab US được cập nhật về 0 chứ KHÔNG bị xoá: Sheet là bản đối chiếu
+    // của người vận hành, không được tự ý xoá dữ liệu đã có.
+    assert.equal(doc.sheetsByTitle['3. Tồn kho US'].rows.length, 1, 'không được xoá dòng đã có trên Sheet');
+    assert.equal(doc.sheetsByTitle['3. Tồn kho US'].rows[0].get('Số lượng tồn kho'), 0);
+    assert.equal(doc.sheetsByTitle['4. Tồn kho UK'].rows.length, 1, 'UK có hàng thì phải xuất hiện');
+    assert.equal(doc.sheetsByTitle['4. Tồn kho UK'].rows[0].get('Số lượng tồn kho'), 6);
+    assert.equal(doc.sheetsByTitle['5. Tổng kho'].rows.length, 1, 'tổng kho ghi chung mọi sản phẩm');
+});
+
+test('đồng bộ Sheet không bao giờ gọi xoá dòng', () => {
+    // Chốt bằng mã nguồn: nếu ai đó thêm lại row.delete() thì test này fail ngay.
+    const sources = [
+        'integrations/google-sheets.js',
+        'integrations/service-order-sheet-sync.js'
+    ];
+    for (const relativePath of sources) {
+        const source = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');
+        assert.doesNotMatch(source, /\.delete\(\)/, `${relativePath} không được xoá dòng Sheet`);
+        assert.doesNotMatch(source, /deleteRows|clearRows/, `${relativePath} không được xoá dải dòng Sheet`);
+    }
 });

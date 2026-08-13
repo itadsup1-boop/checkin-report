@@ -4,7 +4,43 @@ import moment from 'moment';
 
 const HEADERS = ['STT', 'Họ và tên', 'Nhóm / Chi nhánh', 'Chức vụ', 'Ngày', 'Giờ Check-in', 'Trạng thái', 'Ghi chú Admin', 'Tổng Tiền Phạt', 'Lý do Phạt'];
 
+// Gộp các lần gọi trùng nhau.
+//
+// syncAllTimekeepSheets() được gọi từ 8 chỗ (check-in, admin sửa giờ, thêm
+// check-in tay...). Mỗi lượt lại ghi lại sheet của TOÀN BỘ nhân sự, nên vài
+// người check-in liền nhau là vượt hạn mức 60 lệnh ghi/phút của Google và
+// nhận lỗi 429.
+//
+// Vì mỗi lượt đều ghi lại toàn bộ nên chạy một lượt là đủ cho mọi thay đổi
+// đang chờ. Ở đây: đang chạy thì các lời gọi mới dùng chung lượt đó và chỉ
+// đặt lịch chạy thêm đúng MỘT lượt nữa để bắt dữ liệu mới nhất.
+let inFlightSync = null;
+let rerunRequested = false;
+
 export async function syncAllTimekeepSheets() {
+    if (inFlightSync) {
+        rerunRequested = true;
+        return inFlightSync;
+    }
+
+    inFlightSync = (async () => {
+        try {
+            let result = await runTimekeepSync();
+            while (rerunRequested) {
+                rerunRequested = false;
+                result = await runTimekeepSync();
+            }
+            return result;
+        } finally {
+            inFlightSync = null;
+            rerunRequested = false;
+        }
+    })();
+
+    return inFlightSync;
+}
+
+async function runTimekeepSync() {
     const spreadsheetId = process.env.TIMEKEEP_SPREADSHEET_ID;
     if (!spreadsheetId || spreadsheetId === 'SPREADSHEET_ID_CHUA_CAI_DAT') {
         console.log('[SHEET SYNC] Bỏ qua vì chưa cài đặt TIMEKEEP_SPREADSHEET_ID');
@@ -34,7 +70,8 @@ export async function syncAllTimekeepSheets() {
     }
 }
 
-// Định dạng hàng tiêu đề: Nền màu VÀNG (#FFFF00), chữ in đậm
+// Định dạng hàng tiêu đề: Nền màu VÀNG (#FFFF00), chữ in đậm.
+// Tốn 2 lệnh ghi (setHeaderRow + saveUpdatedCells) nên CHỈ gọi khi tạo sheet mới.
 async function formatYellowHeader(sheet) {
     await sheet.setHeaderRow(HEADERS);
     try {
@@ -47,6 +84,36 @@ async function formatYellowHeader(sheet) {
         await sheet.saveUpdatedCells();
     } catch (e) {
         console.error('Lỗi định dạng màu header:', e.message);
+    }
+}
+
+/**
+ * Bảo đảm sheet có đúng hàng tiêu đề, tốn ÍT lệnh ghi nhất có thể.
+ *
+ * Trước đây mỗi lượt đồng bộ đều tô lại header cho từng nhân sự, tức 2 lệnh ghi
+ * × 18 người = 36 lệnh ghi hoàn toàn thừa (tiêu đề có đổi bao giờ đâu). Đó là
+ * nguyên nhân chính gây lỗi 429 Quota exceeded.
+ *
+ * Giờ: sheet mới thì tạo header + tô vàng; sheet cũ chỉ ĐỌC header, và chỉ ghi
+ * lại khi tiêu đề thực sự lệch.
+ */
+async function ensureHeaderRow(sheet, { isNew }) {
+    if (isNew) {
+        await formatYellowHeader(sheet);
+        return;
+    }
+
+    try {
+        await sheet.loadHeaderRow();
+        const current = sheet.headerValues || [];
+        const same = current.length >= HEADERS.length
+            && HEADERS.every((header, index) => current[index] === header);
+        if (!same) {
+            await sheet.setHeaderRow(HEADERS);
+        }
+    } catch (e) {
+        // Sheet chưa có hàng tiêu đề hợp lệ -> đặt lại.
+        await sheet.setHeaderRow(HEADERS);
     }
 }
 
@@ -115,13 +182,15 @@ async function syncMasterSheet(doc, todayStr) {
     const res = await pool.query(query, [todayStr]);
 
     let sheetMaster = doc.sheetsByTitle['Tổng Hợp Chấm Công'] || doc.sheetsByTitle['Lịch Tổng'];
+    let masterIsNew = false;
     if (!sheetMaster) {
         sheetMaster = await doc.addSheet({
             title: 'Tổng Hợp Chấm Công'
         });
+        masterIsNew = true;
     }
 
-    await formatYellowHeader(sheetMaster);
+    await ensureHeaderRow(sheetMaster, { isNew: masterIsNew });
     await sheetMaster.clearRows();
 
     const masterRows = res.rows.reduce((acc, r) => {
@@ -177,7 +246,8 @@ async function syncIndividualSheets(doc, todayStr) {
         try {
             // Check case-insensitive to avoid Google API 400 error
             let sheetEmp = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === cleanName.toLowerCase());
-            
+            let sheetEmpIsNew = false;
+
             // If it exists but we already processed someone with this name (or it's a duplicate),
             // and we want separate sheets... actually if we just use the existing sheet, their data might mix.
             // But to quickly fix the crash, if sheetEmp exists, we just use it (mixing data, but avoids 400 error).
@@ -187,6 +257,7 @@ async function syncIndividualSheets(doc, todayStr) {
                     sheetEmp = await doc.addSheet({
                         title: cleanName
                     });
+                    sheetEmpIsNew = true;
                     await new Promise(r => setTimeout(r, 1000));
                     // Add to sheetsByTitle to prevent next iteration from missing it
                     doc.sheetsByTitle[cleanName] = sheetEmp;
@@ -197,6 +268,7 @@ async function syncIndividualSheets(doc, todayStr) {
                         if (!sheetEmp) {
                             cleanName = cleanName + ' - ' + emp.id.substring(0, 4);
                             sheetEmp = await doc.addSheet({ title: cleanName });
+                            sheetEmpIsNew = true;
                             doc.sheetsByTitle[cleanName] = sheetEmp;
                             await new Promise(r => setTimeout(r, 1000));
                         }
@@ -206,7 +278,7 @@ async function syncIndividualSheets(doc, todayStr) {
                 }
             }
 
-            await formatYellowHeader(sheetEmp);
+            await ensureHeaderRow(sheetEmp, { isNew: sheetEmpIsNew });
             await sheetEmp.clearRows();
 
             const detailQuery = `
