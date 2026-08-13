@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import moment from 'moment';
-import { createServiceOrderSheetSync } from './integrations/service-order-sheet-sync.js';
+import { createServiceOrderSheetSync } from '../infrastructure/google-sheet/service-order-sheet-sync.js';
 
 class FakeRow {
     constructor(data) {
@@ -238,8 +238,8 @@ test('tab tồn kho từng cơ sở chỉ chứa sản phẩm còn hàng tại c
 test('đồng bộ Sheet không bao giờ gọi xoá dòng', () => {
     // Chốt bằng mã nguồn: nếu ai đó thêm lại row.delete() thì test này fail ngay.
     const sources = [
-        'integrations/google-sheets.js',
-        'integrations/service-order-sheet-sync.js'
+        '../infrastructure/google-sheet/google-sheets.js',
+        '../infrastructure/google-sheet/service-order-sheet-sync.js'
     ];
     for (const relativePath of sources) {
         const source = fs.readFileSync(new URL(relativePath, import.meta.url), 'utf8');

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import pool from '../../../../../packages/database/index.js';
-import { registerWarehouseAdminRoutes } from './index.js';
+import pool from '../../../packages/database/index.js';
+import { registerWarehouseAdminRoutes } from '../index.js';
 
 function createResponse() {
     return {

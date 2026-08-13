@@ -23,7 +23,7 @@ import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder } from 
 import { getCustomerDocForGroup, getDocById } from './sheetManager.js';
 import multer from 'multer';
 import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
-import { registerWarehouseModule } from './src/modules/warehouse/index.js';
+import { registerWarehouseModule } from '../../domains/warehouse/index.js';
 
 // Tạm tắt phụ phí 100.000đ khi đi muộn mà không có đơn báo trước.
 // Giữ thành cờ riêng để có thể bật lại mà không ảnh hưởng mức phạt đi muộn gốc.
@@ -2199,9 +2199,13 @@ cron.schedule('*/1 * * * *', async () => {
                         SELECT u.id AS user_id, u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
+                        LEFT JOIN employee_group_memberships gm
+                          ON gm.employee_id = u.id
+                         AND gm.telegram_group_id = $4
                         WHERE u.group_id = $1
                           AND COALESCE(u.is_exempt_checkin, false) = false
                           AND COALESCE(u.is_active, true) = true
+                          AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
                           AND s.shift_type = ANY($3)
                            AND NOT EXISTS (
                                SELECT 1 FROM tk_check_ins c
@@ -2215,7 +2219,7 @@ cron.schedule('*/1 * * * *', async () => {
                                  AND (ds.reminder_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
                            )
                         ORDER BY u.full_name ASC
-                    `, [group_uuid, todayStr, shift.types]);
+                    `, [group_uuid, todayStr, shift.types, String(telegram_group_id)]);
 
                     if (uncheckedRes.rows.length > 0) {
                         const names = uncheckedRes.rows.map(r => `👤 ${r.full_name}`).join('\n');
@@ -2248,9 +2252,13 @@ cron.schedule('*/1 * * * *', async () => {
                         SELECT u.id AS user_id, u.full_name
                         FROM employees u
                         JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
+                        LEFT JOIN employee_group_memberships gm
+                          ON gm.employee_id = u.id
+                         AND gm.telegram_group_id = $4
                         WHERE u.group_id = $1
                           AND COALESCE(u.is_exempt_checkin, false) = false
                           AND COALESCE(u.is_active, true) = true
+                          AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
                           AND s.shift_type = ANY($3)
                            AND NOT EXISTS (
                                SELECT 1 FROM tk_check_ins c
@@ -2264,7 +2272,7 @@ cron.schedule('*/1 * * * *', async () => {
                                  AND (ds.late_warning_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
                            )
                         ORDER BY u.full_name ASC
-                    `, [group_uuid, todayStr, shift.types]);
+                    `, [group_uuid, todayStr, shift.types, String(telegram_group_id)]);
 
                     if (lateRes.rows.length > 0) {
                         const names = lateRes.rows.map(r => `❌ ${r.full_name}`).join('\n');
@@ -2309,9 +2317,13 @@ cron.schedule('*/1 * * * *', async () => {
             JOIN telegram_groups g ON c.group_id = g.id
             LEFT JOIN tk_schedules s ON c.user_id = s.user_id AND c.date = s.date
             LEFT JOIN group_settings gs ON g.telegram_group_id = gs.telegram_group_id
+            LEFT JOIN employee_group_memberships gm
+              ON gm.employee_id = u.id
+             AND gm.telegram_group_id = g.telegram_group_id
             WHERE c.date = $1
               AND COALESCE(u.is_exempt_checkin, false) = false
               AND COALESCE(u.is_active, true) = true
+              AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
               AND NOT EXISTS (
                   SELECT 1 FROM tk_attendance_daily_status ds
                   WHERE ds.group_id = c.group_id

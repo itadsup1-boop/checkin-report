@@ -4,7 +4,7 @@ import {
     WarehouseError,
     aggregateOrderItems,
     validateOrderInput
-} from '../../warehouse/index.js';
+} from '../index.js';
 
 const valid = {
     customer_name: 'Nguyễn Thị A',

@@ -4,9 +4,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import moment from 'moment';
-import pool from '../../../../../packages/database/index.js';
-import { registerWarehouseImportRoutes } from './http/import-routes.js';
-import { startWarehouseOutboxWorker } from './integrations/outbox-worker.js';
+import pool from '../../../packages/database/index.js';
+import { registerWarehouseImportRoutes } from '../interfaces/miniapp-api/import-routes.js';
+import { startWarehouseOutboxWorker } from '../infrastructure/outbox/outbox-worker.js';
 
 test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng bộ thành công', async t => {
     const originalConsoleError = console.error;

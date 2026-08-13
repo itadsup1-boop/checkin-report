@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Users, Search, Edit3, Save, X, UserCheck, Briefcase, Calendar, FileDown, PauseCircle, PlayCircle } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const PAUSABLE_GROUP_ROLES = ['report', 'report_tour', 'timekeep'];
 
 export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [staff, setStaff] = useState([]);
@@ -66,7 +67,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
 
   const updateMembershipStatus = async (user) => {
     if (!selectedGroupId || selectedGroupId === 'ALL') {
-      showToast('⚠️ Vui lòng chọn một nhóm KPI cụ thể trước.');
+      showToast('⚠️ Vui lòng chọn một nhóm cụ thể trước.');
       return;
     }
 
@@ -74,7 +75,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
     const nextStatus = currentStatus === 'PAUSED' ? 'ACTIVE' : 'PAUSED';
     let pauseReason = '';
     if (nextStatus === 'PAUSED') {
-      pauseReason = window.prompt(`Lý do tạm dừng KPI của ${user.full_name} tại nhóm này:`, 'Tạm chuyển cơ sở');
+      pauseReason = window.prompt(`Lý do tạm dừng hoạt động của ${user.full_name} tại nhóm này:`, 'Tạm chuyển cơ sở');
       if (pauseReason === null) return;
       if (!window.confirm(`Tạm dừng ${user.full_name} tại nhóm đang chọn? Lịch sử cũ vẫn được giữ nguyên.`)) return;
     } else if (!window.confirm(`Kích hoạt lại KPI của ${user.full_name} tại nhóm đang chọn?`)) {
@@ -88,8 +89,8 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
         pause_reason: pauseReason,
       });
       showToast(nextStatus === 'PAUSED'
-        ? '⏸ Đã tạm dừng KPI trong nhóm này.'
-        : '▶️ Đã kích hoạt lại KPI trong nhóm này.');
+        ? '⏸ Đã tạm dừng nhân sự trong nhóm này.'
+        : '▶️ Đã kích hoạt lại nhân sự trong nhóm này.');
       fetchStaff();
     } catch (err) {
       showToast('❌ ' + (err.response?.data?.error || err.message));
@@ -207,7 +208,8 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                 <th className="py-4 px-6 font-medium text-center">Miễn Check-in</th>
                 <th className="py-4 px-6 font-medium text-center">Báo cáo KPI</th>
                 <th className="py-4 px-6 font-medium text-center">KPI tại nhóm</th>
-                <th className="py-4 px-6 font-medium text-center">Trạng thái</th>
+                <th className="py-4 px-6 font-medium text-center">Hoạt động tại nhóm</th>
+                <th className="py-4 px-6 font-medium text-center">Tài khoản</th>
                 <th className="py-4 px-6 font-medium">Ngày đăng ký</th>
                 <th className="py-4 px-6 font-medium text-right">Hành động</th>
               </tr>
@@ -215,13 +217,13 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
             <tbody className="divide-y divide-white/5 text-sm">
               {loading ? (
                 <tr>
-                  <td colSpan="12" className="py-12 text-center">
+                  <td colSpan="13" className="py-12 text-center">
                     <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
                   </td>
                 </tr>
               ) : filteredStaff.length === 0 ? (
                 <tr>
-                  <td colSpan="12" className="py-12 text-center text-slate-500">
+                  <td colSpan="13" className="py-12 text-center text-slate-500">
                     {searchTerm ? 'Không tìm thấy nhân viên phù hợp.' : 'Chưa có nhân viên nào đăng ký qua Telegram.'}
                   </td>
                 </tr>
@@ -318,7 +320,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                         )}
                       </td>
                       <td className="py-4 px-6 text-center">
-                        {selectedGroupId !== 'ALL' && ['report', 'report_tour'].includes(user.selected_group_role) ? (
+                        {selectedGroupId !== 'ALL' && PAUSABLE_GROUP_ROLES.includes(user.selected_group_role) ? (
                           (user.membership_status || 'ACTIVE') === 'PAUSED' ? (
                             <div className="flex flex-col items-center gap-1">
                               <span className="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-md text-xs border border-amber-500/30 font-semibold">⏸ Tạm dừng</span>
@@ -372,7 +374,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                           </div>
                         ) : (
                           <div className="flex items-center justify-end gap-2">
-                            {selectedGroupId !== 'ALL' && ['report', 'report_tour'].includes(user.selected_group_role) && (
+                            {selectedGroupId !== 'ALL' && PAUSABLE_GROUP_ROLES.includes(user.selected_group_role) && (
                               <button
                                 onClick={() => updateMembershipStatus(user)}
                                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-1 ${

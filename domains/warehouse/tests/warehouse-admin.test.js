@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { registerWarehouseAdminRoutes } from './index.js';
+import { registerWarehouseAdminRoutes } from '../index.js';
 
 test('Warehouse Admin đăng ký đầy đủ API và từ chối request thiếu phiên Admin', async () => {
     const routes = [];
@@ -23,29 +23,35 @@ test('Warehouse Admin đăng ký đầy đủ API và từ chối request thiế
 
     registerWarehouseAdminRoutes({ app, pool });
 
+    // So sánh theo tập đã sắp xếp thay vì theo thứ tự đăng ký.
+    //
+    // Route giờ được gom theo nhóm nghiệp vụ (dịch vụ / sản phẩm / quyền / đơn /
+    // vận hành) nên thứ tự khác bản cũ. Việc này an toàn vì không có cặp route nào
+    // che khuất nhau — đã đối chiếu từng cặp cùng method và cùng số đoạn đường dẫn.
+    // Phép so sánh vẫn chặt: thiếu hoặc thừa một route là fail ngay.
     assert.deepEqual(
-        routes.map(route => `${route.method} ${route.path}`),
+        routes.map(route => `${route.method} ${route.path}`).sort(),
         [
-            'GET /api/admin/warehouse/services',
-            'POST /api/admin/warehouse/services',
-            'PUT /api/admin/warehouse/services/:serviceId',
-            'GET /api/admin/warehouse/products',
-            'PUT /api/admin/warehouse/products/:productId',
-            'GET /api/admin/warehouse/products/audit',
-            'GET /api/admin/warehouse/services/:serviceId/products',
-            'PUT /api/admin/warehouse/services/:serviceId/products',
-            'GET /api/admin/warehouse/services/:serviceId/audit',
-            'GET /api/admin/warehouse/groups/:groupId/permissions',
-            'PUT /api/admin/warehouse/groups/:groupId/permissions/:employeeId',
-            'GET /api/admin/warehouse/groups/:groupId/permission-audit',
-            'PUT /api/admin/warehouse/groups/:groupId/feature-flag',
+            'GET /api/admin/warehouse/groups/:groupId/ledger',
             'GET /api/admin/warehouse/groups/:groupId/orders',
+            'GET /api/admin/warehouse/groups/:groupId/outbox',
+            'GET /api/admin/warehouse/groups/:groupId/permission-audit',
+            'GET /api/admin/warehouse/groups/:groupId/permissions',
+            'GET /api/admin/warehouse/products',
+            'GET /api/admin/warehouse/products/audit',
+            'GET /api/admin/warehouse/services',
+            'GET /api/admin/warehouse/services/:serviceId/audit',
+            'GET /api/admin/warehouse/services/:serviceId/products',
             'POST /api/admin/warehouse/groups/:groupId/orders/:orderId/approve',
             'POST /api/admin/warehouse/groups/:groupId/orders/:orderId/reject',
             'POST /api/admin/warehouse/groups/:groupId/orders/:orderId/reverse',
-            'GET /api/admin/warehouse/groups/:groupId/ledger',
-            'GET /api/admin/warehouse/groups/:groupId/outbox',
-            'POST /api/admin/warehouse/groups/:groupId/outbox/:eventId/retry'
+            'POST /api/admin/warehouse/groups/:groupId/outbox/:eventId/retry',
+            'POST /api/admin/warehouse/services',
+            'PUT /api/admin/warehouse/groups/:groupId/feature-flag',
+            'PUT /api/admin/warehouse/groups/:groupId/permissions/:employeeId',
+            'PUT /api/admin/warehouse/products/:productId',
+            'PUT /api/admin/warehouse/services/:serviceId',
+            'PUT /api/admin/warehouse/services/:serviceId/products'
         ]
     );
     assert.ok(routes.every(route => route.handlers.length === 1));

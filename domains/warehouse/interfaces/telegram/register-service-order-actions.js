@@ -1,4 +1,4 @@
-import { WarehouseError } from '../../../../../../packages/warehouse/index.js';
+import { WarehouseError } from '../../domain/constants.js';
 
 export function registerWarehouseServiceOrderActions({
     bot,

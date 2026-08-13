@@ -1,4 +1,4 @@
-import { WarehouseError } from '../../../../../../packages/warehouse/index.js';
+import { WarehouseError } from '../../domain/constants.js';
 
 function sendWarehouseError(res, error) {
     if (error instanceof WarehouseError || error?.name === 'WarehouseError') {

@@ -8,7 +8,9 @@ import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import { KPI_GROUP_ROLES } from '../../packages/shared/kpiMembership.js';
-import { registerWarehouseAdminRoutes } from './src/modules/warehouse-admin/index.js';
+import { registerWarehouseAdminRoutes } from '../../domains/warehouse/index.js';
+
+const PAUSABLE_GROUP_ROLES = [...KPI_GROUP_ROLES, 'timekeep'];
 
 dotenv.config();
 
@@ -377,7 +379,7 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
     }
 });
 
-// Tạm dừng/kích hoạt KPI theo đúng một nhóm, không thay đổi tài khoản toàn cục.
+// Tạm dừng/kích hoạt hoạt động theo đúng một nhóm, không thay đổi tài khoản toàn cục.
 app.put('/api/admin/tk-users/:id/group-membership', async (req, res) => {
     const client = await pool.connect();
     try {
@@ -407,9 +409,9 @@ app.put('/api/admin/tk-users/:id/group-membership', async (req, res) => {
              LIMIT 1`,
             [String(telegram_group_id)]
         );
-        if (!KPI_GROUP_ROLES.includes(groupResult.rows[0]?.bot_role)) {
+        if (!PAUSABLE_GROUP_ROLES.includes(groupResult.rows[0]?.bot_role)) {
             await client.query('ROLLBACK');
-            return res.status(400).json({ error: 'Chỉ áp dụng tạm dừng theo nhóm cho role KPI' });
+            return res.status(400).json({ error: 'Nhóm này chưa hỗ trợ tạm dừng nhân sự theo nhóm' });
         }
 
         const existingResult = await client.query(
@@ -475,8 +477,8 @@ app.put('/api/admin/tk-users/:id/group-membership', async (req, res) => {
             success: true,
             membership_status: normalizedStatus,
             message: normalizedStatus === 'PAUSED'
-                ? 'Đã tạm dừng KPI của nhân viên trong nhóm này.'
-                : 'Đã kích hoạt lại KPI của nhân viên trong nhóm này.'
+                ? 'Đã tạm dừng hoạt động của nhân viên trong nhóm này.'
+                : 'Đã kích hoạt lại hoạt động của nhân viên trong nhóm này.'
         });
     } catch (error) {
         await client.query('ROLLBACK').catch(() => {});

@@ -42,6 +42,17 @@ async function run() {
         `);
         assert(groupResult.rows.length === 2, 'Two active KPI groups are required for the API test');
         const [firstGroup, secondGroup] = groupResult.rows.map(row => String(row.telegram_group_id));
+        const timekeepGroupResult = await pool.query(`
+            SELECT telegram_group_id
+            FROM telegram_groups
+            WHERE bot_role = 'timekeep'
+              AND is_active = TRUE
+              AND COALESCE(is_deleted, FALSE) = FALSE
+            ORDER BY telegram_group_id
+            LIMIT 1
+        `);
+        assert(timekeepGroupResult.rows.length === 1, 'One active timekeep group is required for the API test');
+        const timekeepGroup = String(timekeepGroupResult.rows[0].telegram_group_id);
 
         const employeeResult = await pool.query(
             `INSERT INTO employees
@@ -71,6 +82,14 @@ async function run() {
                 [telegramId, groupId]
             );
         }
+
+        await pool.query(
+            `INSERT INTO employee_group_memberships
+                (employee_id, telegram_group_id, status, need_report,
+                 current_kpi_target, updated_by)
+             VALUES ($1, $2, 'ACTIVE', FALSE, 0, 'automated_api_test')`,
+            [employeeId, timekeepGroup]
+        );
 
         const paused = await updateMembership(employeeId, firstGroup, 'PAUSED', 'automated API isolation test');
         assert(paused.membership_status === 'PAUSED', 'Pause API did not return PAUSED');
@@ -109,6 +128,30 @@ async function run() {
         const resumed = await updateMembership(employeeId, firstGroup, 'ACTIVE');
         assert(resumed.membership_status === 'ACTIVE', 'Resume API did not return ACTIVE');
 
+        const pausedTimekeep = await updateMembership(
+            employeeId,
+            timekeepGroup,
+            'PAUSED',
+            'automated timekeep isolation test'
+        );
+        assert(pausedTimekeep.membership_status === 'PAUSED', 'Timekeep pause API did not return PAUSED');
+
+        const timekeepEligibility = await pool.query(
+            `SELECT e.id
+             FROM employees e
+             LEFT JOIN employee_group_memberships m
+               ON m.employee_id = e.id
+              AND m.telegram_group_id = $2
+             WHERE e.id = $1
+               AND COALESCE(e.is_active, TRUE) = TRUE
+               AND COALESCE(m.status, 'ACTIVE') = 'ACTIVE'`,
+            [employeeId, timekeepGroup]
+        );
+        assert(timekeepEligibility.rows.length === 0, 'Paused timekeep member remained reminder-eligible');
+
+        const resumedTimekeep = await updateMembership(employeeId, timekeepGroup, 'ACTIVE');
+        assert(resumedTimekeep.membership_status === 'ACTIVE', 'Timekeep resume API did not return ACTIVE');
+
         states = await pool.query(
             `SELECT telegram_group_id, status
              FROM employee_group_memberships
@@ -133,7 +176,7 @@ async function run() {
             'Pause/resume audit history contains incorrect state transitions'
         );
 
-        console.log('PASS: live KPI membership API pause/resume and cross-group isolation');
+        console.log('PASS: live group activity pause/resume and cross-group isolation');
     } finally {
         try {
             await pool.query('DELETE FROM pending_reports WHERE telegram_id = $1', [telegramId]);

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-const PUBLIC_DIR = fileURLToPath(new URL('../../../public/', import.meta.url));
+const PUBLIC_DIR = fileURLToPath(new URL('../../../apps/bot/public/', import.meta.url));
 const EXPORT_APP_DIR = path.join(PUBLIC_DIR, 'warehouse-export');
 
 function readPublicFile(name) {
@@ -220,7 +220,7 @@ test('asset Mini App xuất kho có cơ chế đổi URL theo phiên bản', () 
     assert.match(html, /_v__ASSET_V__\/warehouse-export\/app\.js/);
     assert.match(html, /_v__ASSET_V__\/warehouse-export\/theme\.css/);
 
-    const bot = fs.readFileSync(fileURLToPath(new URL('../../../timekeep_bot.js', import.meta.url)), 'utf8');
+    const bot = fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url)), 'utf8');
     assert.match(bot, /__ASSET_V__/, 'bot phải thay token phiên bản vào shell');
     assert.match(bot, /getWarehouseAssetVersion/);
     assert.match(bot, /no-store/, 'shell xuất kho phải trả no-store');

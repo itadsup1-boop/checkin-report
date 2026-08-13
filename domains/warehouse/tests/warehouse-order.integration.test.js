@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import pool from '../../database/index.js';
+import pool from '../../../packages/database/index.js';
 import {
     WarehouseError,
     createWarehouseOrderService
-} from '../../warehouse/index.js';
+} from '../index.js';
 
 const suffix = `${Date.now()}-${Math.round(Math.random() * 1e6)}`;
 const groupTelegramId = `-999${String(Date.now()).slice(-9)}`;

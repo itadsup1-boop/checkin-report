@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { registerWarehouseModule } from './index.js';
-import { WAREHOUSE_IMAGE_LIMITS } from './http/warehouse-image-upload.js';
+import { registerWarehouseModule } from '../index.js';
+import { WAREHOUSE_IMAGE_LIMITS } from '../interfaces/miniapp-api/warehouse-image-upload.js';
 
 function createRegistrationHarness() {
     const routes = [];
@@ -111,7 +111,7 @@ test('public API của module bị đóng băng và giới hạn upload giữ ng
 
 test('timekeep bot chỉ lắp ghép module, không còn khai báo route kho trực tiếp', () => {
     const source = fs.readFileSync(
-        new URL('../../../timekeep_bot.js', import.meta.url),
+        new URL('../../../apps/bot/timekeep_bot.js', import.meta.url),
         'utf8'
     );
 
@@ -122,17 +122,17 @@ test('timekeep bot chỉ lắp ghép module, không còn khai báo route kho tr�
 });
 
 test('luồng xuất kho cũ cũng dùng quyền Web Admin và khóa transaction', () => {
-    const exportRoute = fs.readFileSync(new URL('./http/export-routes.js', import.meta.url), 'utf8');
+    const exportRoute = fs.readFileSync(new URL('../interfaces/miniapp-api/export-routes.js', import.meta.url), 'utf8');
     const groupAction = fs.readFileSync(
-        new URL('./telegram/register-group-order-actions.js', import.meta.url),
+        new URL('../interfaces/telegram/register-group-order-actions.js', import.meta.url),
         'utf8'
     );
     const singleAction = fs.readFileSync(
-        new URL('./telegram/register-single-order-actions.js', import.meta.url),
+        new URL('../interfaces/telegram/register-single-order-actions.js', import.meta.url),
         'utf8'
     );
     const proofHandler = fs.readFileSync(
-        new URL('./telegram/register-proof-handler.js', import.meta.url),
+        new URL('../interfaces/telegram/register-proof-handler.js', import.meta.url),
         'utf8'
     );
 
@@ -151,7 +151,7 @@ test('luồng xuất kho cũ cũng dùng quyền Web Admin và khóa transaction
 
 test('nhập kho chặn trùng mã vạch thay vì âm thầm đổi tên sản phẩm', () => {
     const source = fs.readFileSync(
-        new URL('./http/import-routes.js', import.meta.url),
+        new URL('../interfaces/miniapp-api/import-routes.js', import.meta.url),
         'utf8'
     );
 
@@ -182,7 +182,7 @@ test('nhập kho chặn trùng mã vạch thay vì âm thầm đổi tên sản 
 
 test('nhập kho chống trùng mã ngay ở tầng database khi hai cơ sở lưu cùng lúc', () => {
     const source = fs.readFileSync(
-        new URL('./http/import-routes.js', import.meta.url),
+        new URL('../interfaces/miniapp-api/import-routes.js', import.meta.url),
         'utf8'
     );
 
@@ -204,7 +204,7 @@ test('nhập kho chống trùng mã ngay ở tầng database khi hai cơ sở l�
 
 test('có API đề xuất mã vạch mới và mã đề xuất không đụng mã đã dùng', () => {
     const source = fs.readFileSync(
-        new URL('./http/catalog-routes.js', import.meta.url),
+        new URL('../interfaces/miniapp-api/catalog-routes.js', import.meta.url),
         'utf8'
     );
 
