@@ -24,6 +24,14 @@ import { getCustomerDocForGroup, getDocById } from './sheetManager.js';
 import multer from 'multer';
 import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseModule } from '../../domains/warehouse/index.js';
+import {
+    buildAbsenceNotificationText,
+    finalizeUnauthorizedAbsences,
+    getPendingAbsenceNotifications,
+    groupAbsenceNotifications,
+    markAbsenceNotificationsSent,
+    applyApprovedLeavePenalties
+} from '../../domains/timekeep/attendance-penalties.js';
 
 // Tạm tắt phụ phí 100.000đ khi đi muộn mà không có đơn báo trước.
 // Giữ thành cờ riêng để có thể bật lại mà không ảnh hưởng mức phạt đi muộn gốc.
@@ -1960,49 +1968,17 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
                 [request.group_id, request.user_id, formattedDate, newShift]
             );
 
-            // PENALTY LOGIC: Nghỉ đột xuất > 1 lần/tháng
-            const monthStart = moment(request.date).startOf('month').format('YYYY-MM-DD');
-            const monthEnd = moment(request.date).endOf('month').format('YYYY-MM-DD');
-            const suddenLeavesRes = await pool.query(
-                `SELECT id FROM tk_leave_requests 
-                 WHERE user_id = $1 AND status = 'APPROVED' 
-                 AND request_type IN ('FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM')
-                 AND date >= $2 AND date <= $3`,
-                [request.user_id, monthStart, monthEnd]
-            );
-            
-            if (suddenLeavesRes.rows.length > 1) { // Lần 1 là = 1, lần 2 là = 2
-                // Insert penalty 100k
-                await pool.query(
-                    `INSERT INTO tk_penalties (group_id, user_id, date, violation_type, late_minutes, amount, reason, is_paid)
-                     VALUES ($1, $2, $3, 'SUDDEN_LEAVE', 0, 100000, $4, false)`,
-                    [request.group_id, request.user_id, formattedDate, `Nghỉ đột xuất lần thứ ${suddenLeavesRes.rows.length} trong tháng`]
-                );
+            const leavePenalties = await applyApprovedLeavePenalties({
+                pool,
+                request: { ...request, date: formattedDate }
+            });
+            if (leavePenalties.consecutivePenaltyId) {
+                penaltyButtons.push([{
+                    text: '✅ Miễn phạt nghỉ liên tiếp',
+                    callback_data: `excuse_penalty_${leavePenalties.consecutivePenaltyId}`
+                }]);
             }
-
-            // PENALTY LOGIC: Nghỉ 2 ngày liên tiếp
-            const prevDay = moment(request.date).subtract(1, 'days').format('YYYY-MM-DD');
-            const nextDay = moment(request.date).add(1, 'days').format('YYYY-MM-DD');
-            
-            const consecutiveRes = await pool.query(
-                `SELECT date FROM tk_leave_requests 
-                 WHERE user_id = $1 AND status = 'APPROVED' 
-                 AND request_type IN ('FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM')
-                 AND (date = $2 OR date = $3) LIMIT 1`,
-                [request.user_id, prevDay, nextDay]
-            );
-            
-            if (consecutiveRes.rows.length > 0) {
-                // Insert penalty 200k
-                const insertPen = await pool.query(
-                    `INSERT INTO tk_penalties (group_id, user_id, date, violation_type, late_minutes, amount, reason, is_paid)
-                     VALUES ($1, $2, $3, 'CONSECUTIVE_LEAVE', 0, 200000, 'Nghỉ liên tiếp 2 ngày sai quy định', false)
-                     RETURNING id`,
-                    [request.group_id, request.user_id, formattedDate]
-                );
-                const penId = insertPen.rows[0].id;
-                penaltyButtons.push([{ text: '✅ Miễn phạt nghỉ liên tiếp', callback_data: `excuse_penalty_${penId}` }]);
-            }
+            syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
         } else if (newStatus === 'APPROVED' && request.request_type === 'SCHEDULE_CHANGE') {
             try {
                 const daysToSave = JSON.parse(request.reason);
@@ -2097,7 +2073,7 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
     }
 });
 
-bot.action(/^excuse_penalty_(\d+)$/, async (ctx) => {
+bot.action(/^excuse_penalty_([0-9a-f-]{36})$/i, async (ctx) => {
     if (!(await requireGroupRole(ctx, 'timekeep'))) return;
     try {
         const penaltyId = ctx.match[1];
@@ -2120,6 +2096,7 @@ bot.action(/^excuse_penalty_(\d+)$/, async (ctx) => {
              WHERE id = $2`,
             [adminName, penaltyId]
         );
+        syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
 
         let msgText = ctx.callbackQuery.message.text || ctx.callbackQuery.message.caption || '';
         msgText += `\n\n🎁 <b>Miễn trừ:</b> Án phạt nghỉ liên tiếp 2 ngày đã được miễn trừ bởi Admin <b>${adminName}</b>.`;
@@ -2142,6 +2119,7 @@ bot.action(/^excuse_penalty_(\d+)$/, async (ctx) => {
 // ==========================================
 cron.schedule('*/1 * * * *', async () => {
     try {
+        let attendanceSheetDirty = false;
         const nowVN = moment().utcOffset(7);
         const todayStr = nowVN.format('YYYY-MM-DD');
         const currentTimeStr = nowVN.format('HH:mm'); // e.g. "07:57"
@@ -2295,6 +2273,7 @@ cron.schedule('*/1 * * * *', async () => {
                                             late_warning_sent_at = COALESCE(tk_attendance_daily_status.late_warning_sent_at, NOW()),
                                             updated_at = NOW()
                                     `, [group_uuid, employee.user_id, todayStr]);
+                                    attendanceSheetDirty = true;
                                 }
                             }
                         } catch (err) {
@@ -2446,7 +2425,8 @@ cron.schedule('*/1 * * * *', async () => {
                     VALUES ($1, $2, $3, 'LATE', NOW(), NOW())
                     ON CONFLICT (group_id, user_id, date) DO UPDATE SET
                         result = 'LATE', finalized_at = NOW(), updated_at = NOW()
-                `, [c.group_id, c.user_id, c.date]);
+                    `, [c.group_id, c.user_id, c.date]);
+                attendanceSheetDirty = true;
             } else {
                 await pool.query(`
                     INSERT INTO tk_attendance_daily_status
@@ -2455,7 +2435,50 @@ cron.schedule('*/1 * * * *', async () => {
                     ON CONFLICT (group_id, user_id, date) DO UPDATE SET
                         result = 'ON_TIME', finalized_at = NOW(), updated_at = NOW()
                 `, [c.group_id, c.user_id, c.date]);
+                attendanceSheetDirty = true;
             }
+        }
+
+        // --- PHẦN 3: 14:00 CHỐT NGƯỜI KHÔNG CHECK-IN ---
+        // Chỉ xử lý ngày hiện tại. Dữ liệu lịch sử được bổ sung bằng tác vụ riêng
+        // không đi qua nhánh gửi Telegram, nên sẽ không phát thông báo cũ lên nhóm.
+        if (currentTimeStr >= '14:00') {
+            const absences = await finalizeUnauthorizedAbsences({ pool, date: todayStr });
+            if (absences.some(item => item.penaltyInserted || item.consecutivePenaltyInserted)) {
+                attendanceSheetDirty = true;
+            }
+
+            const pendingRows = await getPendingAbsenceNotifications({ pool, date: todayStr });
+            const notificationGroups = groupAbsenceNotifications(pendingRows);
+
+            for (const group of notificationGroups) {
+                try {
+                    const sent = await sendMessageToRoleGroup(
+                        bot,
+                        group.telegramGroupId,
+                        'timekeep',
+                        buildAbsenceNotificationText(group),
+                        { parse_mode: 'HTML' },
+                        'checkin_absent_14h'
+                    );
+                    if (sent) {
+                        await markAbsenceNotificationsSent({
+                            pool,
+                            groupId: group.groupId,
+                            userIds: group.employees.map(employee => employee.userId),
+                            date: todayStr
+                        });
+                    }
+                } catch (error) {
+                    console.error(`[14:00 Absence Notice] Không gửi được nhóm ${group.groupName}:`, error.message);
+                }
+            }
+        }
+
+        if (attendanceSheetDirty) {
+            syncAllTimekeepSheets().catch(error => {
+                console.error('[Late Attendance Sheet Sync]', error);
+            });
         }
     } catch (error) { console.error('[Cron Error] Lỗi khi xử lý tính phạt đi muộn:', error); }
 });

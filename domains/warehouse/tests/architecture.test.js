@@ -175,7 +175,6 @@ test('không file nào trong domain vượt quá 300 dòng', () => {
     // giai đoạn 3. Danh sách này chỉ được phép ngắn đi, không được dài thêm —
     // thêm file mới vào đây nghĩa là đang đi lùi.
     const MIEN_TRU = new Set([
-        'application/warehouse-order-service.js',   // 818 dòng, lõi trừ tồn kho
         'infrastructure/outbox/outbox-worker.js',   // 422 dòng, tiến trình nền
         'interfaces/miniapp-api/export-routes.js'   // 326 dòng, luồng xuất kho cũ
     ]);

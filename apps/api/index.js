@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
+import { applyApprovedLeavePenalties } from '../../domains/timekeep/attendance-penalties.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import { KPI_GROUP_ROLES } from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseAdminRoutes } from '../../domains/warehouse/index.js';
@@ -778,6 +779,12 @@ app.put('/api/admin/leave-requests/:id', async (req, res) => {
                  DO UPDATE SET shift_type = $4, is_locked = true`,
                 [request.group_id, request.user_id, formattedDate, newShift]
             );
+
+            await applyApprovedLeavePenalties({
+                pool,
+                request: { ...request, date: formattedDate }
+            });
+            syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
         } else if (request.status === 'APPROVED' && status !== 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
             // Revert schedule if the request was previously approved but now rejected/reset
             const formattedDate = new Date(request.date).toISOString().split('T')[0];

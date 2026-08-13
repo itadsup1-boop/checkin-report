@@ -117,7 +117,37 @@ async function ensureHeaderRow(sheet, { isNew }) {
     }
 }
 
-function parseAttendanceRow(shift_type, check_in_time, checkin_status) {
+function parseAttendanceRow(shift_type, check_in_time, checkin_status, attendanceResult) {
+    if (shift_type === 'OFF') {
+        return {
+            checkinTimeStr: '—',
+            statusStr: '🌴 Nghỉ (OFF)'
+        };
+    }
+
+    if (attendanceResult === 'ABSENT') {
+        return {
+            checkinTimeStr: 'Chưa check-in',
+            statusStr: '🚫 Không check-in / Tự ý nghỉ'
+        };
+    }
+
+    // LATE: đã check-in sau giờ vào ca. LATE_NOTIFIED: quá giờ nhưng vẫn chưa
+    // check-in. Cả hai đều phải hiện là đi muộn trên Sheet thay vì bị rơi về
+    // "Đã Check-in" hoặc "Quên check-in".
+    if (['LATE', 'LATE_NOTIFIED'].includes(attendanceResult)) {
+        let checkinTimeStr = 'Chưa check-in';
+        if (check_in_time) {
+            const d = new Date(check_in_time);
+            const pad = (n) => String(n).padStart(2, '0');
+            checkinTimeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+        return {
+            checkinTimeStr,
+            statusStr: '⏰ Đi muộn'
+        };
+    }
+
     if (check_in_time) {
         const d = new Date(check_in_time);
         const pad = (n) => String(n).padStart(2, '0');
@@ -125,13 +155,6 @@ function parseAttendanceRow(shift_type, check_in_time, checkin_status) {
         return {
             checkinTimeStr: timeVal,
             statusStr: '✅ Đã Check-in'
-        };
-    }
-
-    if (shift_type === 'OFF') {
-        return {
-            checkinTimeStr: '—',
-            statusStr: '🌴 Nghỉ (OFF)'
         };
     }
 
@@ -163,6 +186,7 @@ async function syncMasterSheet(doc, todayStr) {
             c.check_in_time,
             c.status AS checkin_status,
             c.admin_note,
+            ds.result AS attendance_result,
             COALESCE(SUM(p.amount), 0) AS total_penalty,
             STRING_AGG(p.reason, ' | ') AS penalty_reasons
         FROM employees e
@@ -171,12 +195,20 @@ async function syncMasterSheet(doc, todayStr) {
         LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
         LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
         LEFT JOIN tk_penalties p ON e.id = p.user_id AND p.date = d.date::date
+        LEFT JOIN tk_attendance_daily_status ds
+          ON ds.group_id = e.group_id AND ds.user_id = e.id AND ds.date = d.date::date
+        LEFT JOIN employee_group_memberships gm
+          ON gm.employee_id = e.id AND gm.telegram_group_id = e.telegram_group_id
         WHERE e.is_active = true 
           AND e.full_name NOT LIKE '/%' 
           AND e.full_name != 'tester'
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
           AND d.date > COALESCE(e.created_at::date, '2026-07-22'::date)
-        GROUP BY e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name, d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note
+          AND (
+              COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
+              OR d.date::date < COALESCE(gm.paused_at::date, CURRENT_DATE)
+          )
+        GROUP BY e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name, d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note, ds.result
         ORDER BY d.date::date ASC, g.group_name ASC, e.full_name ASC
     `;
     const res = await pool.query(query, [todayStr]);
@@ -199,7 +231,12 @@ async function syncMasterSheet(doc, todayStr) {
             return acc;
         }
 
-        const { checkinTimeStr, statusStr } = parseAttendanceRow(r.shift_type, r.check_in_time, r.checkin_status);
+        const { checkinTimeStr, statusStr } = parseAttendanceRow(
+            r.shift_type,
+            r.check_in_time,
+            r.checkin_status,
+            r.attendance_result
+        );
         let note = r.admin_note || (r.updated_by ? `Đổi bởi ${r.updated_by}` : '');
 
         acc.push({
@@ -289,6 +326,7 @@ async function syncIndividualSheets(doc, todayStr) {
                     c.check_in_time, 
                     c.status AS checkin_status, 
                     c.admin_note,
+                    ds.result AS attendance_result,
                     COALESCE(SUM(p.amount), 0) AS total_penalty,
                     STRING_AGG(p.reason, ' | ') AS penalty_reasons
                 FROM employees e
@@ -296,9 +334,17 @@ async function syncIndividualSheets(doc, todayStr) {
                 LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
                 LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
                 LEFT JOIN tk_penalties p ON e.id = p.user_id AND p.date = d.date::date
+                LEFT JOIN tk_attendance_daily_status ds
+                  ON ds.group_id = e.group_id AND ds.user_id = e.id AND ds.date = d.date::date
+                LEFT JOIN employee_group_memberships gm
+                  ON gm.employee_id = e.id AND gm.telegram_group_id = e.telegram_group_id
                 WHERE e.id = $1
                   AND d.date > COALESCE(e.created_at::date, '2026-07-22'::date)
-                GROUP BY d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note
+                  AND (
+                      COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
+                      OR d.date::date < COALESCE(gm.paused_at::date, CURRENT_DATE)
+                  )
+                GROUP BY d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note, ds.result
                 ORDER BY d.date::date ASC
             `;
             const detailRes = await pool.query(detailQuery, [emp.id, todayStr]);
@@ -309,7 +355,12 @@ async function syncIndividualSheets(doc, todayStr) {
                     return acc;
                 }
 
-                const { checkinTimeStr, statusStr } = parseAttendanceRow(r.shift_type, r.check_in_time, r.checkin_status);
+                const { checkinTimeStr, statusStr } = parseAttendanceRow(
+                    r.shift_type,
+                    r.check_in_time,
+                    r.checkin_status,
+                    r.attendance_result
+                );
                 let note = r.admin_note || (r.updated_by ? `Đổi bởi ${r.updated_by}` : '');
 
                 acc.push({
