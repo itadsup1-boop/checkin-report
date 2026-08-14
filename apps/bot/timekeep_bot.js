@@ -369,8 +369,19 @@ botApp.use(express.static(webAdminDistPath));
 // nên mỗi lần sửa code là URL đổi và client tải lại ngay.
 // Chỉ ảnh hưởng đường dẫn có tiền tố /_v; các Mini App khác giữ nguyên.
 // ---------------------------------------------------------------------------
-const warehouseExportDir = path.join(__dirname, 'public', 'warehouse-export');
-const warehouseExportShell = path.join(__dirname, 'public', 'warehouse_export.html');
+// Các thư mục module Mini App. shared-ui là hạ tầng dùng chung nên phải nằm trong
+// danh sách: sửa core/ hay icons.js cũng cần đổi token.
+// Thêm nghiệp vụ mới (timekeep/, scheduling/…) thì khai báo thêm ở đây.
+const warehouseAssetDirs = ['warehouse', 'shared-ui']
+    .map(name => path.join(__dirname, 'public', name));
+
+// Shell nào chứa __ASSET_V__ thì khai báo ở đây.
+const warehouseShells = {
+    '/mini-app/warehouse_export.html': path.join(__dirname, 'public', 'warehouse_export.html'),
+    '/mini-app/warehouse_import.html': path.join(__dirname, 'public', 'warehouse_import.html'),
+    '/mini-app/warehouse_inventory.html': path.join(__dirname, 'public', 'warehouse_inventory.html')
+};
+
 let warehouseAssetVersionCache = { token: '0', checkedAt: 0 };
 
 function getWarehouseAssetVersion() {
@@ -380,17 +391,20 @@ function getWarehouseAssetVersion() {
     }
 
     let newestMtime = 0;
-    try {
-        const walk = directory => {
-            for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-                const fullPath = path.join(directory, entry.name);
-                if (entry.isDirectory()) walk(fullPath);
-                else newestMtime = Math.max(newestMtime, fs.statSync(fullPath).mtimeMs);
-            }
-        };
-        walk(warehouseExportDir);
-    } catch (error) {
-        newestMtime = now;
+    const walk = directory => {
+        for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            const fullPath = path.join(directory, entry.name);
+            if (entry.isDirectory()) walk(fullPath);
+            else newestMtime = Math.max(newestMtime, fs.statSync(fullPath).mtimeMs);
+        }
+    };
+
+    for (const directory of warehouseAssetDirs) {
+        try {
+            walk(directory);
+        } catch (error) {
+            newestMtime = now;
+        }
     }
 
     warehouseAssetVersionCache = { token: Math.floor(newestMtime).toString(36), checkedAt: now };
@@ -405,19 +419,21 @@ botApp.use((req, res, next) => {
     next();
 });
 
-// Shell xuất kho: chèn token phiên bản và không cho cache, để client luôn nhận
+// Shell Mini App kho: chèn token phiên bản và không cho cache, để client luôn nhận
 // đúng URL asset mới nhất. Đặt trước express.static để thắng file tĩnh.
-botApp.get('/mini-app/warehouse_export.html', (req, res, next) => {
-    try {
-        const html = fs.readFileSync(warehouseExportShell, 'utf8')
-            .replace(/__ASSET_V__/g, getWarehouseAssetVersion());
-        res.setHeader('Content-Type', 'text/html; charset=utf-8');
-        res.setHeader('Cache-Control', 'no-store, must-revalidate');
-        res.send(html);
-    } catch (error) {
-        next();
-    }
-});
+for (const [routePath, shellFile] of Object.entries(warehouseShells)) {
+    botApp.get(routePath, (req, res, next) => {
+        try {
+            const html = fs.readFileSync(shellFile, 'utf8')
+                .replace(/__ASSET_V__/g, getWarehouseAssetVersion());
+            res.setHeader('Content-Type', 'text/html; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store, must-revalidate');
+            res.send(html);
+        } catch (error) {
+            next();
+        }
+    });
+}
 
 botApp.use('/mini-app', express.static(path.join(__dirname, 'public')));
 botApp.get('/', (req, res) => {

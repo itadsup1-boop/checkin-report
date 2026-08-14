@@ -8,9 +8,9 @@
   <!--
     Shell của Mini App xuất kho.
 
-    Toàn bộ giao diện và nghiệp vụ nằm trong /mini-app/warehouse-export/ dưới dạng
+    Toàn bộ giao diện và nghiệp vụ nằm trong /mini-app/warehouse/export/ dưới dạng
     ES module, chia theo tầng core / data / ui / flows. File này chỉ nạp phụ thuộc
-    và điểm vào, không chứa logic — xem warehouse-export/README.md.
+    và điểm vào, không chứa logic — xem warehouse/export/README.md.
 
     URL này được giữ nguyên để nút "Xuất Kho" của bot và hợp đồng tương thích
     trong module kho không phải thay đổi.
@@ -24,7 +24,9 @@
     thư mục module) khi phục vụ file này. Cloudflare ghi đè Cache-Control thành
     4 giờ nên phải đổi URL mới ép được client tải lại code mới.
   -->
-  <link rel="stylesheet" href="/mini-app/_v__ASSET_V__/warehouse-export/theme.css">
+  <!-- Token màu dùng chung cho cả ba Mini App kho; phải nạp TRƯỚC theme của app. -->
+  <link rel="stylesheet" href="/mini-app/_v__ASSET_V__/shared-ui/theme-tokens.css">
+  <link rel="stylesheet" href="/mini-app/_v__ASSET_V__/warehouse/export/theme.css">
 </head>
 <body>
   <div id="app" class="app">
@@ -34,7 +36,7 @@
     </div>
   </div>
 
-  <script type="module" src="/mini-app/_v__ASSET_V__/warehouse-export/app.js"></script>
+  <script type="module" src="/mini-app/_v__ASSET_V__/warehouse/export/app.js"></script>
 
   <noscript>
     <div class="screen-center">

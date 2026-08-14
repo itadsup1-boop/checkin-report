@@ -1,0 +1,75 @@
+/* ============================================================
+   Design token DÙNG CHUNG cho cả ba Mini App kho.
+
+   Đây là NGUỒN DUY NHẤT của màu sắc. Trước đây mỗi app tự khai một
+   khối :root riêng nên ba màn hình của cùng chức năng quản lý kho lại
+   ba màu nhấn khác nhau (nhập = emerald, xuất = rose, tồn = cyan) —
+   nhân sự nhìn tưởng ba hệ thống khác nhau.
+
+   Màu chủ đạo lấy theo màn hình tồn kho: cyan #0891b2.
+
+   theme.css của từng app CHỈ chứa layout, KHÔNG khai lại token màu.
+   Shell nạp file này TRƯỚC theme.css của app.
+   ============================================================ */
+
+:root {
+  /* ---------- Nền và chữ ---------- */
+  --bg: #f4f7fb;
+  --card: #ffffff;
+  --card-blur: #fffffff2;
+  --ink: #14213d;
+  --muted: #64748b;
+  --faint: #94a3b8;
+  --line: #dbe3ef;
+  --line-soft: #edf2f7;
+  --surface: #f8fafc;
+
+  /* ---------- Màu chủ đạo: cyan (theo màn hình tồn kho) ---------- */
+  --brand: #0891b2;
+  --brand-dark: #0e7490;
+  --brand-soft: #ecfeff;
+  --brand-ring: #cffafe;
+
+  /* ---------- Nhánh phụ: xanh đen trung tính ----------
+     Dùng cho hành động phụ đứng cạnh hành động chính (ví dụ "Nhập thủ công"
+     bên cạnh "Quét mã"). Cố tình KHÔNG phải một màu sắc thứ hai: thêm hue
+     nữa là quay lại đúng vấn đề mỗi màn hình một màu. */
+  --alt: #0f172a;
+  --alt-dark: #020617;
+  --alt-soft: #f1f5f9;
+
+  /* ---------- Trạng thái (giữ nguyên nghĩa ở cả ba app) ---------- */
+  --ok: #059669;
+  --ok-dark: #047857;
+  --ok-soft: #ecfdf5;
+  --ok-line: #a7f3d0;
+  --warn: #d97706;
+  --warn-dark: #b45309;
+  --warn-soft: #fffbeb;
+  --warn-line: #fde68a;
+  --bad: #dc2626;
+  --bad-dark: #b91c1c;
+  --bad-soft: #fef2f2;
+  --bad-line: #fecaca;
+
+  /* ---------- Hình khối ---------- */
+  --r-sm: 10px;
+  --r-md: 14px;
+  --r-lg: 20px;
+  --r-xl: 24px;
+  --r-full: 999px;
+
+  --shadow-card: 0 5px 16px #1e293b0a;
+  --shadow-raised: 0 1px 4px #1e293b1f;
+  --shadow-brand: 0 8px 20px #0891b233;
+  --shadow-alt: 0 8px 20px #0f172a29;
+  --shadow-float: 0 14px 30px #0f172a24;
+
+  /* Lớp phủ và nền tối (overlay sheet, khung camera) */
+  --mask: #02061766;
+  --scrim: #02061799;
+  --camera-bg: #020617;
+
+  /* Chiều cao vùng cố định (thanh dưới của màn hình xuất kho) */
+  --bar-h: 64px;
+}

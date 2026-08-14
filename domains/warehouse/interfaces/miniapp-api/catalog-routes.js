@@ -85,6 +85,48 @@ export function registerWarehouseCatalogRoutes({
         }
     });
 
+    // Lịch sử biến động của MỘT sản phẩm, dùng cho màn hình chi tiết tồn kho.
+    //
+    // Đọc từ tk_warehouse_ledger vì đây là sổ bất biến ghi mọi loại biến động
+    // (nhập, xuất cho khách, điều chuyển, hoàn tác) kèm số dư trước/sau — đủ để
+    // nhân sự đối chiếu "tại sao tồn lại thành số này".
+    botApp.get('/api/warehouse/product-history', authenticateTelegramMiniApp, async (req, res) => {
+        try {
+            if (!await requireWarehouseGroup(req, res)) return;
+            const productId = String(req.query.product_id || '').trim();
+            if (!productId) {
+                return res.status(400).json({ success: false, message: 'Thiếu mã sản phẩm.' });
+            }
+
+            const result = await pool.query(
+                `SELECT l.event_type,
+                        l.branch,
+                        l.quantity_delta,
+                        l.balance_before,
+                        l.balance_after,
+                        -- Cần metadata để UI biết dòng nào có số dư ẢO: các dòng
+                        -- điều chuyển-dùng-ngay ghi virtual_balance vì hàng không
+                        -- thực sự nằm ở cơ sở đích, hiển thị "còn X" sẽ sai.
+                        l.metadata,
+                        l.created_at,
+                        COALESCE(
+                            e.full_name,
+                            CASE WHEN l.actor_telegram_id LIKE 'admin:%' THEN 'Admin' END
+                        ) AS actor_name
+                 FROM tk_warehouse_ledger l
+                 LEFT JOIN employees e ON e.id = l.actor_employee_id
+                 WHERE l.product_id = $1
+                 ORDER BY l.created_at DESC
+                 LIMIT 30`,
+                [productId]
+            );
+            res.json({ success: true, history: result.rows });
+        } catch (e) {
+            console.error('Lỗi lấy lịch sử sản phẩm:', e);
+            res.status(500).json({ success: false, message: 'Lỗi máy chủ khi lấy lịch sử sản phẩm' });
+        }
+    });
+
     // Đề xuất mã vạch mới chưa ai dùng, cho trường hợp nhân sự nhập tay sản phẩm mới.
     //
     // Đây chỉ là GỢI Ý để đỡ phải tự nghĩ mã và giảm khả năng trùng. Nhân sự vẫn

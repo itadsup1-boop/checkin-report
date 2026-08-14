@@ -68,6 +68,8 @@ test('module kho đăng ký đủ endpoint cũ và không truy cập database l�
             'GET /api/products/by-barcode/:barcode',
             'GET /api/warehouse/products',
             'GET /api/warehouse/inventory',
+            // Mini App tồn kho đọc lịch sử biến động của một sản phẩm từ ledger.
+            'GET /api/warehouse/product-history',
             'GET /api/warehouse/next-barcode',
             'GET /api/warehouse/stock-overview',
             'GET /api/warehouse/check-stock',
