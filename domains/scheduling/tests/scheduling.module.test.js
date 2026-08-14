@@ -5,20 +5,41 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerSchedulingModule } from '../index.js';
 import * as domainRules from '../domain/makeup-rules.js';
+import {
+    isValidSessions,
+    parseRevenue,
+    findMissingTourFields,
+    groupIdFromStartParam,
+    isRealGroupId
+} from '../domain/appointment-rules.js';
+import {
+    buildDueReminder,
+    buildArrivedMessage,
+    arrivalKeyboard,
+    cancelReasonKeyboard
+} from '../domain/appointment-messages.js';
+import { createBookAppointmentService } from '../application/book-appointment.js';
+import { createConfirmArrivalService, CONFIRM_RESULT } from '../application/confirm-arrival.js';
 
 const DOMAIN_DIR = fileURLToPath(new URL('../', import.meta.url));
 
 function createHarness() {
     const routes = [];
     const actions = [];
+    const crons = [];
     let queryCount = 0;
 
     const moduleApi = registerSchedulingModule({
         botApp: {
             get(routePath, ...handlers) { routes.push({ method: 'GET', path: routePath, handlers }); },
-            post(routePath, ...handlers) { routes.push({ method: 'POST', path: routePath, handlers }); }
+            post(routePath, ...handlers) { routes.push({ method: 'POST', path: routePath, handlers }); },
+            put(routePath, ...handlers) { routes.push({ method: 'PUT', path: routePath, handlers }); }
         },
         bot: {},
+        cron: { schedule(expression, handler) { crons.push({ expression, handler }); return { stop() {} }; } },
+        sendMessageToRoleGroup: async () => ({}),
+        getGroupRole: async () => 'report_tour',
+        schedulePagePath: '/public/schedule.html',
         kpiComposer: { action(pattern, handler) { actions.push({ pattern: pattern.toString(), handler }); } },
         syncMakeupToGoogleSheet: async () => {},
         pool: {
@@ -41,32 +62,71 @@ function createHarness() {
         publicBaseUrl: 'https://example.test'
     });
 
-    return { routes, actions, queryCount, moduleApi };
+    return { routes, actions, crons, queryCount, moduleApi };
 }
 function checkPayloadLimit() {}
 
-test('module lịch khách đăng ký đúng 3 endpoint cũ và không chạm database lúc khởi động', () => {
+test('module lịch khách đăng ký đúng 10 endpoint cũ và không chạm database lúc khởi động', () => {
     const harness = createHarness();
 
     assert.deepEqual(
         harness.routes.map(route => `${route.method} ${route.path}`),
         [
+            // Báo bù — phải đứng TRƯỚC '/api/schedules/:id'.
             'GET /api/schedules/incomplete',
             'POST /api/schedules/makeup',
-            'GET /api/schedules/makeup/history'
+            'GET /api/schedules/makeup/history',
+            // Đặt lịch
+            'GET /api/schedules',
+            'GET /api/schedules/search',
+            'POST /api/schedules/add',
+            'GET /api/schedules/:id',
+            'PUT /api/schedules/update',
+            'POST /api/schedules/edit',
+            'POST /api/schedules/cancel'
         ]
     );
     assert.equal(harness.queryCount, 0);
     assert.equal(Object.isFrozen(harness.moduleApi), true);
 });
 
-test('module đăng ký đúng 2 nút duyệt/từ chối, giữ nguyên callback_data cũ', () => {
+test("mọi route cụ thể của /api/schedules đều đứng trước ':id'", () => {
+    // ':id' là ký tự đại diện nên nó nuốt mọi đường dẫn một đoạn. Đây là lỗi đã
+    // xảy ra thật với '/api/schedules/incomplete'.
+    const harness = createHarness();
+    const paths = harness.routes.map(route => route.path);
+    const wildcardAt = paths.indexOf('/api/schedules/:id');
+
+    assert.ok(wildcardAt > 0, "không tìm thấy route ':id'");
+    for (const specific of ['/api/schedules/incomplete', '/api/schedules/search']) {
+        assert.ok(paths.indexOf(specific) < wildcardAt, `${specific} phải đăng ký trước ':id'`);
+    }
+});
+
+test('module đăng ký đúng 6 nút, giữ nguyên callback_data cũ', () => {
     // Tin nhắn CŨ trong nhóm vẫn mang nút với đúng chuỗi này — đổi là các tin đó
     // bấm không ăn nữa.
     const harness = createHarness();
-    assert.equal(harness.actions.length, 2);
-    assert.match(harness.actions[0].pattern, /makeup_app_/);
-    assert.match(harness.actions[1].pattern, /makeup_rej_/);
+    assert.deepEqual(
+        harness.actions.map(action => action.pattern),
+        [
+            // Báo bù dùng (.+) vì mã yêu cầu là uuid, không phải số.
+            '/^makeup_app_(.+)$/',
+            '/^makeup_rej_(.+)$/',
+            '/^arr_(\\d+)$/',
+            '/^can_(\\d+)$/',
+            '/^cr_back_(\\d+)$/',
+            '/^cr_(bom|ban|tien|khacspa|app)_(\\d+)$/'
+        ]
+    );
+});
+
+test('4 cron lịch khách giữ nguyên giờ chạy', () => {
+    const harness = createHarness();
+    assert.deepEqual(
+        harness.crons.map(job => job.expression),
+        ['2 20 * * *', '0 22 * * *', '0 0 * * *', '* * * * *']
+    );
 });
 
 test('ai được duyệt: chính chủ, Quản lý nhóm, hoặc Admin', () => {
@@ -140,29 +200,179 @@ test('kpi_features.js chỉ lắp ghép, không còn khai báo route báo bù tr
     assert.doesNotMatch(source, /INSERT INTO tour_makeup_requests/);
     assert.doesNotMatch(source, /status = ANY\(\$5::text\[\]\)/);
 
-    // Phần DUYỆT (makeup_app_/makeup_rej_) và đồng bộ Sheet CỐ Ý còn ở lại: nó nằm
-    // sát vùng đang có người sửa dở, tách bây giờ sẽ đụng công của họ. Ghi rõ ở
-    // đây để lần sau biết còn nợ gì, và để test không báo sai.
-    // Đồng bộ Sheet CỐ Ý còn ở lại: nằm sát vùng đang có người sửa dở.
+    // Đặt lịch cũng đã rời khỏi file này.
+    assert.doesNotMatch(source, /botApp\.(get|post|put)\(['"]\/api\/schedules['"]/);
+    assert.doesNotMatch(source, /botApp\.post\(['"]\/api\/schedules\/(add|edit|cancel)/);
+    assert.doesNotMatch(source, /botApp\.get\(['"]\/api\/schedules\/:id/);
+    // GET /schedule CỐ Ý ở lại: nó phục vụ trang ĐĂNG KÝ LỊCH TUẦN của role chấm
+    // công (gọi /api/timekeep/schedule/*), không phải lịch khách tour.
+    assert.match(source, /botApp\.get\('\/schedule'/);
+    // INSERT của việc ĐẶT LỊCH (có session_type + revenue) phải rời khỏi đây.
+    // Lưu ý: kpi_features.js VẪN còn một INSERT customer_appointments khác, ngắn
+    // hơn, nằm trong /api/bot/submit-report — đó là role `report` tự sinh lịch từ
+    // nội dung báo cáo, không phải chức năng đặt lịch của role tour.
+    assert.doesNotMatch(source, /INSERT INTO customer_appointments[\s\S]{0,200}session_type, revenue/);
+    assert.doesNotMatch(source, /kpiComposer\.action\(\/\^(arr|can|cr)_/);
+    // 4 cron lịch khách đã sang module.
+    assert.doesNotMatch(source, /BÁO ĐỘNG LỊCH KHÁCH HÀNG ĐẾN GIỜ/);
+    assert.doesNotMatch(source, /TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY/);
+    assert.doesNotMatch(source, /CHƯA ĐỦ CÔNG TOUR/);
+
+    // CÒN NỢ, cố ý để lại — nằm trong vùng file đang có người sửa dở, tách bây giờ
+    // sẽ đụng công của họ. Ghi ở đây để lần sau biết còn thiếu gì, và để test
+    // không báo sai là "đã xong".
     assert.match(source, /syncMakeupToGoogleSheetWithRetry/, 'đồng bộ Sheet vẫn phải chạy');
+    assert.match(source, /botApp\.get\('\/api\/photo-debts'/, 'nợ ảnh vẫn ở file này');
+    assert.match(source, /botApp\.post\('\/api\/upload-proof'/, 'tải ảnh vẫn ở file này');
 });
 
-test('module phải đăng ký TRƯỚC route /api/schedules/:id', () => {
-    // Express khớp route theo thứ tự đăng ký. ':id' dùng ký tự đại diện nên nó nuốt
-    // luôn '/api/schedules/incomplete'. Đăng ký module sau ':id' thì chữ "incomplete"
-    // bị đem xuống database như số nguyên -> lỗi 500, ô "Chọn lịch thiếu cần bổ sung"
-    // không tải được. Lỗi này từng tồn tại thật, đừng để tái diễn.
+test('module phải đăng ký TRƯỚC mọi route /api/schedules còn lại trong kpi_features.js', () => {
+    // Express khớp route theo thứ tự đăng ký. ':id' trong module dùng ký tự đại
+    // diện nên nó nuốt luôn mọi '/api/schedules/<một đoạn>'. Lỗi này từng tồn tại
+    // thật với '/api/schedules/incomplete', đừng để tái diễn.
     const source = fs.readFileSync(
         fileURLToPath(new URL('../../../apps/bot/kpi_features.js', import.meta.url)), 'utf8');
 
     const moduleAt = source.indexOf('registerSchedulingModule({');
-    const wildcardAt = source.indexOf("botApp.get('/api/schedules/:id'");
-
     assert.ok(moduleAt > 0, 'không tìm thấy lời gọi module');
-    assert.ok(wildcardAt > 0, 'không tìm thấy route :id');
-    assert.ok(
-        moduleAt < wildcardAt,
-        'registerSchedulingModule phải đứng TRƯỚC route /api/schedules/:id'
+
+    for (const match of source.matchAll(/botApp\.(get|post|put|delete)\('(\/api\/schedules[^']*)'/g)) {
+        assert.fail(`${match[2]} phải nằm trong module, không được khai báo ở kpi_features.js`);
+    }
+});
+
+/* ---------- Nghiệp vụ đặt lịch ---------- */
+
+test('số buổi làm chỉ nhận X/Y hoặc X/Tái khám', () => {
+    // Gõ sai định dạng thì tổng hợp công tour đếm sai buổi.
+    for (const value of ['2/10', '1/Tái khám', '1/tai kham', '0', '', null, undefined]) {
+        assert.equal(isValidSessions(value), true, `phải chấp nhận: ${value}`);
+    }
+    for (const value of ['2', 'abc', '2/', '/10', 'x/10', '1/2/3', '1/abc']) {
+        assert.equal(isValidSessions(value), false, `phải từ chối: ${value}`);
+    }
+});
+
+test('quy đổi tiền tự do về số nguyên', () => {
+    assert.equal(parseRevenue('500,000đ'), 500000);
+    assert.equal(parseRevenue('1.500.000'), 1500000);
+    assert.equal(parseRevenue('abc'), 0);
+    assert.equal(parseRevenue(''), 0);
+    assert.equal(parseRevenue(null), 0);
+});
+
+test('điều kiện đủ công tour', () => {
+    const full = {
+        customer_name: 'A', phone: '09', service: 'S', sessions: '1/10',
+        revenue: '500000', session_type: 'Bán',
+        status: 'ARRIVED', is_photo_debt: false, proof_image: 'https://x/y.jpg'
+    };
+    assert.deepEqual(findMissingTourFields(full), []);
+
+    // Khách đã đến mà còn nợ ảnh thì chưa đủ công.
+    assert.deepEqual(findMissingTourFields({ ...full, is_photo_debt: true }), ['Ảnh chứng thực']);
+    assert.deepEqual(findMissingTourFields({ ...full, proof_image: null }), ['Ảnh chứng thực']);
+
+    // Còn ACTIVE tới 00:00 = nhân viên quên xác nhận, không tự đoán hộ.
+    assert.deepEqual(findMissingTourFields({ ...full, status: 'ACTIVE' }),
+        ['Chưa xác nhận khách đến hoặc hủy lịch']);
+
+    assert.deepEqual(
+        findMissingTourFields({ ...full, customer_name: '  ', revenue: '' }),
+        ['Tên khách', 'Thu tiền']
+    );
+});
+
+test('nhóm đặt lịch đọc từ start_param, không tin groupId client gửi lên', () => {
+    assert.equal(groupIdFromStartParam('schedule_-1001234'), '-1001234');
+    assert.equal(groupIdFromStartParam('scheduleclient_-1001234'), '-1001234');
+    assert.equal(groupIdFromStartParam('whexport_-1001234'), '');
+    assert.equal(groupIdFromStartParam(''), '');
+    assert.equal(isRealGroupId('MINI_APP'), false, 'MINI_APP là giá trị giữ chỗ, không phải nhóm');
+    assert.equal(isRealGroupId(''), false);
+    assert.equal(isRealGroupId('-1001234'), true);
+});
+
+test('đặt lịch trùng khung giờ dưới 1 tiếng bị chặn, trừ lịch đi luôn', async () => {
+    const overlap = {
+        employee_name: 'Lan', customer_name: 'Khách A',
+        appointment_time: '2026-08-14T09:00:00Z'
+    };
+    let inserted = 0;
+    const book = createBookAppointmentService({
+        repository: {
+            SCHEDULE_NOTIFY_ROLES: ['report', 'report_tour'],
+            async findOverlap() { return overlap; },
+            async findEmployee() { return { full_name: 'Lan', employee_code: 'NV1' }; },
+            async insert() { inserted += 1; return 7; },
+            async findUrgentTargetGroups() { return []; }
+        },
+        notifier: { async send() {} },
+        getGroupRole: async () => 'report_tour'
+    });
+
+    const initData = 'user=' + encodeURIComponent(JSON.stringify({ id: 111, first_name: 'Lan' }))
+        + '&start_param=schedule_-1001234';
+    const form = { appointment_time: '2026-08-14T09:30:00Z', customer_name: 'B', phone: '09' };
+
+    const blocked = await book({ initData, requestedGroupId: '-1001234', form });
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.error, /Vui lòng chọn giờ cách ít nhất 1 tiếng/);
+    assert.equal(inserted, 0, 'lịch trùng không được ghi vào database');
+
+    // Khách đi luôn: khách đã ở đó rồi nên bỏ qua kiểm trùng.
+    const urgent = await book({ initData, requestedGroupId: '-1001234', form: { ...form, is_urgent: true } });
+    assert.equal(urgent.ok, true);
+    assert.equal(inserted, 1);
+});
+
+test('không đặt được lịch chéo nhóm', async () => {
+    const book = createBookAppointmentService({
+        repository: { SCHEDULE_NOTIFY_ROLES: [], async findOverlap() { return null; } },
+        notifier: {}, getGroupRole: async () => 'report_tour'
+    });
+    const initData = 'user=' + encodeURIComponent(JSON.stringify({ id: 111 }))
+        + '&start_param=schedule_-100AAA';
+
+    const outcome = await book({ initData, requestedGroupId: '-100BBB', form: {} });
+    assert.equal(outcome.status, 403);
+});
+
+test('chỉ người đặt lịch được bấm Đã đến / Hủy', async () => {
+    // Đây là căn cứ tính công tour của chính họ, không cho người khác xác nhận hộ.
+    let arrived = 0;
+    const confirm = createConfirmArrivalService({
+        repository: {
+            async findOwnerOf(id) { return id === '404' ? null : { telegram_id: '111' }; },
+            async markArrived() { arrived += 1; }
+        }
+    });
+
+    assert.equal((await confirm.markArrived({ id: '404', clickerId: 111 })).result, CONFIRM_RESULT.NOT_FOUND);
+    assert.equal((await confirm.markArrived({ id: '7', clickerId: 222 })).result, CONFIRM_RESULT.NOT_OWNER);
+    assert.equal(arrived, 0);
+
+    assert.equal((await confirm.markArrived({ id: '7', clickerId: 111 })).result, CONFIRM_RESULT.OK);
+    assert.equal(arrived, 1);
+
+    // Lý do "khác" phải gõ trong Mini App, không đổi trạng thái ở đây.
+    assert.equal((await confirm.cancelWithReason({ id: '7', type: 'app' })).needsMiniApp, true);
+});
+
+test('tin nhắn giữ nguyên nút cũ và mã lịch', () => {
+    const appointment = {
+        id: 7, appointment_time: '2026-08-14T02:00:00Z', customer_name: 'A', phone: '09',
+        service: 'S', sessions: '1/10', employee_name: 'Lan'
+    };
+    assert.match(buildDueReminder(appointment), /BÁO ĐỘNG LỊCH KHÁCH HÀNG ĐẾN GIỜ/);
+    assert.match(buildArrivedMessage('tin cũ', 7), /🆔 Mã Lịch: #7/);
+    assert.match(buildArrivedMessage('tin cũ', 7), /NỢ 1 ẢNH BẰNG CHỨNG/);
+
+    assert.deepEqual(arrivalKeyboard(7).inline_keyboard[0].map(b => b.callback_data), ['arr_7', 'can_7']);
+    assert.deepEqual(arrivalKeyboard(7, { withArrived: false }).inline_keyboard[0].map(b => b.callback_data), ['can_7']);
+    assert.deepEqual(
+        cancelReasonKeyboard(7).inline_keyboard.map(row => row[0].callback_data),
+        ['cr_bom_7', 'cr_ban_7', 'cr_tien_7', 'cr_khacspa_7', 'cr_app_7', 'cr_back_7']
     );
 });
 

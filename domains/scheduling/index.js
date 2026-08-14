@@ -5,18 +5,31 @@
  * application/, infrastructure/ hay interfaces/ — giống cách domains/warehouse
  * đang làm.
  *
- * Phạm vi hiện tại: phần **Báo bù công tour** của role `report_tour`.
- * Bảy endpoint /api/schedules* còn lại (dùng chung với role `report`) vẫn nằm
- * trong apps/bot/kpi_features.js và sẽ chuyển sang đây ở đợt sau.
+ * Phạm vi: toàn bộ lịch khách của role `report_tour` — đặt lịch, nhắc lịch, xác
+ * nhận khách đến/hủy, tổng hợp công tour, và báo bù.
+ *
+ * Còn nợ (nằm trong vùng file kpi_features.js đang có người sửa dở): nợ ảnh
+ * (`/api/photo-debts`, `/api/upload-proof`) và các hàm đồng bộ Google Sheet.
+ * Xem mục "Còn nợ" trong README.md.
  */
 
 import { createMakeupRepository } from './infrastructure/postgres/makeup-repository.js';
+import { createAppointmentRepository } from './infrastructure/postgres/appointment-repository.js';
 import { createProofImageStore } from './infrastructure/storage/proof-image-store.js';
 import { createMakeupNotifier } from './interfaces/telegram/makeup-notification.js';
+import { createAppointmentNotifier } from './infrastructure/telegram/appointment-notifier.js';
 import { createMakeupRequestService } from './application/create-makeup-request.js';
 import { createReviewMakeupService } from './application/review-makeup-request.js';
+import { createBookAppointmentService } from './application/book-appointment.js';
+import { createManageAppointmentService } from './application/manage-appointment.js';
+import { createConfirmArrivalService } from './application/confirm-arrival.js';
+import { createScheduleReportService } from './application/schedule-reports.js';
+import { createRemindDueAppointments } from './application/remind-due-appointments.js';
 import { registerMakeupRoutes } from './interfaces/miniapp-api/makeup-routes.js';
+import { registerAppointmentRoutes } from './interfaces/miniapp-api/appointment-routes.js';
 import { registerMakeupActions } from './interfaces/telegram/register-makeup-actions.js';
+import { registerAppointmentActions } from './interfaces/telegram/register-appointment-actions.js';
+import { registerScheduleCrons } from './interfaces/cron/register-schedule-crons.js';
 
 /**
  * Lắp chức năng báo bù công tour vào bot.
@@ -56,7 +69,10 @@ export function registerSchedulingModule({
     path,
     moment,
     uploadDir,
-    publicBaseUrl
+    publicBaseUrl,
+    cron,
+    sendMessageToRoleGroup,
+    getGroupRole
 }) {
     const repository = createMakeupRepository({ pool });
 
@@ -78,14 +94,51 @@ export function registerSchedulingModule({
         syncToSheet: syncMakeupToGoogleSheet
     });
 
+    /* ---------- Đặt lịch khách ---------- */
+
+    const appointments = createAppointmentRepository({ pool });
+    const appointmentNotifier = createAppointmentNotifier({ bot, sendMessageToRoleGroup });
+
+    const bookAppointment = createBookAppointmentService({
+        repository: appointments, notifier: appointmentNotifier, getGroupRole
+    });
+    const manageService = createManageAppointmentService({
+        repository: appointments, notifier: appointmentNotifier
+    });
+    const confirmService = createConfirmArrivalService({ repository: appointments });
+    const reportService = createScheduleReportService({
+        repository: appointments, notifier: appointmentNotifier
+    });
+    const remindDueAppointments = createRemindDueAppointments({
+        repository: appointments, notifier: appointmentNotifier, getGroupRole
+    });
+
+    /* ---------- Lắp vào bot ---------- */
+    // Báo bù đăng ký TRƯỚC: '/api/schedules/incomplete' phải đứng trước
+    // '/api/schedules/:id' của phần đặt lịch, nếu không ':id' nuốt mất.
+
     registerMakeupRoutes({
         botApp, authenticateTelegramMiniApp, checkPayloadLimit, repository, makeupService
+    });
+
+    registerAppointmentRoutes({
+        botApp, repository: appointments, bookAppointment, manageService
     });
 
     // kpiComposer là tuỳ chọn: harness test đăng ký route không cần Telegraf.
     if (kpiComposer) {
         registerMakeupActions({ kpiComposer, reviewService });
+        registerAppointmentActions({ kpiComposer, confirmService });
     }
 
-    return Object.freeze({ makeupService, reviewService });
+    // cron tuỳ chọn vì cùng lý do.
+    const scheduledJobs = cron
+        ? registerScheduleCrons({ cron, reportService, remindDueAppointments })
+        : [];
+
+    return Object.freeze({
+        makeupService, reviewService,
+        bookAppointment, manageService, confirmService, reportService,
+        remindDueAppointments, scheduledJobs
+    });
 }
