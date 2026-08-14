@@ -75,7 +75,9 @@ export function createBookAppointmentService({ repository, notifier, getGroupRol
         const employee = await repository.findEmployee(tgUser.id.toString(), groupId);
         if (!employee) return { ok: false, error: UNREGISTERED_ERROR };
 
-        const employeeName = employee.full_name || tgUser.first_name;
+        // Lấy đúng full_name như bản cũ, KHÔNG rơi về first_name của Telegram:
+        // tên hiển thị Telegram không khớp danh sách nhân sự thì công tính sai người.
+        const employeeName = employee.full_name;
         const sessionType = form.session_type || 'Bán';
 
         const id = await repository.insert({
