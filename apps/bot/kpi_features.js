@@ -21,6 +21,7 @@ import {
     getEmployeeMembership,
     registerEmployeeInKpiGroup
 } from '../../packages/shared/kpiMembership.js';
+import { registerSchedulingModule } from '../../domains/scheduling/index.js';
 
 // Khởi chạy cronjob dọn ảnh rác lúc 03:00 sáng
 cron.schedule('0 3 * * *', async () => {
@@ -1897,6 +1898,38 @@ export function setupKpiBot(bot, botApp) {
     });
 
     // SCHEDULE APIs
+    // ---------------------------------------------------------------------
+    // Báo bù công tour (role report_tour) — xem domains/scheduling/README.md.
+    //
+    // VỊ TRÍ CỦA LỆNH NÀY LÀ CÓ CHỦ ĐÍCH, ĐỪNG DỜI XUỐNG DƯỚI.
+    // Express khớp route theo thứ tự đăng ký. Route '/api/schedules/:id' bên dưới
+    // dùng ký tự đại diện nên nó nuốt luôn mọi đường dẫn một đoạn, kể cả
+    // '/api/schedules/incomplete'. Trước đây module này đăng ký sau ':id' nên
+    // '/api/schedules/incomplete' không bao giờ chạy tới: chữ "incomplete" bị đem
+    // xuống database như một số nguyên và trả lỗi 500, làm ô "Chọn lịch thiếu cần
+    // bổ sung" trong tab Báo Bù không tải được danh sách.
+    // ---------------------------------------------------------------------
+    registerSchedulingModule({
+        botApp,
+        bot,
+        pool,
+        kpiComposer,
+        authenticateTelegramMiniApp,
+        checkPayloadLimit,
+        isValidImage,
+        getImageExtension,
+        escapeHtml,
+        sendPhotoToRoleGroup,
+        // Đồng bộ Sheet vẫn ở file này (vùng đang có người sửa dở) nên truyền vào.
+        // Là function declaration nên dùng được ở đây dù khai báo bên dưới.
+        syncMakeupToGoogleSheet: syncMakeupToGoogleSheetWithRetry,
+        fs,
+        path,
+        moment,
+        uploadDir: path.join(__dirname, 'public', 'uploads'),
+        publicBaseUrl: process.env.MINI_APP_URL
+    });
+
     botApp.get('/api/schedules', async (req, res) => {
         try {
             const { date, groupId } = req.query; // YYYY-MM-DD
@@ -2899,236 +2932,6 @@ ${lichKhach}`;
         }
     });
 
-    kpiComposer.action(/^makeup_app_(.+)$/, async (ctx) => {
-        const client = await pool.connect();
-        try {
-            const reqId = ctx.match[1];
-            const clickerId = ctx.from.id.toString();
-
-            await client.query('BEGIN');
-
-            const reqRes = await client.query('SELECT * FROM tour_makeup_requests WHERE id = $1 FOR UPDATE', [reqId]);
-            if (reqRes.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Yêu cầu không tồn tại trong hệ thống!', { show_alert: true });
-            }
-            const request = reqRes.rows[0];
-
-            if (request.status !== 'PENDING') {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery(`⚠️ Yêu cầu đã được xử lý từ trước! (Trạng thái: ${request.status})`, { show_alert: true });
-            }
-
-            // 1. Cấm tự phê duyệt
-            if (request.telegram_id === clickerId) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Quản lý không được phép tự phê duyệt yêu cầu báo bù của chính mình!', { show_alert: true });
-            }
-
-            // 2. Kiểm tra quyền duyệt (Admin hoặc Quản lý nhóm đó)
-            const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-            let isManager = false;
-            const managerRes = await client.query(
-                `SELECT e.role
-                 FROM employees e
-                 JOIN employee_group_memberships m ON m.employee_id = e.id
-                 WHERE e.telegram_id = $1 AND m.telegram_group_id = $2
-                   AND e.is_active = true AND m.status = 'ACTIVE'
-                   AND e.role = 'Quản lý'
-                 LIMIT 1`,
-                [clickerId, request.telegram_group_id]
-            );
-            if (managerRes.rows.length > 0) {
-                isManager = true;
-            }
-
-            if (!isAdmin && !isManager) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Bạn không có quyền phê duyệt yêu cầu của nhóm này!', { show_alert: true });
-            }
-
-            // Lấy tên Quản lý/Admin duyệt
-            const adminRes = await client.query('SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1', [clickerId]);
-            const adminName = adminRes.rows.length > 0 ? adminRes.rows[0].full_name : (ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name);
-
-            let approvedAptId = request.original_appointment_id;
-
-            if (request.request_type === 'EXISTING_APPOINTMENT') {
-                // Bổ sung vào lịch cũ
-                const aptRes = await client.query('SELECT * FROM customer_appointments WHERE id = $1 FOR UPDATE', [request.original_appointment_id]);
-                if (aptRes.rows.length === 0) {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Không tìm thấy lịch cũ tương ứng để bổ sung!', { show_alert: true });
-                }
-                const apt = aptRes.rows[0];
-
-                // Xác minh lại quyền sở hữu lịch cũ & nhóm & trạng thái & thời gian 48h
-                if (apt.telegram_id !== request.telegram_id || apt.group_id !== request.telegram_group_id) {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Lịch cũ không thuộc sở hữu của nhân viên hoặc nhóm tương ứng!', { show_alert: true });
-                }
-                if (apt.status === 'CANCELLED') {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Lịch cũ đã bị hủy, không thể báo bù!', { show_alert: true });
-                }
-                // LỊCH PHẢI CHƯA HOÀN THÀNH HOẶC THIẾU ẢNH
-                if (!(apt.status === 'ACTIVE' || (apt.status === 'ARRIVED' && (apt.is_photo_debt === true || !apt.proof_image)))) {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Lịch hẹn gốc này đã hoàn thành đầy đủ và được ghi nhận trước đó!', { show_alert: true });
-                }
-                const aptTime = new Date(apt.appointment_time);
-                const now = new Date();
-                if ((now - aptTime) > 48 * 60 * 60 * 1000) {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Lịch cũ đã quá giới hạn 48 giờ!', { show_alert: true });
-                }
-
-                await client.query(
-                    `UPDATE customer_appointments 
-                     SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = $1, revenue = $2, service = $3, sessions = $4, session_type = $5 
-                     WHERE id = $6`,
-                    [request.proof_image, request.revenue, request.service, request.sessions, request.session_type, request.original_appointment_id]
-                );
-
-            } else {
-                // Báo bù lịch mới -> Tạo mới lịch
-                // Kiểm tra trùng công tour lại ngay lúc duyệt để tránh race condition
-                const dupAptRes = await client.query(
-                    `SELECT id FROM customer_appointments 
-                     WHERE telegram_id = $1 AND group_id = $2 AND DATE(appointment_time) = $3 AND phone = $4 
-                       AND status = 'ARRIVED' AND is_photo_debt = FALSE AND proof_image IS NOT NULL LIMIT 1 FOR SHARE`,
-                    [request.telegram_id, request.telegram_group_id, request.work_date, request.customer_phone]
-                );
-                if (dupAptRes.rows.length > 0) {
-                    await client.query('ROLLBACK');
-                    return ctx.answerCbQuery('⚠️ Công tour cho khách hàng này vào ngày đã chọn đã được ghi nhận thành công từ trước!', { show_alert: true });
-                }
-
-                const insertRes = await client.query(
-                    `INSERT INTO customer_appointments (
-                        telegram_id, employee_name, group_id, customer_name, phone, service, sessions, session_type, revenue, appointment_time, is_reminded, status, is_photo_debt, proof_image
-                    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, TRUE, 'ARRIVED', FALSE, $11) RETURNING id`,
-                    [
-                        request.telegram_id, request.employee_name, request.telegram_group_id, request.customer_name, request.customer_phone,
-                        request.service, request.sessions, request.session_type, request.revenue, request.appointment_time, request.proof_image
-                    ]
-                );
-                approvedAptId = insertRes.rows[0].id;
-            }
-
-            // Cập nhật trạng thái yêu cầu
-            await client.query(
-                `UPDATE tour_makeup_requests 
-                 SET status = 'APPROVED', reviewed_at = NOW(), reviewed_by = $1, approved_appointment_id = $2 
-                 WHERE id = $3`,
-                [adminName, approvedAptId, reqId]
-            );
-
-            await client.query('COMMIT');
-
-            // --- BẮT ĐẦU ĐỒNG BỘ GOOGLE SHEET AN TOÀN ---
-            syncMakeupToGoogleSheetWithRetry(reqId).catch(err => {
-                console.error(`[SYNC FATAL ERROR] Lỗi đồng bộ Sheet vĩnh viễn cho yêu cầu ${reqId}:`, err);
-            });
-
-            // Cập nhật nội dung tin nhắn Telegram
-            const originalCaption = ctx.callbackQuery.message.caption || '';
-            const updatedCaption = 
-                `✅ <b>ĐÃ DUYỆT CÔNG TOUR</b> ✅\n\n` + 
-                originalCaption + 
-                `\n\n👤 <b>Người duyệt:</b> ${adminName}\n⏰ <b>Thời gian:</b> ${new Date().toLocaleString('vi-VN')}`;
-
-            await ctx.editMessageCaption(updatedCaption, { parse_mode: 'HTML' });
-            await ctx.answerCbQuery('Đã duyệt yêu cầu báo công tour!');
-        } catch (e) {
-            await client.query('ROLLBACK');
-            console.error('Lỗi khi duyệt yêu cầu báo bù:', e);
-            await ctx.answerCbQuery('Có lỗi xảy ra khi xử lý duyệt!');
-        } finally {
-            client.release();
-        }
-    });
-
-    kpiComposer.action(/^makeup_rej_(.+)$/, async (ctx) => {
-        const client = await pool.connect();
-        try {
-            const reqId = ctx.match[1];
-            const clickerId = ctx.from.id.toString();
-
-            await client.query('BEGIN');
-
-            const reqRes = await client.query('SELECT * FROM tour_makeup_requests WHERE id = $1 FOR UPDATE', [reqId]);
-            if (reqRes.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Yêu cầu không tồn tại trong hệ thống!', { show_alert: true });
-            }
-            const request = reqRes.rows[0];
-
-            if (request.status !== 'PENDING') {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery(`⚠️ Yêu cầu đã được xử lý từ trước! (Trạng thái: ${request.status})`, { show_alert: true });
-            }
-
-            // 1. Cấm tự từ chối/duyệt
-            if (request.telegram_id === clickerId) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Bạn không được phép tự xử lý yêu cầu báo bù của chính mình!', { show_alert: true });
-            }
-
-            // 2. Kiểm tra quyền (Admin hoặc Quản lý nhóm đó)
-            const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(clickerId);
-            let isManager = false;
-            const managerRes = await client.query(
-                `SELECT e.role
-                 FROM employees e
-                 JOIN employee_group_memberships m ON m.employee_id = e.id
-                 WHERE e.telegram_id = $1 AND m.telegram_group_id = $2
-                   AND e.is_active = true AND m.status = 'ACTIVE'
-                   AND e.role = 'Quản lý'
-                 LIMIT 1`,
-                [clickerId, request.telegram_group_id]
-            );
-            if (managerRes.rows.length > 0) {
-                isManager = true;
-            }
-
-            if (!isAdmin && !isManager) {
-                await client.query('ROLLBACK');
-                return ctx.answerCbQuery('⚠️ Bạn không có quyền từ chối yêu cầu của nhóm này!', { show_alert: true });
-            }
-
-            // Lấy tên Quản lý/Admin từ chối
-            const adminRes = await client.query('SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1', [clickerId]);
-            const adminName = adminRes.rows.length > 0 ? adminRes.rows[0].full_name : (ctx.from.username ? `@${ctx.from.username}` : ctx.from.first_name);
-
-            // Cập nhật trạng thái yêu cầu sang REJECTED
-            await client.query(
-                `UPDATE tour_makeup_requests 
-                 SET status = 'REJECTED', reviewed_at = NOW(), reviewed_by = $1 
-                 WHERE id = $2`,
-                [adminName, reqId]
-            );
-
-            await client.query('COMMIT');
-
-            // Cập nhật nội dung tin nhắn Telegram
-            const originalCaption = ctx.callbackQuery.message.caption || '';
-            const updatedCaption = 
-                `❌ <b>ĐÃ TỪ CHỐI YÊU CẦU</b> ❌\n\n` + 
-                originalCaption + 
-                `\n\n👤 <b>Người từ chối:</b> ${adminName}\n⏰ <b>Thời gian:</b> ${new Date().toLocaleString('vi-VN')}`;
-
-            await ctx.editMessageCaption(updatedCaption, { parse_mode: 'HTML' });
-            await ctx.answerCbQuery('Đã từ chối yêu cầu báo công tour!');
-        } catch (e) {
-            await client.query('ROLLBACK');
-            console.error('Lỗi khi từ chối yêu cầu báo bù:', e);
-            await ctx.answerCbQuery('Có lỗi xảy ra khi xử lý từ chối!');
-        } finally {
-            client.release();
-        }
-    });
-
     kpiComposer.action(/^can_(\d+)$/, async (ctx) => {
         try {
             const id = ctx.match[1];
@@ -3665,293 +3468,6 @@ ${lichKhach}`;
             }
         } catch (err) {
             console.error('[CRON MAKEUP] Lỗi quét lịch quá 48h:', err.message);
-        }
-    });
-
-    botApp.get('/api/schedules/incomplete', authenticateTelegramMiniApp, async (req, res) => {
-        try {
-            const telegram_id = req.verifiedTelegramId;
-            const { groupId } = req.query;
-            if (!groupId) {
-                return res.status(400).json({ success: false, error: 'Thiếu thông tin groupId!' });
-            }
-
-            let memberCheck = await pool.query(
-                'SELECT id FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 AND is_active = true LIMIT 1',
-                [telegram_id, groupId]
-            );
-            if (memberCheck.rows.length === 0) {
-                memberCheck = await pool.query(
-                    'SELECT id FROM employees WHERE telegram_id = $1 AND is_active = true LIMIT 1',
-                    [telegram_id]
-                );
-            }
-            if (memberCheck.rows.length === 0) {
-                return res.status(403).json({ success: false, error: 'Bạn không thuộc nhóm làm việc này!' });
-            }
-
-            const result = await pool.query(
-                `SELECT id, customer_name, phone, appointment_time, service, sessions, session_type, revenue, status, is_photo_debt 
-                 FROM customer_appointments 
-                 WHERE telegram_id = $1 
-                   AND group_id = $2
-                   AND appointment_time >= NOW() - INTERVAL '48 hours'
-                   AND appointment_time <= NOW()
-                   AND status != 'CANCELLED'
-                   AND (status = 'ACTIVE' OR (status = 'ARRIVED' AND (is_photo_debt = TRUE OR proof_image IS NULL)))
-                 ORDER BY appointment_time DESC`,
-                [telegram_id, groupId]
-            );
-            res.json({ success: true, data: result.rows });
-        } catch (err) {
-            console.error('Lỗi API lấy lịch chưa hoàn thành:', err);
-            res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    botApp.post('/api/schedules/makeup', checkPayloadLimit(14 * 1024 * 1024), authenticateTelegramMiniApp, async (req, res) => {
-        const { 
-            request_type, 
-            original_appointment_id, 
-            appointment_time, 
-            customer_name, 
-            phone, 
-            service, 
-            sessions, 
-            session_type, 
-            revenue, 
-            reason, 
-            imageBase64, 
-            groupId 
-        } = req.body;
-
-        const work_date = moment().format('YYYY-MM-DD');
-
-        if (!request_type || !appointment_time || !customer_name || !phone || !service || !sessions || !reason || !imageBase64 || !groupId) {
-            return res.status(400).json({ success: false, error: 'Vui lòng nhập đầy đủ tất cả các trường bắt buộc và tải lên 1 ảnh!' });
-        }
-
-        // Chuẩn hóa số điện thoại
-        const normalizedPhone = phone.trim().replace(/\D/g, '');
-        if (!normalizedPhone) {
-            return res.status(400).json({ success: false, error: 'Số điện thoại không hợp lệ!' });
-        }
-
-        const telegram_id = req.verifiedTelegramId;
-
-        // 1. Kiểm tra giới hạn thời gian (trong quá khứ và trong vòng 48 giờ)
-        const now = new Date();
-        const aptTimeObj = new Date(appointment_time);
-        if (isNaN(aptTimeObj.getTime())) {
-            return res.status(400).json({ success: false, error: 'Giờ hẹn không hợp lệ!' });
-        }
-        if (aptTimeObj > now) {
-            return res.status(400).json({ success: false, error: 'Giờ hẹn không được phép ở tương lai!' });
-        }
-        const diffHours = (now - aptTimeObj) / (1000 * 60 * 60);
-        if (diffHours > 48) {
-            return res.status(400).json({ success: false, error: 'Giờ hẹn khách phải nằm trong vòng 48 giờ qua!' });
-        }
-
-        // 2. Không cần kiểm tra Ngày làm thực tế trùng khớp với Giờ hẹn khách nữa vì tự lấy ngày hiện tại.
-
-        // 3. Kiểm định & giải mã Base64 Ảnh (MIME type, Magic Bytes và Kích thước)
-        const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
-        const buffer = Buffer.from(base64Data, 'base64');
-
-        if (buffer.length > 10 * 1024 * 1024) { 
-            return res.status(400).json({ success: false, error: 'Kích thước ảnh giải mã vượt quá giới hạn 10MB!' });
-        }
-        if (!isValidImage(buffer)) {
-            return res.status(400).json({ success: false, error: 'Ảnh tải lên không đúng định dạng hình ảnh hợp lệ (chỉ chấp nhận JPEG, PNG, GIF, WebP)!' });
-        }
-
-        const ext = getImageExtension(buffer);
-        const timestamp = Date.now();
-        const filename = `Makeup_${telegram_id}_${timestamp}${ext}`;
-        const uploadDir = path.join(__dirname, 'public', 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        const filePath = path.join(uploadDir, filename);
-        fs.writeFileSync(filePath, buffer);
-        const proofUrl = process.env.MINI_APP_URL + '/mini-app/uploads/' + filename;
-
-        const client = await pool.connect();
-        try {
-            await client.query('BEGIN');
-
-            // 4. Xác minh phân quyền nhóm (Cấm group bypass)
-            const groupCheck = await client.query('SELECT is_active FROM telegram_groups WHERE telegram_group_id = $1 AND is_active = true LIMIT 1 FOR SHARE', [groupId]);
-            if (groupCheck.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, error: 'Nhóm làm việc không hợp lệ hoặc đã bị vô hiệu hóa!' });
-            }
-
-            const mRes = await client.query(
-                'SELECT full_name FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 AND is_active = true LIMIT 1 FOR SHARE',
-                [telegram_id, groupId]
-            );
-            if (mRes.rows.length === 0) {
-                await client.query('ROLLBACK');
-                return res.status(403).json({ success: false, error: 'Bạn không thuộc nhóm làm việc này hoặc tài khoản của bạn đã bị vô hiệu hóa!' });
-            }
-            const employeeName = mRes.rows[0].full_name;
-
-            // 5. Xác minh lịch cũ (nếu là EXISTING_APPOINTMENT) để ngăn cập nhật chéo của người khác
-            if (request_type === 'EXISTING_APPOINTMENT') {
-                const aptRes = await client.query('SELECT * FROM customer_appointments WHERE id = $1 FOR SHARE', [original_appointment_id]);
-                if (aptRes.rows.length === 0) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, error: 'Không tìm thấy lịch hẹn gốc để bổ sung!' });
-                }
-                const apt = aptRes.rows[0];
-                if (apt.telegram_id !== telegram_id || apt.group_id !== groupId) {
-                    await client.query('ROLLBACK');
-                    return res.status(403).json({ success: false, error: 'Lịch hẹn gốc này không thuộc quyền quản lý của bạn hoặc sai nhóm!' });
-                }
-                if (apt.status === 'CANCELLED') {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, error: 'Lịch hẹn gốc đã bị hủy, không thể báo bù!' });
-                }
-                if (!(apt.status === 'ACTIVE' || (apt.status === 'ARRIVED' && (apt.is_photo_debt || !apt.proof_image)))) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, error: 'Lịch hẹn gốc này đã hoàn thành đầy đủ và được ghi nhận trước đó!' });
-                }
-                const originalAptTime = new Date(apt.appointment_time);
-                if ((now - originalAptTime) > 48 * 60 * 60 * 1000) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, error: 'Lịch hẹn gốc đã quá giới hạn 48 giờ!' });
-                }
-            }
-
-            // 6. Kiểm tra trùng lặp công tour (Database level)
-            // a. Kiểm tra yêu cầu PENDING_NOTIFICATION / PENDING / APPROVED / NOTIFICATION_FAILED
-            const dupReqRes = await client.query(
-                `SELECT id FROM tour_makeup_requests 
-                 WHERE telegram_id = $1 AND telegram_group_id = $2 AND work_date = $3 AND customer_phone = $4 
-                   AND status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'NOTIFICATION_FAILED') FOR UPDATE`,
-                [telegram_id, groupId, work_date, normalizedPhone]
-            );
-            if (dupReqRes.rows.length > 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, error: 'Yêu cầu báo bù cho khách hàng này vào ngày đã chọn đang chờ duyệt hoặc đã được duyệt!' });
-            }
-
-            // b. Kiểm tra công tour hoàn tất thực tế cùng ngày
-            const dupAptRes = await client.query(
-                `SELECT id FROM customer_appointments 
-                 WHERE telegram_id = $1 AND group_id = $2 AND DATE(appointment_time) = $3 AND phone = $4 
-                   AND status = 'ARRIVED' AND is_photo_debt = FALSE AND proof_image IS NOT NULL LIMIT 1 FOR SHARE`,
-                [telegram_id, groupId, work_date, normalizedPhone]
-            );
-            if (dupAptRes.rows.length > 0) {
-                await client.query('ROLLBACK');
-                return res.status(400).json({ success: false, error: 'Công tour cho khách hàng này vào ngày đã chọn đã được ghi nhận thành công trên hệ thống!' });
-            }
-
-            // 7. Thực hiện INSERT CSDL với trạng thái PENDING_NOTIFICATION
-            const insertRes = await client.query(
-                `INSERT INTO tour_makeup_requests (
-                    telegram_group_id, telegram_id, employee_name, request_type, original_appointment_id,
-                    work_date, appointment_time, customer_name, customer_phone, service, sessions,
-                    session_type, revenue, reason, proof_image, status
-                ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, 'PENDING_NOTIFICATION') RETURNING id`,
-                [
-                    groupId, telegram_id, employeeName, request_type, original_appointment_id || null,
-                    work_date, appointment_time, customer_name, normalizedPhone, service, sessions,
-                    session_type || 'Bán', revenue, reason, proofUrl
-                ]
-            );
-            const reqId = insertRes.rows[0].id;
-
-            await client.query('COMMIT');
-            client.release();
-
-            // 8. Gửi Telegram bên ngoài transaction
-            try {
-                const workDateStr = moment(work_date).format('DD/MM/YYYY');
-                const appTimeStr = moment(appointment_time).format('HH:mm');
-                const reqTypeLabel = request_type === 'EXISTING_APPOINTMENT' ? 'Bổ sung lịch đã tồn tại' : 'Báo bù lịch chưa đăng ký';
-
-                const safeEmpName = escapeHtml(employeeName);
-                const safeCustName = escapeHtml(customer_name);
-                const safePhone = escapeHtml(normalizedPhone);
-                const safeService = escapeHtml(service);
-                const safeSessions = escapeHtml(sessions);
-                const safeSessionType = escapeHtml(session_type || 'Bán');
-                const safeRevenue = escapeHtml(revenue);
-                const safeReason = escapeHtml(reason);
-
-                const notifyMsg = 
-                    `Base64: ${safeEmpName}\n` + // Cần thiết cho image_hasher hoạt động nếu cần
-                    `Base64: ${safeEmpName}\n` +
-                    `🕘 <b>YÊU CẦU BÁO BÙ CÔNG TOUR</b> 🕘\n\n` +
-                    `👤 <b>Nhân viên:</b> ${safeEmpName}\n` +
-                    `⏰ <b>Giờ hẹn khách:</b> ${appTimeStr}\n` +
-                    `👤 <b>Khách hàng:</b> ${safeCustName}\n` +
-                    `📞 <b>SĐT:</b> ${safePhone.substring(0, 6)}****\n` +
-                    `💇 <b>Dịch vụ:</b> ${safeService} (Buổi: ${safeSessions})\n` +
-                    `💰 <b>Doanh thu:</b> ${safeRevenue}\n` +
-                    `📌 <b>Dạng buổi:</b> ${safeSessionType}\n` +
-                    `❓ <b>Loại yêu cầu:</b> ${reqTypeLabel}\n` +
-                    `📝 <b>Lý do báo bù:</b> ${safeReason}\n\n` +
-                    `<i>Sếp hoặc Quản lý vui lòng xem ảnh đính kèm bên dưới và nhấn duyệt:</i>`;
-
-                const replyMarkup = {
-                    inline_keyboard: [
-                        [
-                            { text: '✅ Duyệt', callback_data: `makeup_app_${reqId}` },
-                            { text: '❌ Từ chối', callback_data: `makeup_rej_${reqId}` }
-                        ]
-                    ]
-                };
-
-                const sentMessage = await sendPhotoToRoleGroup(bot, groupId, 'report_tour', { source: buffer }, {
-                    caption: notifyMsg,
-                    parse_mode: 'HTML',
-                    reply_markup: replyMarkup
-                }, 'tour_makeup_request_notice');
-
-                if (sentMessage) {
-                    await pool.query("UPDATE tour_makeup_requests SET status = 'PENDING' WHERE id = $1", [reqId]);
-                    return res.json({ success: true, message: 'Gửi yêu cầu báo bù thành công! Vui lòng chờ quản lý duyệt.' });
-                } else {
-                    throw new Error('Gửi thông báo Telegram thất bại (trả về null)');
-                }
-            } catch (tgErr) {
-                console.error('Lỗi khi gửi thông báo Telegram ngoài transaction:', tgErr.message);
-                await pool.query("UPDATE tour_makeup_requests SET status = 'NOTIFICATION_FAILED' WHERE id = $1", [reqId]);
-                return res.json({ success: true, message: 'Yêu cầu đã được lưu vào hệ thống nhưng gặp sự cố gửi thông báo Telegram. Bot sẽ tự động gửi lại sau vài phút!' });
-            }
-
-        } catch (err) {
-            if (client.connection && client.connection.active) {
-                await client.query('ROLLBACK');
-            }
-            client.release();
-            if (fs.existsSync(filePath)) {
-                try { fs.unlinkSync(filePath); } catch (e) {}
-            }
-            console.error('Lỗi API tạo yêu cầu báo bù:', err);
-            return res.status(500).json({ success: false, error: err.message });
-        }
-    });
-
-    botApp.get('/api/schedules/makeup/history', authenticateTelegramMiniApp, async (req, res) => {
-        try {
-            const telegram_id = req.verifiedTelegramId;
-            const result = await pool.query(
-                `SELECT id, request_type, work_date, appointment_time, customer_name, customer_phone, service, sessions, session_type, revenue, reason, proof_image, status, submitted_at, review_note, reviewed_by, sheet_sync_status, sheet_sync_error
-                 FROM tour_makeup_requests
-                 WHERE telegram_id = $1
-                 ORDER BY submitted_at DESC`,
-                [telegram_id]
-            );
-            res.json({ success: true, data: result.rows });
-        } catch (err) {
-            console.error('Lỗi API lấy lịch sử báo bù:', err);
-            res.status(500).json({ success: false, error: err.message });
         }
     });
 

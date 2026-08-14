@@ -372,14 +372,15 @@ botApp.use(express.static(webAdminDistPath));
 // Các thư mục module Mini App. shared-ui là hạ tầng dùng chung nên phải nằm trong
 // danh sách: sửa core/ hay icons.js cũng cần đổi token.
 // Thêm nghiệp vụ mới (timekeep/, scheduling/…) thì khai báo thêm ở đây.
-const warehouseAssetDirs = ['warehouse', 'shared-ui']
+const warehouseAssetDirs = ['warehouse', 'scheduling', 'shared-ui']
     .map(name => path.join(__dirname, 'public', name));
 
 // Shell nào chứa __ASSET_V__ thì khai báo ở đây.
 const warehouseShells = {
     '/mini-app/warehouse_export.html': path.join(__dirname, 'public', 'warehouse_export.html'),
     '/mini-app/warehouse_import.html': path.join(__dirname, 'public', 'warehouse_import.html'),
-    '/mini-app/warehouse_inventory.html': path.join(__dirname, 'public', 'warehouse_inventory.html')
+    '/mini-app/warehouse_inventory.html': path.join(__dirname, 'public', 'warehouse_inventory.html'),
+    '/mini-app/schedule_client.html': path.join(__dirname, 'public', 'schedule_client.html')
 };
 
 let warehouseAssetVersionCache = { token: '0', checkedAt: 0 };

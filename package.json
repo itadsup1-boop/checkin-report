@@ -28,7 +28,10 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:warehouse-architecture": "node --experimental-test-isolation=none --test domains/warehouse/tests/architecture.test.js",
     "setup:test-db": "node scripts/setup-test-db.mjs",
-    "test:db": "node scripts/run-integration-tests.mjs"
+    "test:db": "node scripts/run-integration-tests.mjs",
+    "test:scheduling-miniapp": "node --experimental-test-isolation=none --test domains/scheduling/tests/scheduling-miniapp.test.js",
+    "test:scheduling-module": "node --experimental-test-isolation=none --test domains/scheduling/tests/scheduling.module.test.js",
+    "check:scheduling": "node --check apps/bot/kpi_features.js && npm run test:scheduling-module && npm run test:scheduling-miniapp"
   },
   "keywords": [],
   "author": "",
