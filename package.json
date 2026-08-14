@@ -31,7 +31,10 @@
     "test:db": "node scripts/run-integration-tests.mjs",
     "test:scheduling-miniapp": "node --experimental-test-isolation=none --test domains/scheduling/tests/scheduling-miniapp.test.js",
     "test:scheduling-module": "node --experimental-test-isolation=none --test domains/scheduling/tests/scheduling.module.test.js",
-    "check:scheduling": "node --check apps/bot/kpi_features.js && npm run test:scheduling-module && npm run test:scheduling-miniapp"
+    "check:scheduling": "node --check apps/bot/kpi_features.js && npm run test:scheduling-module && npm run test:scheduling-miniapp",
+    "test:customer-miniapp": "node --experimental-test-isolation=none --test domains/customer/tests/customer-miniapp.test.js",
+    "test:customer-module": "node --experimental-test-isolation=none --test domains/customer/tests/customer.module.test.js",
+    "check:customer": "node --check apps/bot/timekeep_bot.js && npm run test:customer-module && npm run test:customer-miniapp"
   },
   "keywords": [],
   "author": "",
