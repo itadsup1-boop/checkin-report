@@ -27,7 +27,25 @@ export function createWarehouseQueryRepository(pool) {
             ? `SELECT id, telegram_id, telegram_group_id, full_name, role, is_active
                FROM employees
                WHERE telegram_id = $1 AND is_active = TRUE
-               ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
+               ORDER BY CASE
+                    -- Dữ liệu cũ có thể có nhiều employees cùng Telegram ID, mỗi dòng
+                    -- được tạo khi nhân sự đăng ký ở một nhóm khác. Phải ưu tiên dòng
+                    -- thực sự thuộc nhóm đang mở, không được lấy dòng cũ nhất toàn hệ thống.
+                    WHEN telegram_group_id = $2 THEN 0
+                    WHEN EXISTS (
+                        SELECT 1 FROM employee_group_memberships m
+                        WHERE m.employee_id = employees.id
+                          AND m.telegram_group_id = $2
+                          AND m.status = 'ACTIVE'
+                    ) THEN 1
+                    WHEN EXISTS (
+                        SELECT 1 FROM tk_warehouse_permissions wp
+                        WHERE wp.employee_id = employees.id
+                          AND wp.telegram_group_id = $2
+                          AND wp.is_active = TRUE
+                    ) THEN 2
+                    ELSE 3
+               END ASC, created_at ASC
                LIMIT 1`
             : `SELECT id, telegram_id, telegram_group_id, full_name, role, is_active
                FROM employees

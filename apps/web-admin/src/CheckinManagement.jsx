@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { ClipboardCheck, Search, Edit3, Save, X, Plus, Clock, Video, CalendarDays, UserPlus } from 'lucide-react';
+import { ClipboardCheck, Download, Edit3, Save, X, Plus, Clock, Video, CalendarDays, UserPlus } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -19,12 +19,12 @@ export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [addForm, setAddForm] = useState({ user_id: '', check_in_time: '', admin_note: 'Admin nhập tay' });
 
-  useEffect(() => {
-    fetchCheckins();
-    fetchStaff();
-  }, [selectedDate, selectedGroupId]);
+  const showToast = useCallback(message => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
 
-  const fetchCheckins = async () => {
+  const fetchCheckins = useCallback(async () => {
     setLoading(true);
     try {
       const params = { date: selectedDate };
@@ -38,20 +38,47 @@ export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedDate, selectedGroupId]);
 
-  const fetchStaff = async () => {
+  const fetchStaff = useCallback(async () => {
     try {
-      const res = await axios.get(`${API_URL}/admin/tk-users`);
+      const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${encodeURIComponent(selectedGroupId)}` : '';
+      const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
       setStaffList(res.data);
     } catch (err) {
       console.error('Lỗi tải nhân viên:', err);
     }
-  };
+  }, [selectedGroupId]);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+  useEffect(() => {
+    const requestId = window.setTimeout(() => {
+      fetchCheckins();
+      fetchStaff();
+    }, 0);
+    return () => window.clearTimeout(requestId);
+  }, [fetchCheckins, fetchStaff]);
+
+  const exportAttendance = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/export/today`, {
+        params: {
+          date: selectedDate,
+          group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined
+        },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `bao_cao_diem_danh_${selectedDate}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      showToast('✅ Đã xuất báo cáo điểm danh.');
+    } catch (error) {
+      showToast(`❌ Không thể xuất Excel: ${error.message}`);
+    }
   };
 
   const openEdit = (checkin) => {
@@ -139,12 +166,17 @@ export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
           <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Báo cáo Điểm danh</h2>
           <p className="text-slate-400 text-sm">Theo dõi và quản lý check-in video theo ngày</p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
-        >
-          <UserPlus className="w-4 h-4" /> Thêm Check-in thủ công
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={exportAttendance} className="flex items-center gap-2 rounded-xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-400 hover:bg-emerald-500/20">
+            <Download className="h-4 w-4" />Xuất Excel
+          </button>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-medium rounded-xl shadow-lg shadow-blue-500/25 transition-all hover:-translate-y-0.5 active:translate-y-0"
+          >
+            <UserPlus className="w-4 h-4" /> Thêm Check-in thủ công
+          </button>
+        </div>
       </div>
 
       {/* Date Navigation */}

@@ -6,7 +6,8 @@ export function registerWarehouseExportRoutes({
     pool,
     authenticateTelegramMiniApp,
     escapeHtml,
-    syncWarehouseSheets
+    syncWarehouseSheets,
+    warehouseOrderService
 }) {
     botApp.post('/api/warehouse/export/request', authenticateTelegramMiniApp, async (req, res) => {
         try {
@@ -21,70 +22,31 @@ export function registerWarehouseExportRoutes({
                 return res.status(400).json({ success: false, message: 'Danh sách sản phẩm xuất kho trống!' });
             }
 
-            // 1. Kiểm tra nhân viên
-            const userRes = await pool.query(
-                `SELECT * FROM employees
-                 WHERE telegram_id = $1 AND is_active = TRUE
-                 ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
-                 LIMIT 1`,
-                [telegram_id, String(chat_id)]
-            );
-            if (userRes.rows.length === 0) {
-                return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản!' });
+            // Nhập, xuất, xem tồn và đơn dịch vụ phải dùng cùng một bộ xác thực.
+            // Bộ xác thực này chọn đúng hồ sơ theo Telegram ID + nhóm, kể cả dữ liệu
+            // cũ đang có nhiều dòng employees cho cùng một người.
+            let actor;
+            try {
+                actor = await warehouseOrderService.authorizeActor({
+                    telegramId: telegram_id,
+                    chatId: chat_id,
+                    requireEmployee: true
+                });
+            } catch (error) {
+                return res.status(error.status || 403).json({
+                    success: false,
+                    message: error.message
+                });
             }
-            const user = userRes.rows[0];
-
-            // 2. Kiểm tra nhóm
-            const groupRes = await pool.query(
-                `SELECT * FROM telegram_groups
-                 WHERE telegram_group_id = $1 AND bot_role = 'warehouse'
-                   AND is_active = TRUE AND COALESCE(is_deleted, FALSE) = FALSE
-                 LIMIT 1`,
-                [String(chat_id)]
-            );
-            if (groupRes.rows.length === 0) {
-                return res.status(403).json({ success: false, message: 'Nhóm chưa được phân quyền Quản lý kho!' });
-            }
-            const group = groupRes.rows[0];
-
-            const accessResult = await pool.query(
-                `SELECT (
-                    $2::text = $3::text
-                    OR EXISTS (
-                        SELECT 1 FROM employee_group_memberships m
-                        WHERE m.employee_id = $1
-                          AND m.telegram_group_id = $3
-                          AND m.status = 'ACTIVE'
-                    )
-                    OR EXISTS (
-                        SELECT 1 FROM tk_warehouse_permissions wp
-                        WHERE wp.employee_id = $1
-                          AND wp.telegram_group_id = $3
-                          AND wp.is_active = TRUE
-                    )
-                ) AS allowed`,
-                [user.id, user.telegram_group_id, String(chat_id)]
-            );
-            if (!accessResult.rows[0]?.allowed) {
-                return res.status(403).json({ success: false, message: 'Bạn không phải thành viên của nhóm kho này.' });
-            }
+            const user = actor.employee;
+            const group = actor.group;
 
             // 3. Quyền duyệt kho được Admin cấp riêng theo group; không tin role tự chọn.
-            const isAdminId = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(telegram_id);
-            const permissionResult = await pool.query(
-                `SELECT permission_code
-                 FROM tk_warehouse_permissions
-                 WHERE employee_id = $1
-                   AND telegram_group_id = $2
-                   AND permission_code IN ('APPROVE_EXPORT', 'AUTO_APPROVE_OWN_ORDER', 'APPROVE_TRANSFER')
-                   AND is_active = TRUE`,
-                [user.id, String(chat_id)]
-            );
-            const permissionCodes = new Set(permissionResult.rows.map(row => row.permission_code));
-            const canApproveOwn = isAdminId
+            const permissionCodes = actor.permissions;
+            const canApproveOwn = actor.isAdmin
                 || permissionCodes.has('APPROVE_EXPORT')
                 || permissionCodes.has('AUTO_APPROVE_OWN_ORDER');
-            const canApproveTransfer = isAdminId || permissionCodes.has('APPROVE_TRANSFER');
+            const canApproveTransfer = actor.isAdmin || permissionCodes.has('APPROVE_TRANSFER');
 
             // Tạo một Request Group ID cho phiên xuất kho này
             const requestGroupId = randomUUID();

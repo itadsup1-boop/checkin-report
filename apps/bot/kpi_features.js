@@ -5,8 +5,6 @@ import { Telegraf } from 'telegraf';
 import dotenv from 'dotenv';
 import cron from 'node-cron';
 import pool from '../../packages/database/index.js';
-import { GoogleSpreadsheet } from 'google-spreadsheet';
-import { JWT } from 'google-auth-library';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -21,6 +19,8 @@ import {
     getEmployeeMembership,
     registerEmployeeInKpiGroup
 } from '../../packages/shared/kpiMembership.js';
+import { getCustomerDocForGroup, getKpiDocForGroup } from './sheetManager.js';
+import { buildCustomerSheetRowKey, findCustomerSheetRow } from './customer-sheet-routing.js';
 import { registerSchedulingModule } from '../../domains/scheduling/index.js';
 
 // Khởi chạy cronjob dọn ảnh rác lúc 03:00 sáng
@@ -55,29 +55,6 @@ dotenv.config({ override: true });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const keyFile = process.env.GOOGLE_SERVICE_ACCOUNT_KEY_FILE || 'hybrid-flame-499905-r2-3034c23f309c.json';
-const credsPath = path.isAbsolute(keyFile) ? keyFile : path.join(__dirname, '../../', keyFile);
-const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8'));
-
-const serviceAccountAuth = new JWT({
-    email: creds.client_email,
-    key: creds.private_key,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-});
-
-const SPREADSHEET_ID = process.env.GOOGLE_SPREADSHEET_ID || 'SPREADSHEET_ID_CHUA_CAI_DAT';
-const doc = new GoogleSpreadsheet(SPREADSHEET_ID, serviceAccountAuth);
-
-const CUSTOMER_SPREADSHEET_ID = process.env.CUSTOMER_SPREADSHEET_ID;
-const TOUR_SPREADSHEET_ID = process.env.TOUR_SPREADSHEET_ID;
-let customerDoc = null;
-if (CUSTOMER_SPREADSHEET_ID) {
-    customerDoc = new GoogleSpreadsheet(CUSTOMER_SPREADSHEET_ID, serviceAccountAuth);
-}
-let tourDoc = null;
-if (TOUR_SPREADSHEET_ID) {
-    tourDoc = new GoogleSpreadsheet(TOUR_SPREADSHEET_ID, serviceAccountAuth);
-}
 let customerSheetQueue = Promise.resolve();
 
 let sheetQueue = Promise.resolve();
@@ -88,7 +65,7 @@ export function setupKpiBot(bot, botApp) {
     async function getCustomerSheetTarget(groupId, employeeName) {
         const role = groupId && groupId !== 'MINI_APP' ? await getGroupRole(groupId) : null;
         const isTour = role === 'report_tour';
-        const targetDoc = isTour ? tourDoc : customerDoc;
+        const targetDoc = await getCustomerDocForGroup(groupId && groupId !== 'MINI_APP' ? groupId : null);
         const sheetSuffix = isTour ? ' [Tour]' : '';
         return {
             doc: targetDoc,
@@ -105,19 +82,32 @@ export function setupKpiBot(bot, botApp) {
         }
         await target.doc.loadInfo();
         const headers = ['Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền', 'Ảnh Chứng Thực'];
+
+        const upsertRow = async sheet => {
+            const rows = await sheet.getRows();
+            const rowKey = buildCustomerSheetRowKey(rowData);
+            let row = rows.find(item => buildCustomerSheetRowKey(item) === rowKey);
+            if (!row) return await sheet.addRow(rowData);
+
+            for (const header of headers) {
+                row.set(header, rowData[header] ?? '');
+            }
+            await row.save();
+            return row;
+        };
         
         // Ghi vào Sheet Tổng Hợp
         const masterSheetName = target.role === 'report_tour' ? 'TỔNG HỢP TOUR' : 'TỔNG HỢP KHÁCH HÀNG';
         let masterSheet = target.doc.sheetsByTitle[masterSheetName];
         if (!masterSheet) masterSheet = await target.doc.addSheet({ headerValues: headers, title: masterSheetName });
         else await masterSheet.setHeaderRow(headers);
-        await masterSheet.addRow(rowData);
+        await upsertRow(masterSheet);
 
         // Ghi vào Sheet Cá Nhân
         let individualSheet = target.doc.sheetsByTitle[target.sheetName];
         if (!individualSheet) individualSheet = await target.doc.addSheet({ headerValues: headers, title: target.sheetName });
         else await individualSheet.setHeaderRow(headers);
-        const row = await individualSheet.addRow(rowData);
+        const row = await upsertRow(individualSheet);
         
         return row.rowNumber;
     }
@@ -131,21 +121,26 @@ export function setupKpiBot(bot, botApp) {
         return Number.isFinite(target) && target > 0 ? target : 0;
     }
 
-    async function logPenaltyToSheet(user_full_name, employee_code, telegram_id, penalty_type, amount, details) {
-        if (SPREADSHEET_ID === 'SPREADSHEET_ID_CHUA_CAI_DAT' || amount <= 0) return;
+    async function logPenaltyToSheet(group_id, user_full_name, employee_code, telegram_id, penalty_type, amount, details) {
+        if (amount <= 0) return;
 
         sheetQueue = sheetQueue.then(async () => {
             try {
-                await doc.loadInfo();
+                const kpiDoc = await getKpiDocForGroup(group_id);
+                if (!kpiDoc) {
+                    console.warn(`[KPI Sheet] group_id=${group_id} status=skipped reason=spreadsheet_not_configured`);
+                    return;
+                }
+                await kpiDoc.loadInfo();
                 const today = new Date();
                 const monthStr = `${today.getMonth() + 1}-${today.getFullYear()}`;
                 const sheetTitle = `TỔNG PHẠT T${monthStr}`;
 
-                let penaltySheet = doc.sheetsByTitle[sheetTitle];
+                let penaltySheet = kpiDoc.sheetsByTitle[sheetTitle];
                 const headers = ['Nhân viên', 'Mã NV', 'Telegram ID', 'Tổng Tiền Phạt', 'Lịch Sử Vi Phạm'];
 
                 if (!penaltySheet) {
-                    penaltySheet = await doc.addSheet({ headerValues: headers, title: sheetTitle });
+                    penaltySheet = await kpiDoc.addSheet({ headerValues: headers, title: sheetTitle });
                 }
 
                 const rows = await penaltySheet.getRows();
@@ -479,11 +474,15 @@ export function setupKpiBot(bot, botApp) {
                             // Đã loại bỏ logPenaltyToSheet ở đây vì ngay bên dưới đã có khối push data lên Sheet đầy đủ hơn
 
                             // Đẩy lên Google Sheet cho từng người
-                            if (SPREADSHEET_ID !== 'SPREADSHEET_ID_CHUA_CAI_DAT') {
-                                sheetQueue = sheetQueue.then(async () => {
+                            sheetQueue = sheetQueue.then(async () => {
                                     try {
-                                        await doc.loadInfo();
-                                        const mainSheet = doc.sheetsByIndex[0];
+                                        const kpiDoc = await getKpiDocForGroup(group.telegram_group_id);
+                                        if (!kpiDoc) {
+                                            console.warn(`[KPI Sheet] group_id=${group.telegram_group_id} status=skipped reason=spreadsheet_not_configured`);
+                                            return;
+                                        }
+                                        await kpiDoc.loadInfo();
+                                        const mainSheet = kpiDoc.sheetsByIndex[0];
                                         const headers = ['Ngày', 'Nhân viên', 'Mã NV', 'Telegram ID', 'Số tin nhắn (KPI)', 'Tin nhắn Thực tế', 'Doanh Thu', 'Lịch Khách', 'Hoàn thành (%)', 'Trạng thái', 'Tình trạng Ảnh', 'Nội dung tin nhắn'];
 
                                         for (const e of missing) {
@@ -509,9 +508,9 @@ export function setupKpiBot(bot, botApp) {
                                             // Lưu vào Tab cá nhân
                                             const idSuffix = e.telegram_id.slice(-3);
                                             const sheetTitle = `${e.full_name} - ${idSuffix}`.substring(0, 100);
-                                            let individualSheet = doc.sheetsByTitle[sheetTitle];
+                                            let individualSheet = kpiDoc.sheetsByTitle[sheetTitle];
                                             if (!individualSheet) {
-                                                individualSheet = await doc.addSheet({ headerValues: headers, title: sheetTitle });
+                                                individualSheet = await kpiDoc.addSheet({ headerValues: headers, title: sheetTitle });
                                             } else {
                                                 await individualSheet.setHeaderRow(headers);
                                             }
@@ -519,7 +518,6 @@ export function setupKpiBot(bot, botApp) {
                                         }
                                     } catch (e) { console.error('Lỗi đẩy phạt lên Sheet:', e); }
                                 }).catch(e => console.error(e));
-                            }
                         }
                     }
                 }
@@ -704,9 +702,9 @@ export function setupKpiBot(bot, botApp) {
             }
 
             if (missing_kpi > 0) {
-                await logPenaltyToSheet(user.full_name, user.employee_code, telegram_id, 'THIẾU KPI', total_penalty, `Thiếu ${missing_kpi} tin nhắn so với KPI ${kpiTarget}`);
+                await logPenaltyToSheet(group_id, user.full_name, user.employee_code, telegram_id, 'THIẾU KPI', total_penalty, `Thiếu ${missing_kpi} tin nhắn so với KPI ${kpiTarget}`);
             } else if (debt_info && debt_info.missing > 0) {
-                await logPenaltyToSheet(user.full_name, user.employee_code, telegram_id, 'NỢ MINH CHỨNG', total_penalty, `Thiếu ${debt_info.missing} ảnh (Chỉ nộp ${debt_info.received}/${debt_info.required})`);
+                await logPenaltyToSheet(group_id, user.full_name, user.employee_code, telegram_id, 'NỢ MINH CHỨNG', total_penalty, `Thiếu ${debt_info.missing} ảnh (Chỉ nộp ${debt_info.received}/${debt_info.required})`);
             }
 
             // A. LƯU VÀO DATABASE (PostgreSQL)
@@ -729,8 +727,9 @@ export function setupKpiBot(bot, botApp) {
             // B. LƯU VÀO GOOGLE SHEET (XẾP HÀNG ĐỂ XỬ LÝ ĐỒNG THỜI - QUEUE)
             sheetQueue = sheetQueue.then(async () => {
                 try {
-                    if (SPREADSHEET_ID !== 'SPREADSHEET_ID_CHUA_CAI_DAT') {
-                        await doc.loadInfo();
+                    const kpiDoc = await getKpiDocForGroup(group_id);
+                    if (kpiDoc) {
+                        await kpiDoc.loadInfo();
 
                         const kpiRequiredStr = kpiTarget > 0 ? kpiTarget : '';
                         const percentComplete = kpiTarget > 0 ? Math.round((parsedJSON.kpi_actual / kpiTarget) * 100) + '%' : '';
@@ -777,7 +776,7 @@ export function setupKpiBot(bot, botApp) {
                         };
 
                         // 1. Lưu vào Sheet tổng
-                        const mainSheet = doc.sheetsByIndex[0];
+                        const mainSheet = kpiDoc.sheetsByIndex[0];
                         if (mainSheet) {
                             await mainSheet.setHeaderRow(headers);
                             await mainSheet.addRow(rowData);
@@ -787,10 +786,10 @@ export function setupKpiBot(bot, botApp) {
                         const idSuffix = telegram_id.slice(-3);
                         const sheetTitle = `${user.full_name} - ${idSuffix}`.substring(0, 100);
 
-                        let individualSheet = doc.sheetsByTitle[sheetTitle];
+                        let individualSheet = kpiDoc.sheetsByTitle[sheetTitle];
 
                         if (!individualSheet) {
-                            individualSheet = await doc.addSheet({ headerValues: headers, title: sheetTitle });
+                            individualSheet = await kpiDoc.addSheet({ headerValues: headers, title: sheetTitle });
                         } else {
                             await individualSheet.setHeaderRow(headers);
                         }
@@ -2313,7 +2312,12 @@ ${lichKhach}`;
                         let sheet = target.doc.sheetsByTitle[target.sheetName];
                         if (sheet) {
                             const rows = await sheet.getRows();
-                            const matchRow = rows.find(r => r.rowNumber === rowIndex);
+                            const matchRow = findCustomerSheetRow(rows, {
+                                'Nhân Viên': empName,
+                                'Khách Hàng': apt.customer_name,
+                                'SĐT': apt.phone,
+                                'Thời Gian': moment(apt.appointment_time).format('HH:mm DD/MM/YYYY')
+                            }, rowIndex);
                             if (matchRow) {
                                 matchRow.set('Trạng Thái', 'Đã hoàn thành');
                                 matchRow.set('Ảnh Chứng Thực', proofUrl);
@@ -2450,14 +2454,6 @@ ${lichKhach}`;
                 const request = reqRes.rows[0];
 
                 if (request.status !== 'APPROVED') return;
-
-                if (!customerDoc && !tourDoc) {
-                    await pool.query(
-                        "UPDATE tour_makeup_requests SET sheet_sync_status = 'FAILED', sheet_sync_error = $1 WHERE id = $2",
-                        ['Cả customerDoc và tourDoc đều chưa được cấu hình trên máy chủ', reqId]
-                    );
-                    return;
-                }
 
                 const target = await getCustomerSheetTarget(request.telegram_group_id, request.employee_name);
                 if (!target.doc) {
@@ -2773,7 +2769,12 @@ ${lichKhach}`;
                         let sheet = target.doc.sheetsByTitle[target.sheetName];
                         if (sheet) {
                             const rows = await sheet.getRows();
-                            const matchRow = rows.find(r => r.rowNumber === rowIndex);
+                            const matchRow = findCustomerSheetRow(rows, {
+                                'Nhân Viên': empName,
+                                'Khách Hàng': apt.customer_name,
+                                'SĐT': apt.phone,
+                                'Thời Gian': moment(apt.appointment_time).format('HH:mm DD/MM/YYYY')
+                            }, rowIndex);
                             if (matchRow) {
                                 matchRow.set('Trạng Thái', 'Đã hoàn thành');
                                 matchRow.set('Ảnh Chứng Thực', proofUrl);

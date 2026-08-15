@@ -1,432 +1,385 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Users, CheckCircle, Clock, AlertTriangle, RefreshCw,
-  ChevronDown, TrendingUp, TrendingDown, CircleDot,
-  Wallet, UserX, Timer
+  AlertTriangle,
+  CalendarDays,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  RefreshCw,
+  UserX,
+  Users
 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
-const REFRESH_INTERVAL_MS = 5 * 60 * 1000; // 5 phút
+const REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
-// ────────────────────────────────────────
-// Utility helpers
-// ────────────────────────────────────────
-function formatCurrency(amount) {
-  if (!amount) return '0';
-  return Number(amount).toLocaleString('vi-VN');
-}
-
-function formatWeekRange(start, end) {
-  if (!start || !end) return '';
-  const fmt = (d) => {
-    const [y, m, day] = d.split('-');
-    return `${day}/${m}`;
-  };
-  return `${fmt(start)} – ${fmt(end)}`;
-}
-
-// ────────────────────────────────────────
-// Status badge component
-// ────────────────────────────────────────
-const STATUS_MAP = {
-  ON_TIME: { label: 'Đúng giờ', cls: 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30', dot: 'bg-emerald-400' },
-  LATE: { label: 'Đến muộn', cls: 'bg-amber-500/15  text-amber-400  border-amber-500/30', dot: 'bg-amber-400' },
-  NOT_CHECKED_IN: { label: 'Chưa checkin', cls: 'bg-rose-500/15   text-rose-400   border-rose-500/30', dot: 'bg-rose-400' },
-  OFF: { label: 'Nghỉ', cls: 'bg-slate-500/15  text-slate-400  border-slate-500/30', dot: 'bg-slate-400' },
-  NO_SCHEDULE: { label: 'Chưa xếp ca', cls: 'bg-indigo-500/15 text-indigo-400 border-indigo-500/30', dot: 'bg-indigo-400' },
+const STATUS = {
+  ON_TIME: {
+    label: 'Đúng giờ',
+    badge: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-400',
+    dot: 'bg-emerald-400'
+  },
+  LATE: {
+    label: 'Đến muộn',
+    badge: 'border-amber-500/30 bg-amber-500/10 text-amber-400',
+    dot: 'bg-amber-400'
+  },
+  NOT_CHECKED_IN: {
+    label: 'Chưa check-in',
+    badge: 'border-rose-500/30 bg-rose-500/10 text-rose-400',
+    dot: 'bg-rose-400'
+  }
 };
 
-function StatusBadge({ status }) {
-  const cfg = STATUS_MAP[status] || STATUS_MAP.NO_SCHEDULE;
-  return (
-    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border ${cfg.cls}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot} animate-pulse`} />
-      {cfg.label}
-    </span>
-  );
+function adminHeaders() {
+  try {
+    const user = JSON.parse(localStorage.getItem('admin_user') || '{}');
+    return {
+      'x-admin-id': user.id || '',
+      'x-admin-role': user.role || ''
+    };
+  } catch {
+    return {};
+  }
 }
 
-// ────────────────────────────────────────
-// Stat card component
-// ────────────────────────────────────────
-function StatCard({ icon, title, value, sub, colorClass, borderClass, iconBg }) {
+function initials(name) {
+  return String(name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .map(part => part.charAt(0))
+    .join('')
+    .toUpperCase();
+}
+
+function formatLeaveDuration(request) {
+  if (request.request_type === 'HALF_DAY_AM' || request.request_type === 'HALF_DAY_PM') return 'Nửa ngày';
+  if (request.request_type === 'LATE') return request.late_minutes ? `${request.late_minutes} phút` : 'Đi muộn';
+  return '1 ngày';
+}
+
+function leaveDateKey(value) {
+  if (!value) return '';
+  const text = String(value);
+  const isoDate = text.match(/^\d{4}-\d{2}-\d{2}/)?.[0];
+  if (isoDate) return isoDate;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? '' : parsed.toISOString().slice(0, 10);
+}
+
+function todayInVietnam() {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const byType = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${byType.year}-${byType.month}-${byType.day}`;
+}
+
+function formatLeaveDate(value) {
+  const [year, month, day] = leaveDateKey(value).split('-');
+  return year && month && day ? `${day}/${month}/${year}` : '—';
+}
+
+function CompactStatCard({ icon: Icon, title, value, note, tone }) {
+  const tones = {
+    cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/15',
+    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/15',
+    amber: 'bg-amber-500/10 text-amber-400 border-amber-500/15',
+    rose: 'bg-rose-500/10 text-rose-400 border-rose-500/15'
+  };
+
   return (
-    <div className={`relative overflow-hidden rounded-2xl border ${borderClass} bg-gradient-to-br ${colorClass} p-6 backdrop-blur-sm group hover:-translate-y-0.5 transition-all duration-300`}>
-      {/* bg icon decoration */}
-      <div className="absolute -right-3 -top-3 opacity-10 group-hover:opacity-20 transition-opacity duration-500">
-        {React.cloneElement(icon, { className: 'w-24 h-24' })}
+    <div className="flex min-h-[86px] items-center gap-3 rounded-2xl border border-white/[0.07] bg-[#111827]/75 px-4 py-3 shadow-sm">
+      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${tones[tone]}`}>
+        <Icon className="h-5 w-5" />
       </div>
-      <div className="relative z-10 flex items-start justify-between">
-        <div>
-          <p className="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">{title}</p>
-          <p className="text-4xl font-extrabold text-white leading-none">{value ?? '—'}</p>
-          {sub && <p className="text-xs text-slate-400 mt-2">{sub}</p>}
-        </div>
-        <div className={`p-3 rounded-xl ${iconBg} backdrop-blur-md border border-white/10 shadow-inner`}>
-          {React.cloneElement(icon, { className: 'w-5 h-5' })}
+      <div className="min-w-0">
+        <p className="truncate text-xs font-medium text-slate-400">{title}</p>
+        <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+          <strong className="text-2xl leading-none text-white">{value ?? '—'}</strong>
+          <span className={`text-[11px] font-semibold ${tones[tone].split(' ')[1]}`}>{note}</span>
         </div>
       </div>
     </div>
   );
 }
 
-// ────────────────────────────────────────
-// Group selector
-// ────────────────────────────────────────
-function GroupSelector({ groups, selectedId, onChange }) {
+function Panel({ title, action, children }) {
   return (
-    <div className="relative">
-      <select
-        value={selectedId || ''}
-        onChange={e => onChange(e.target.value)}
-        className="appearance-none bg-[#111827] border border-white/10 text-white text-sm rounded-xl px-4 py-2.5 pr-9 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/50 cursor-pointer hover:border-white/20 transition-colors"
-      >
-        {groups.map(g => (
-          <option key={g.id} value={g.id}>{g.group_name || g.telegram_group_id}</option>
-        ))}
-      </select>
-      <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+    <section className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#111827]/75 shadow-sm">
+      <div className="flex h-14 items-center justify-between border-b border-white/[0.06] px-5">
+        <h3 className="text-sm font-bold text-white">{title}</h3>
+        {action}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div className="space-y-5 animate-pulse">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[0, 1, 2, 3].map(item => <div key={item} className="h-[86px] rounded-2xl bg-white/5" />)}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <div className="h-64 rounded-2xl bg-white/5" />
+        <div className="h-64 rounded-2xl bg-white/5" />
+      </div>
     </div>
   );
 }
 
-// ────────────────────────────────────────
-// Skeleton loader
-// ────────────────────────────────────────
-function Skeleton({ className = '' }) {
-  return <div className={`rounded-lg bg-white/5 animate-pulse ${className}`} />;
-}
-
-function StatsSkeleton() {
-  return (
-    <div className="grid grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
-      {[...Array(8)].map((_, i) => (
-        <Skeleton key={i} className="h-32 rounded-2xl" />
-      ))}
-    </div>
-  );
-}
-
-function TableSkeleton() {
-  return (
-    <div className="space-y-3 px-6 pb-6">
-      {[...Array(5)].map((_, i) => (
-        <Skeleton key={i} className="h-12 w-full" />
-      ))}
-    </div>
-  );
-}
-
-// ────────────────────────────────────────
-// Main DashboardTab component
-// ────────────────────────────────────────
-export default function DashboardTab({ selectedGroupId = 'ALL' }) {
+export default function DashboardTab({ selectedGroupId = 'ALL', onNavigate }) {
   const [data, setData] = useState(null);
+  const [leaveRequests, setLeaveRequests] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [approvingId, setApprovingId] = useState(null);
+  const [error, setError] = useState('');
   const [lastUpdated, setLastUpdated] = useState(null);
   const timerRef = useRef(null);
 
-  const fetchDashboard = useCallback(async (groupId, silent = false) => {
-    if (!silent) setLoading(true);
-    else setRefreshing(true);
-    setError(null);
+  const loadDashboard = useCallback(async (silent = false) => {
+    if (silent) setRefreshing(true);
+    else setLoading(true);
+    setError('');
+
+    const query = selectedGroupId && selectedGroupId !== 'ALL'
+      ? `?group_id=${encodeURIComponent(selectedGroupId)}`
+      : '';
+
     try {
-      const params = groupId && groupId !== 'ALL' ? `?group_id=${groupId}` : '';
-      const res = await fetch(`${API_URL}/admin/dashboard${params}`, {
-        headers: {
-          'x-admin-id': JSON.parse(localStorage.getItem('admin_user') || '{}').id || '',
-          'x-admin-role': JSON.parse(localStorage.getItem('admin_user') || '{}').role || ''
-        }
-      });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const json = await res.json();
-      setData(json);
+      const [dashboardResponse, leaveResponse] = await Promise.all([
+        fetch(`${API_URL}/admin/dashboard${query}`, { headers: adminHeaders() }),
+        fetch(`${API_URL}/admin/leave-requests${query}`, { headers: adminHeaders() })
+      ]);
+      if (!dashboardResponse.ok) throw new Error(`Không tải được tổng quan (${dashboardResponse.status})`);
+      if (!leaveResponse.ok) throw new Error(`Không tải được đơn nghỉ (${leaveResponse.status})`);
+
+      const [dashboard, requests] = await Promise.all([
+        dashboardResponse.json(),
+        leaveResponse.json()
+      ]);
+      setData(dashboard);
+      setLeaveRequests(Array.isArray(requests) ? requests : []);
       setLastUpdated(new Date());
-    } catch (e) {
-      console.log(e);
-      setError(e.message);
+    } catch (loadError) {
+      setError(loadError.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [selectedGroupId]);
 
-  // Load when selectedGroupId changes
   useEffect(() => {
-    fetchDashboard(selectedGroupId);
-  }, [selectedGroupId, fetchDashboard]);
+    const requestId = window.setTimeout(loadDashboard, 0);
+    return () => window.clearTimeout(requestId);
+  }, [loadDashboard]);
 
-  // Auto-refresh mỗi 5 phút
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      fetchDashboard(selectedGroupId, true);
-    }, REFRESH_INTERVAL_MS);
+    timerRef.current = setInterval(() => loadDashboard(true), REFRESH_INTERVAL_MS);
     return () => clearInterval(timerRef.current);
-  }, [selectedGroupId, fetchDashboard]);
+  }, [loadDashboard]);
 
-  const handleRefresh = () => {
-    fetchDashboard(selectedGroupId, true);
+  const employees = useMemo(() => data?.employees || [], [data?.employees]);
+  const stats = data?.stats || {};
+  const onTimeToday = employees.filter(employee => employee.status === 'ON_TIME').length;
+  const lateToday = employees.filter(employee => employee.status === 'LATE').length;
+  const absentToday = employees.filter(employee => employee.status === 'NOT_CHECKED_IN').length;
+  const punctualRate = stats.total_checked_in_today
+    ? Math.round((onTimeToday / stats.total_checked_in_today) * 100)
+    : 0;
+
+  const recentAttendance = useMemo(() => employees
+    .filter(employee => employee.check_in_time)
+    .sort((left, right) => String(right.check_in_time).localeCompare(String(left.check_in_time)))
+    .slice(0, 4), [employees]);
+
+  const futurePendingLeaves = useMemo(() => {
+    const today = todayInVietnam();
+    return leaveRequests
+      .filter(request => request.status === 'PENDING' && leaveDateKey(request.date) > today)
+      .sort((left, right) => leaveDateKey(left.date).localeCompare(leaveDateKey(right.date)));
+  }, [leaveRequests]);
+  const pendingLeaves = futurePendingLeaves.slice(0, 4);
+
+  const approveLeave = async requestId => {
+    setApprovingId(requestId);
+    try {
+      const response = await fetch(`${API_URL}/admin/leave-requests/${requestId}`, {
+        method: 'PUT',
+        headers: { ...adminHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'APPROVED', approved_by: 'Admin (Dashboard)' })
+      });
+      if (!response.ok) throw new Error('Không thể duyệt đơn nghỉ');
+      setLeaveRequests(current => current.map(request =>
+        request.id === requestId ? { ...request, status: 'APPROVED' } : request
+      ));
+    } catch (approveError) {
+      setError(approveError.message);
+    } finally {
+      setApprovingId(null);
+    }
   };
 
-  const { stats, employees = [], group, groups = [], today, week } = data || {};
-
-  const todayLabel = today
-    ? new Date(today + 'T00:00:00').toLocaleDateString('vi-VN', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' })
-    : '—';
+  if (loading) return <Skeleton />;
 
   return (
-    <div className="space-y-6">
-      {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Dashboard Chấm công</h2>
-          <p className="text-slate-400 text-sm mt-0.5">
-            📅 {todayLabel}
-            {week && <span className="ml-3 text-slate-500">Tuần: {formatWeekRange(week.start, week.end)}</span>}
+    <div className="space-y-4">
+      <div className="flex min-h-8 items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-lg font-bold text-white">Tổng quan hôm nay</h2>
+          <p className="truncate text-[11px] text-slate-500">
+            {data?.group?.group_name || 'Tất cả nhóm'}
+            {lastUpdated && ` · Cập nhật ${lastUpdated.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`}
           </p>
         </div>
-
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing || loading}
-            title="Làm mới dữ liệu"
-            className="p-2.5 bg-[#111827] border border-white/10 rounded-xl text-slate-400 hover:text-white hover:border-cyan-500/40 transition-all disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => loadDashboard(true)}
+          disabled={refreshing}
+          title="Làm mới dữ liệu"
+          className="rounded-lg border border-white/10 bg-white/[0.03] p-2 text-slate-400 transition hover:bg-white/[0.07] hover:text-white disabled:opacity-50"
+        >
+          <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+        </button>
       </div>
 
-      {/* Last updated */}
-      {lastUpdated && !loading && (
-        <p className="text-xs text-slate-500 -mt-2">
-          Cập nhật lúc {lastUpdated.toLocaleTimeString('vi-VN')} · Tự làm mới mỗi 5 phút
-        </p>
-      )}
-
-      {/* ── Error state ── */}
       {error && (
-        <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-6 text-rose-400 flex items-center gap-3">
-          <AlertTriangle className="w-5 h-5 shrink-0" />
-          <span>Lỗi tải dữ liệu: {error}</span>
-          <button onClick={handleRefresh} className="ml-auto text-xs underline hover:no-underline">Thử lại</button>
+        <div className="flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-4 py-3 text-xs text-rose-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />{error}
         </div>
       )}
 
-      {/* ── Stats cards ── */}
-      {loading ? <StatsSkeleton /> : stats && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard
-            icon={<Users className="text-blue-400" />}
-            title="Có lịch hôm nay"
-            value={stats.total_scheduled_today}
-            sub={`${stats.total_checked_in_today} đã checkin`}
-            colorClass="from-blue-500/10 to-blue-600/5"
-            borderClass="border-blue-500/20"
-            iconBg="bg-blue-500/15"
-          />
-          <StatCard
-            icon={<UserX className="text-rose-400" />}
-            title="Chưa checkin"
-            value={stats.total_not_checked_yet ?? stats.total_absent_today}
-            sub="đang chờ điểm danh"
-            colorClass="from-rose-500/10 to-rose-600/5"
-            borderClass="border-rose-500/20"
-            iconBg="bg-rose-500/15"
-          />
-          <StatCard
-            icon={<Clock className="text-amber-400" />}
-            title="Muộn trong tuần"
-            value={stats.weekly_late_count}
-            sub={`${stats.weekly_on_time_count} lượt đúng giờ`}
-            colorClass="from-amber-500/10 to-amber-600/5"
-            borderClass="border-amber-500/20"
-            iconBg="bg-amber-500/15"
-          />
-          <StatCard
-            icon={<TrendingUp className="text-emerald-400" />}
-            title="Đúng giờ tuần"
-            value={`${stats.weekly_punctual_rate}%`}
-            sub={`${stats.weekly_total_checkins} lượt checkin`}
-            colorClass="from-emerald-500/10 to-emerald-600/5"
-            borderClass="border-emerald-500/20"
-            iconBg="bg-emerald-500/15"
-          />
-          <StatCard
-            icon={<Wallet className="text-purple-400" />}
-            title="Tiền phạt tuần"
-            value={`${formatCurrency(stats.weekly_penalty_total)}₫`}
-            sub="tổng tích lũy cả tuần"
-            colorClass="from-purple-500/10 to-purple-600/5"
-            borderClass="border-purple-500/20"
-            iconBg="bg-purple-500/15"
-          />
-          <StatCard
-            icon={<CheckCircle className="text-cyan-400" />}
-            title="Đã checkin hôm nay"
-            value={stats.total_checked_in_today}
-            sub={`/ ${stats.total_scheduled_today} có lịch`}
-            colorClass="from-cyan-500/10 to-cyan-600/5"
-            borderClass="border-cyan-500/20"
-            iconBg="bg-cyan-500/15"
-          />
-          <StatCard
-            icon={<Timer className="text-orange-400" />}
-            title="Đúng giờ tuần (lượt)"
-            value={stats.weekly_on_time_count}
-            sub={`trong ${stats.weekly_total_checkins} lượt checkin`}
-            colorClass="from-orange-500/10 to-orange-600/5"
-            borderClass="border-orange-500/20"
-            iconBg="bg-orange-500/15"
-          />
-          <StatCard
-            icon={<CircleDot className="text-indigo-400" />}
-            title="Nhân sự trong nhóm"
-            value={employees.length}
-            sub={group?.group_name || ''}
-            colorClass="from-indigo-500/10 to-indigo-600/5"
-            borderClass="border-indigo-500/20"
-            iconBg="bg-indigo-500/15"
-          />
-        </div>
-      )}
-
-      {/* ── Employee table ── */}
-      <div className="bg-[#111827]/60 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl">
-        <div className="p-5 border-b border-white/5 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div>
-            <h3 className="text-lg font-bold text-white">
-              Nhân sự hôm nay
-              {group && <span className="ml-2 text-sm font-normal text-slate-400">— {group.group_name}</span>}
-            </h3>
-            {!loading && (
-              <p className="text-xs text-slate-500 mt-0.5">
-                {employees.length} nhân viên · {employees.filter(e => e.status === 'ON_TIME').length} đúng giờ · {employees.filter(e => e.status === 'LATE').length} muộn · {employees.filter(e => e.status === 'NOT_CHECKED_IN').length} chưa checkin
-              </p>
-            )}
-          </div>
-          {/* Legend */}
-          <div className="flex items-center gap-3 flex-wrap text-xs text-slate-400">
-            {Object.entries(STATUS_MAP).map(([key, cfg]) => (
-              <span key={key} className="flex items-center gap-1">
-                <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
-                {cfg.label}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {loading ? <TableSkeleton /> : (
-          <div className="overflow-x-auto">
-            {employees.length === 0 ? (
-              <div className="py-16 text-center text-slate-500">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-30" />
-                <p>Không có nhân sự nào trong nhóm này.</p>
-              </div>
-            ) : (
-              <table className="w-full text-sm text-left border-collapse">
-                <thead>
-                  <tr className="bg-white/[0.02] text-slate-400 text-xs uppercase tracking-wider">
-                    <th className="py-3 px-5 font-medium">Nhân viên</th>
-                    <th className="py-3 px-5 font-medium">Ca làm</th>
-                    <th className="py-3 px-5 font-medium text-center">Giờ checkin</th>
-                    <th className="py-3 px-5 font-medium text-center">Muộn (phút)</th>
-                    <th className="py-3 px-5 font-medium text-right">Tiền phạt</th>
-                    <th className="py-3 px-5 font-medium">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/[0.04]">
-                  {employees.map((emp) => (
-                    <tr
-                      key={emp.user_id}
-                      className={`hover:bg-white/[0.025] transition-colors group ${emp.status === 'NOT_CHECKED_IN' ? 'bg-rose-500/[0.03]' : ''}`}
-                    >
-                      {/* Name */}
-                      <td className="py-3.5 px-5">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-cyan-500 to-blue-600 flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-md">
-                            {emp.full_name?.charAt(0) || '?'}
-                          </div>
-                          <div>
-                            <p className="font-semibold text-white text-sm">{emp.full_name}</p>
-                            <p className="text-xs text-slate-500">{emp.role}</p>
-                          </div>
-                        </div>
-                      </td>
-                      {/* Shift */}
-                      <td className="py-3.5 px-5">
-                        {emp.shift_type ? (
-                          <span className={`px-2.5 py-1 rounded-md text-xs font-medium border ${emp.shift_type === 'CA_1' ? 'bg-blue-500/10   text-blue-400   border-blue-500/20' :
-                            emp.shift_type === 'CA_2' ? 'bg-violet-500/10 text-violet-400 border-violet-500/20' :
-                              emp.shift_type === 'OFF' ? 'bg-slate-500/10  text-slate-400  border-slate-500/20' :
-                                'bg-white/5       text-slate-300  border-white/10'
-                            }`}>
-                            {emp.shift_type === 'CA_1' || emp.shift_type === 'CA_SANG' ? '☀️ Ca sớm' : emp.shift_type === 'CA_2' || emp.shift_type === 'CA_CHIEU' ? '🌙 Ca muộn' : emp.shift_type === 'OFF' ? '🏖 Nghỉ' : emp.shift_type}
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 text-xs italic">Chưa xếp ca</span>
-                        )}
-                      </td>
-                      {/* Check-in time */}
-                      <td className="py-3.5 px-5 text-center">
-                        {emp.check_in_time ? (
-                          <span className="font-mono font-semibold text-white">{emp.check_in_time}</span>
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      {/* Late minutes */}
-                      <td className="py-3.5 px-5 text-center">
-                        {emp.late_minutes > 0 ? (
-                          <span className="text-amber-400 font-semibold">+{emp.late_minutes}'</span>
-                        ) : emp.check_in_time ? (
-                          <span className="text-emerald-400 text-xs">—</span>
-                        ) : (
-                          <span className="text-slate-500">—</span>
-                        )}
-                      </td>
-                      {/* Penalty */}
-                      <td className="py-3.5 px-5 text-right">
-                        {emp.penalty_amount > 0 ? (
-                          <span className="text-rose-400 font-medium text-sm">{formatCurrency(emp.penalty_amount)}₫</span>
-                        ) : (
-                          <span className="text-slate-600">—</span>
-                        )}
-                      </td>
-                      {/* Status */}
-                      <td className="py-3.5 px-5">
-                        <StatusBadge status={emp.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </div>
-        )}
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <CompactStatCard
+          icon={Users}
+          title="Tổng nhân sự"
+          value={employees.length}
+          note={`${stats.total_scheduled_today || 0} có lịch`}
+          tone="cyan"
+        />
+        <CompactStatCard
+          icon={CheckCircle2}
+          title="Đúng giờ hôm nay"
+          value={onTimeToday}
+          note={`${punctualRate}% check-in`}
+          tone="emerald"
+        />
+        <CompactStatCard
+          icon={Clock3}
+          title="Đến muộn"
+          value={lateToday}
+          note={`${stats.weekly_late_count || 0} lượt tuần này`}
+          tone="amber"
+        />
+        <CompactStatCard
+          icon={UserX}
+          title="Vắng chưa phép"
+          value={absentToday}
+          note="chưa check-in"
+          tone="rose"
+        />
       </div>
 
-      {/* Chưa checkin highlight */}
-      {!loading && employees.filter(e => e.status === 'NOT_CHECKED_IN').length > 0 && (
-        <div className="bg-rose-500/8 border border-rose-500/20 rounded-2xl p-4">
-          <p className="text-rose-400 text-sm font-medium mb-2 flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" /> Chưa checkin hôm nay
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {employees
-              .filter(e => e.status === 'NOT_CHECKED_IN')
-              .map(e => (
-                <span key={e.user_id} className="px-3 py-1 bg-rose-500/10 border border-rose-500/25 text-rose-300 text-xs rounded-full font-medium">
-                  {e.full_name}
-                </span>
-              ))
-            }
-          </div>
-        </div>
-      )}
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(320px,1fr)]">
+        <Panel
+          title="Chấm công gần đây"
+          action={(
+            <button type="button" onClick={() => onNavigate?.('checkins')} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-400 hover:text-cyan-300">
+              Xem tất cả <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        >
+          {recentAttendance.length ? (
+            <div className="divide-y divide-white/[0.05]">
+              {recentAttendance.map(employee => {
+                const status = STATUS[employee.status] || STATUS.ON_TIME;
+                return (
+                  <div key={employee.user_id} className="flex min-h-[62px] items-center gap-3 px-5 py-2.5 hover:bg-white/[0.02]">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-xs font-bold text-slate-300">
+                      {initials(employee.full_name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white">{employee.full_name}</p>
+                      <p className="mt-0.5 text-[11px] text-slate-500">Check-in: {employee.check_in_time}</p>
+                    </div>
+                    <span className={`inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${status.badge}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${status.dot}`} />{status.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex min-h-[188px] flex-col items-center justify-center px-5 text-center">
+              <Clock3 className="h-7 w-7 text-slate-600" />
+              <p className="mt-2 text-sm font-semibold text-slate-400">Chưa có lượt check-in hôm nay</p>
+            </div>
+          )}
+        </Panel>
+
+        <Panel
+          title={`Nghỉ phép chờ duyệt${futurePendingLeaves.length ? ` (${futurePendingLeaves.length})` : ''}`}
+          action={(
+            <button type="button" onClick={() => onNavigate?.('leave')} className="inline-flex items-center gap-1 text-xs font-semibold text-cyan-400 hover:text-cyan-300">
+              Xem tất cả <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          )}
+        >
+          {pendingLeaves.length ? (
+            <div className="overflow-x-auto p-3">
+              <div className="min-w-[520px]">
+                <div className="grid grid-cols-[minmax(130px,1fr)_90px_minmax(150px,1.2fr)_34px] gap-3 px-3 pb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                  <span>Nhân viên</span>
+                  <span>Ngày muốn nghỉ</span>
+                  <span>Lý do</span>
+                  <span />
+                </div>
+                <div className="space-y-2">
+                  {pendingLeaves.map(request => (
+                    <div key={request.id} className="grid min-h-[58px] grid-cols-[minmax(130px,1fr)_90px_minmax(150px,1.2fr)_34px] items-center gap-3 rounded-xl bg-white/[0.025] px-3 py-2">
+                      <div className="flex min-w-0 items-center gap-2.5">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-[10px] font-bold text-slate-300">
+                          {initials(request.full_name)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-white">{request.full_name || 'Nhân viên'}</p>
+                          <p className="mt-0.5 text-[10px] text-slate-500">{formatLeaveDuration(request)}</p>
+                        </div>
+                      </div>
+                      <span className="text-xs font-semibold text-cyan-300">{formatLeaveDate(request.date)}</span>
+                      <p className="line-clamp-2 text-[11px] leading-4 text-slate-400" title={request.reason || 'Không ghi lý do'}>
+                        {request.reason || 'Không ghi lý do'}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => approveLeave(request.id)}
+                        disabled={approvingId === request.id}
+                        title="Duyệt đơn"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500 text-white transition hover:bg-emerald-400 disabled:opacity-50"
+                      >
+                        {approvingId === request.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-[188px] flex-col items-center justify-center px-5 text-center">
+              <CalendarDays className="h-7 w-7 text-slate-600" />
+              <p className="mt-2 text-sm font-semibold text-slate-400">Không có đơn tương lai chờ duyệt</p>
+            </div>
+          )}
+        </Panel>
+      </div>
     </div>
   );
 }

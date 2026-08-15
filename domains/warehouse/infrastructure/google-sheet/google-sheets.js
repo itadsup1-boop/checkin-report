@@ -81,6 +81,16 @@ export function createWarehouseSheetSync({ pool, moment, getDocById }) {
                 row => row.get('Mã giao dịch') === transactionCode
             );
             if (existingLogRow) {
+                // Database là nguồn dữ liệu chính. Khi quản lý sửa một giao dịch
+                // nhập/xuất bị bấm nhầm, lần đồng bộ kế tiếp phải phản ánh lại toàn
+                // bộ dòng lịch sử chứ không chỉ cập nhật ảnh chứng thực.
+                existingLogRow.set('Người thực hiện', tx.emp_name);
+                existingLogRow.set('Tên sản phẩm', product.product_name);
+                existingLogRow.set('Mã vạch', product.barcode);
+                existingLogRow.set('Số lượng', tx.quantity);
+                existingLogRow.set('Cơ sở', tx.branch || 'US');
+                existingLogRow.set('Người duyệt', approverName);
+                existingLogRow.set('Ngày giờ', timeStr);
                 existingLogRow.set('Ảnh chứng thực', tx.proof_folder_url || '');
                 await existingLogRow.save();
             } else {

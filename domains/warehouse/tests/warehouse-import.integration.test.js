@@ -7,6 +7,7 @@ import moment from 'moment';
 import pool from '../../../packages/database/index.js';
 import { registerWarehouseImportRoutes } from '../interfaces/miniapp-api/import-routes.js';
 import { startWarehouseOutboxWorker } from '../infrastructure/outbox/outbox-worker.js';
+import { createWarehouseOrderService } from '../application/warehouse-order-service.js';
 
 test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng bộ thành công', async t => {
     const originalConsoleError = console.error;
@@ -22,6 +23,8 @@ test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng b
     fs.writeFileSync(imagePath, Buffer.from('fake-image-content'));
     let groupId;
     let employeeId;
+    let legacyGroupId;
+    let legacyEmployeeId;
     let productId;
     let transactionId;
     let worker;
@@ -45,8 +48,14 @@ test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng b
             await pool.query('DELETE FROM tk_inventory WHERE product_id = $1', [productId]);
             await pool.query('DELETE FROM tk_products WHERE id = $1', [productId]);
         }
-        if (employeeId) await pool.query('DELETE FROM employees WHERE id = $1', [employeeId]);
+        if (employeeId || legacyEmployeeId) {
+            await pool.query(
+                'DELETE FROM employees WHERE id = ANY($1::uuid[])',
+                [[employeeId, legacyEmployeeId].filter(Boolean)]
+            );
+        }
         if (groupId) await pool.query('DELETE FROM telegram_groups WHERE id = $1', [groupId]);
+        if (legacyGroupId) await pool.query('DELETE FROM telegram_groups WHERE id = $1', [legacyGroupId]);
         if (fs.existsSync(imagePath)) fs.unlinkSync(imagePath);
         if (fs.existsSync(tempDir)) fs.rmdirSync(tempDir);
         await pool.end();
@@ -61,6 +70,30 @@ test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng b
         [telegramGroupId, `Import integration ${suffix}`]
     );
     groupId = group.rows[0].id;
+
+    // Hồi quy lỗi thật của Trần Phương Hoa: cùng Telegram ID có một hồ sơ cũ
+    // ở nhóm báo cáo và một hồ sơ mới ở nhóm kho. Luồng nhập phải chọn đúng
+    // hồ sơ nhóm kho, không được lấy dòng cũ nhất rồi báo sai "không phải thành viên".
+    const legacyGroupTelegramId = `-996${String(Date.now()).slice(-9)}`;
+    const legacyGroup = await pool.query(
+        `INSERT INTO telegram_groups
+            (telegram_group_id, group_name, bot_role, is_active, is_deleted)
+         VALUES ($1, $2, 'report', TRUE, FALSE)
+         RETURNING id`,
+        [legacyGroupTelegramId, `Legacy report group ${suffix}`]
+    );
+    legacyGroupId = legacyGroup.rows[0].id;
+    const legacyEmployee = await pool.query(
+        `INSERT INTO employees
+            (employee_code, full_name, telegram_id, telegram_group_id,
+             department, position, role, is_active, created_at)
+         VALUES ($1, 'Nhân viên hồ sơ cũ', $2, $3,
+                 'Report', 'Staff', 'Nhân viên', TRUE, NOW() - INTERVAL '1 day')
+         RETURNING id`,
+        [`WH-LEGACY-${suffix}`, telegramId, legacyGroupTelegramId]
+    );
+    legacyEmployeeId = legacyEmployee.rows[0].id;
+
     const employee = await pool.query(
         `INSERT INTO employees
             (employee_code, full_name, telegram_id, telegram_group_id,
@@ -83,7 +116,8 @@ test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng b
         botApp,
         pool,
         authenticateTelegramMiniApp: () => {},
-        receiveWarehouseImages: () => {}
+        receiveWarehouseImages: () => {},
+        warehouseOrderService: createWarehouseOrderService({ pool, adminIds: [] })
     });
 
     let statusCode = 200;

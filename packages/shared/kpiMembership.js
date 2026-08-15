@@ -49,6 +49,55 @@ export async function getEmployeeMembershipById(db, employeeId, telegramGroupId)
     return applyMembershipToEmployee(result.rows[0] || null);
 }
 
+export async function pauseEmployeeMembershipsInAllGroups(
+    db,
+    employee,
+    actor = 'admin:global_disable',
+    reason = 'Vô hiệu hóa tài khoản toàn hệ thống'
+) {
+    await db.query(
+        `UPDATE public.employees
+            SET is_active = FALSE
+          WHERE id = $1
+             OR ($2::varchar IS NOT NULL AND telegram_id = $2)`,
+        [employee.id, employee.telegram_id ? String(employee.telegram_id) : null]
+    );
+
+    const paused = await db.query(
+        `WITH identity_employees AS (
+             SELECT id
+               FROM public.employees
+              WHERE id = $1
+                 OR ($4::varchar IS NOT NULL AND telegram_id = $4)
+         ), changed AS (
+             UPDATE public.employee_group_memberships AS membership
+                SET status = 'PAUSED',
+                    pause_reason = $2,
+                    paused_at = NOW(),
+                    updated_by = $3,
+                    updated_at = NOW()
+               FROM identity_employees
+              WHERE membership.employee_id = identity_employees.id
+                AND membership.status <> 'PAUSED'
+              RETURNING membership.employee_id, membership.telegram_group_id
+         )
+         INSERT INTO public.employee_group_membership_events
+             (employee_id, telegram_group_id, old_status, new_status, reason, actor)
+         SELECT employee_id, telegram_group_id, 'ACTIVE', 'PAUSED', $2, $3
+           FROM changed
+         RETURNING telegram_group_id`,
+        [employee.id, reason, actor, employee.telegram_id ? String(employee.telegram_id) : null]
+    );
+
+    if (employee.telegram_id) {
+        await db.query(
+            'DELETE FROM public.pending_reports WHERE telegram_id = $1',
+            [String(employee.telegram_id)]
+        );
+    }
+    return paused.rows.map(row => String(row.telegram_group_id));
+}
+
 export async function registerEmployeeInKpiGroup(db, employee, telegramGroupId, actor = 'telegram_setup') {
     const groupResult = await db.query(
         `SELECT g.telegram_group_id,
@@ -79,17 +128,33 @@ export async function registerEmployeeInKpiGroup(db, employee, telegramGroupId, 
         [employee.id, String(telegramGroupId)]
     );
 
-    if (existing.rows[0]?.status === 'PAUSED') {
-        return { ok: false, reason: 'PAUSED', membership: existing.rows[0] };
+    // Nếu tài khoản từng bị vô hiệu hóa toàn cục, giữ tất cả nhóm cũ ở PAUSED.
+    // Chỉ membership của nhóm đang đăng ký bên dưới mới được bật lại.
+    if (employee.is_active === false) {
+        await pauseEmployeeMembershipsInAllGroups(
+            db,
+            employee,
+            actor,
+            'Chờ nhân sự đăng ký lại từng nhóm'
+        );
     }
 
     if (existing.rows.length > 0) {
         await db.query(
             `UPDATE public.employee_group_memberships
-             SET last_registered_at = NOW(), updated_at = NOW(), updated_by = $3
+             SET status = 'ACTIVE', pause_reason = NULL, resumed_at = NOW(),
+                 last_registered_at = NOW(), updated_at = NOW(), updated_by = $3
              WHERE employee_id = $1 AND telegram_group_id = $2`,
             [employee.id, String(telegramGroupId), actor]
         );
+        if (existing.rows[0].status === 'PAUSED' || employee.is_active === false) {
+            await db.query(
+                `INSERT INTO public.employee_group_membership_events
+                    (employee_id, telegram_group_id, old_status, new_status, reason, actor)
+                 VALUES ($1, $2, 'PAUSED', 'ACTIVE', 'Nhân sự đăng ký lại trong nhóm', $3)`,
+                [employee.id, String(telegramGroupId), actor]
+            );
+        }
     } else {
         await db.query(
             `INSERT INTO public.employee_group_memberships
@@ -108,7 +173,9 @@ export async function registerEmployeeInKpiGroup(db, employee, telegramGroupId, 
     // Trường legacy chỉ là nhóm được dùng gần nhất. Trạng thái từng nhóm luôn
     // lấy từ employee_group_memberships, nên cập nhật này không kích hoạt nhóm cũ.
     await db.query(
-        `UPDATE public.employees SET telegram_group_id = $2 WHERE id = $1`,
+        `UPDATE public.employees
+            SET telegram_group_id = $2, is_active = TRUE
+          WHERE id = $1`,
         [employee.id, String(telegramGroupId)]
     );
 

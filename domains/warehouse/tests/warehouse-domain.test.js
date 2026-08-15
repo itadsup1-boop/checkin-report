@@ -52,6 +52,15 @@ test('validation chặn số lượng thập phân, âm và cơ sở không hợ
     assert.throws(() => validateOrderInput({ ...valid, branch: 'HN' }), WarehouseError);
 });
 
+test('số điện thoại khách hàng chỉ yêu cầu tối thiểu 4 chữ số', () => {
+    assert.equal(validateOrderInput({ ...valid, customer_phone: '1234' }).customer_phone, '1234');
+    assert.equal(validateOrderInput({ ...valid, customer_phone: '+84 12' }).customer_phone, '+84 12');
+    assert.throws(
+        () => validateOrderInput({ ...valid, customer_phone: '12 3' }),
+        error => error instanceof WarehouseError && error.code === 'INVALID_CUSTOMER_PHONE'
+    );
+});
+
 test('sản phẩm bị loại không được cộng vào tổng tồn', () => {
     const totals = aggregateOrderItems([
         { product_id: 'p1', actual_quantity: 4, is_removed: true },

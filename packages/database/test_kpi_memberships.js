@@ -1,5 +1,8 @@
 import pool from './index.js';
-import { registerEmployeeInKpiGroup } from '../shared/kpiMembership.js';
+import {
+    pauseEmployeeMembershipsInAllGroups,
+    registerEmployeeInKpiGroup
+} from '../shared/kpiMembership.js';
 
 function assert(condition, message) {
     if (!condition) throw new Error(message);
@@ -73,18 +76,21 @@ async function run() {
         const secondRegistration = await registerEmployeeInKpiGroup(client, refreshedEmployee, secondGroup, 'automated_test');
         assert(secondRegistration.ok, 'Registration in the second KPI group failed');
 
-        await client.query(
-            `UPDATE employee_group_memberships
-             SET status = 'PAUSED', pause_reason = 'automated isolation test', paused_at = NOW()
-             WHERE employee_id = $1 AND telegram_group_id = $2`,
-            [employee.id, firstGroup]
+        await client.query('UPDATE employees SET is_active = FALSE WHERE id = $1', [employee.id]);
+        const inactiveEmployee = (await client.query('SELECT * FROM employees WHERE id = $1', [employee.id])).rows[0];
+        const pausedGroups = await pauseEmployeeMembershipsInAllGroups(
+            client,
+            inactiveEmployee,
+            'automated_test',
+            'automated global disable test'
+        );
+        assert(
+            pausedGroups.includes(firstGroup) && pausedGroups.includes(secondGroup),
+            'Global disable did not pause every KPI group'
         );
 
-        const pausedRegistration = await registerEmployeeInKpiGroup(client, refreshedEmployee, firstGroup, 'automated_test');
-        assert(!pausedRegistration.ok && pausedRegistration.reason === 'PAUSED', 'A paused group must not self-reactivate');
-
-        const activeRegistration = await registerEmployeeInKpiGroup(client, refreshedEmployee, secondGroup, 'automated_test');
-        assert(activeRegistration.ok, 'The other KPI group must remain active');
+        const activeRegistration = await registerEmployeeInKpiGroup(client, inactiveEmployee, secondGroup, 'automated_test');
+        assert(activeRegistration.ok, 'Registration did not reactivate the selected KPI group');
 
         const membershipResult = await client.query(
             `SELECT telegram_group_id, status
@@ -95,7 +101,10 @@ async function run() {
         );
         const statuses = new Map(membershipResult.rows.map(row => [String(row.telegram_group_id), row.status]));
         assert(statuses.get(firstGroup) === 'PAUSED', 'The first group did not stay paused');
-        assert(statuses.get(secondGroup) === 'ACTIVE', 'The second group was affected by the first group pause');
+        assert(statuses.get(secondGroup) === 'ACTIVE', 'Registration did not activate only the selected group');
+        const globalStatus = await client.query('SELECT is_active, telegram_group_id FROM employees WHERE id = $1', [employee.id]);
+        assert(globalStatus.rows[0].is_active === true, 'Registration did not reactivate the employee account');
+        assert(String(globalStatus.rows[0].telegram_group_id) === secondGroup, 'Legacy group pointer did not move to the registered group');
 
         const fakeTelegramId = `kpi-test-${Date.now()}`;
         const deadline = new Date(Date.now() + 10 * 60 * 1000);

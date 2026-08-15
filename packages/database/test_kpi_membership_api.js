@@ -176,6 +176,29 @@ async function run() {
             'Pause/resume audit history contains incorrect state transitions'
         );
 
+        const disableResponse = await fetch(`${API_URL}/api/admin/tk-users/${employeeId}`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+                is_active: false,
+                telegram_group_id: firstGroup
+            })
+        });
+        const disableBody = await disableResponse.json().catch(() => ({}));
+        assert(disableResponse.ok, `Global disable returned HTTP ${disableResponse.status}: ${disableBody.error || 'unknown error'}`);
+
+        const disabledState = await pool.query(
+            `SELECT e.is_active,
+                    COUNT(*) FILTER (WHERE m.status <> 'PAUSED')::int AS non_paused_count
+               FROM employees e
+               LEFT JOIN employee_group_memberships m ON m.employee_id = e.id
+              WHERE e.id = $1
+              GROUP BY e.is_active`,
+            [employeeId]
+        );
+        assert(disabledState.rows[0]?.is_active === false, 'Global disable did not deactivate the employee');
+        assert(disabledState.rows[0]?.non_paused_count === 0, 'Global disable did not pause every group membership');
+
         console.log('PASS: live group activity pause/resume and cross-group isolation');
     } finally {
         try {

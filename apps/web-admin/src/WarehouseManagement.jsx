@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
 import {
   ArchiveRestore,
@@ -133,7 +133,7 @@ export default function WarehouseManagement() {
     try {
       return await axios({ url: `${API_URL}${path}`, ...options });
     } catch (requestError) {
-      throw new Error(requestError.response?.data?.message || requestError.message);
+      throw new Error(requestError.response?.data?.message || requestError.message, { cause: requestError });
     }
   }, []);
 
@@ -198,8 +198,10 @@ export default function WarehouseManagement() {
     }
   }, [loadTemplate, request, selectedServiceId]);
 
+  const initialCatalogLoader = useRef(loadCatalog);
   useEffect(() => {
-    loadCatalog({ keepSelection: false });
+    const requestId = window.setTimeout(() => initialCatalogLoader.current({ keepSelection: false }), 0);
+    return () => window.clearTimeout(requestId);
   }, []);
 
   const visibleServices = useMemo(() => {
@@ -527,9 +529,15 @@ export default function WarehouseManagement() {
                     </div>
 
                     {products.length ? (
-                      <div className="mt-4 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
-                        <div className="grid gap-2 md:grid-cols-[1fr_1fr]">
-                          <div className="relative">
+                      <div className="mt-4 overflow-hidden rounded-xl border border-cyan-200 bg-cyan-50">
+                        <div className="flex flex-col gap-3 border-b border-cyan-200 p-4 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <div className="text-sm font-bold text-slate-900">Danh mục sản phẩm có thể thêm</div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              Có {products.length} sản phẩm trong hệ thống · còn {selectableProducts.length} sản phẩm chưa gắn vào dịch vụ này
+                            </div>
+                          </div>
+                          <div className="relative w-full sm:max-w-sm">
                             <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
                             <input
                               value={productSearch}
@@ -538,22 +546,63 @@ export default function WarehouseManagement() {
                               className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-cyan-500"
                             />
                           </div>
-                          <select
-                            value=""
-                            onChange={event => addProduct(event.target.value)}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm font-bold text-slate-700 outline-none focus:border-cyan-500"
-                          >
-                            <option value="">+ Chọn mặt hàng để thêm</option>
-                            {selectableProducts.map(product => <option key={product.id} value={product.id}>{product.product_name} ({product.barcode})</option>)}
-                          </select>
                         </div>
-                        {!selectableProducts.length && <div className="mt-2 text-xs text-slate-500">Không còn mặt hàng phù hợp để thêm.</div>}
+
+                        <div className="max-h-80 overflow-y-auto bg-white p-2">
+                          {selectableProducts.length ? (
+                            <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+                              {selectableProducts.map(product => (
+                                <div
+                                  key={product.id}
+                                  className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                                >
+                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">
+                                    <Package className="h-5 w-5" />
+                                  </div>
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm font-bold text-slate-800" title={product.product_name}>{product.product_name}</div>
+                                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                                      <span className="font-mono">Mã: {product.barcode}</span>
+                                      <span>US: {Number(product.stock_us) || 0}</span>
+                                      <span>UK: {Number(product.stock_uk) || 0}</span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => addProduct(product.id)}
+                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-cyan-600 px-3 py-2 text-xs font-bold text-white hover:bg-cyan-700"
+                                  >
+                                    <Plus className="h-3.5 w-3.5" />Thêm
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="p-8 text-center">
+                              <Package className="mx-auto h-7 w-7 text-slate-300" />
+                              <div className="mt-3 text-sm font-bold text-slate-700">
+                                {productSearch.trim() ? 'Không tìm thấy sản phẩm phù hợp' : 'Tất cả sản phẩm đã được thêm'}
+                              </div>
+                              <div className="mt-1 text-xs text-slate-500">
+                                {productSearch.trim() ? 'Hãy thử tìm bằng tên hoặc mã vạch khác.' : 'Bạn có thể chỉnh số lượng hoặc bỏ sản phẩm ở danh sách phía dưới.'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ) : (
                       <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><span className="font-bold">Chưa có mặt hàng.</span> Mặt hàng được tạo khi nhân viên nhập kho lần đầu trên Telegram.</div>
                     )}
 
-                    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
+                    <div className="mt-6 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <div className="text-sm font-bold text-slate-900">Sản phẩm đã chọn cho dịch vụ “{selectedService.service_name}”</div>
+                        <div className="mt-1 text-xs text-slate-500">Nhập số lượng mặc định dùng cho một khách hàng, sau đó bấm “Lưu mẫu dịch vụ”.</div>
+                      </div>
+                      <div className="text-xs font-bold text-cyan-700">Đã chọn {templateItems.length}/{products.length}</div>
+                    </div>
+
+                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
                       <div className="hidden grid-cols-[minmax(0,1fr)_150px_90px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:grid">
                         <div>Mặt hàng</div><div>Số lượng mặc định</div><div className="text-right">Thao tác</div>
                       </div>

@@ -8,7 +8,10 @@ import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
 import { applyApprovedLeavePenalties } from '../../domains/timekeep/attendance-penalties.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
-import { KPI_GROUP_ROLES } from '../../packages/shared/kpiMembership.js';
+import {
+    KPI_GROUP_ROLES,
+    pauseEmployeeMembershipsInAllGroups
+} from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseAdminRoutes } from '../../domains/warehouse/index.js';
 
 const PAUSABLE_GROUP_ROLES = [...KPI_GROUP_ROLES, 'timekeep'];
@@ -364,9 +367,14 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
             );
         }
 
-        // Vô hiệu hóa tài khoản là toàn cục; tắt báo cáo KPI chỉ dọn đúng nhóm.
-        if (!newIsActive && currentEmp.telegram_id) {
-            await pool.query(`DELETE FROM pending_reports WHERE telegram_id = $1`, [currentEmp.telegram_id.toString()]);
+        // Vô hiệu hóa tài khoản là toàn cục: dừng ở tất cả nhóm. Khi nhân sự
+        // đăng ký lại, helper đăng ký chỉ bật đúng membership của nhóm mới.
+        if (!newIsActive) {
+            await pauseEmployeeMembershipsInAllGroups(
+                pool,
+                currentEmp,
+                `admin:${req.headers['x-admin-id'] || 'super'}`
+            );
         } else if (isKpiGroup && !newNeedReport && currentEmp.telegram_id) {
             await pool.query(
                 `DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2`,

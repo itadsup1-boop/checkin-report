@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
+import { resolveCustomerSpreadsheetId, resolveKpiSpreadsheetId } from './customer-sheet-routing.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -29,26 +30,21 @@ export async function getDocById(spreadsheetId) {
 }
 
 export async function getKpiDocForGroup(telegram_group_id) {
+    let groupSettings = null;
     if (telegram_group_id) {
         const res = await pool.query('SELECT kpi_sheet_id FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
-        if (res.rows.length > 0 && res.rows[0].kpi_sheet_id) {
-            return await getDocById(res.rows[0].kpi_sheet_id);
-        }
+        groupSettings = res.rows[0] || null;
     }
-    return await getDocById(process.env.GOOGLE_SPREADSHEET_ID || 'SPREADSHEET_ID_CHUA_CAI_DAT');
+    return await getDocById(resolveKpiSpreadsheetId(groupSettings));
 }
 
 export async function getCustomerDocForGroup(telegram_group_id) {
+    let groupSettings = null;
     if (telegram_group_id) {
         const res = await pool.query('SELECT customer_sheet_id, bot_role FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
-        if (res.rows.length > 0 && res.rows[0].customer_sheet_id) {
-            return await getDocById(res.rows[0].customer_sheet_id);
-        }
-        if (res.rows[0]?.bot_role === 'report_tour') {
-            return await getDocById(process.env.TOUR_SPREADSHEET_ID);
-        }
+        groupSettings = res.rows[0] || null;
     }
-    return await getDocById(process.env.CUSTOMER_SPREADSHEET_ID);
+    return await getDocById(resolveCustomerSpreadsheetId(groupSettings));
 }
 
 // Hàm hỗ trợ tìm group id từ employee telegram_id

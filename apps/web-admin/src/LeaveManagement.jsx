@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { CalendarX, Search, Check, X, FileText, Image, Calendar, User, Clock, AlertCircle } from 'lucide-react';
+import { CalendarX, Search, Check, X, FileText, Image, Clock, AlertCircle } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -14,15 +14,12 @@ export default function LeaveManagement({ selectedGroupId = 'ALL' }) {
   const [toast, setToast] = useState(null);
   const [selectedProof, setSelectedProof] = useState(null); // Lightbox modal state
 
-  useEffect(() => {
-    if (activeSubTab === 'requests') {
-      fetchRequests();
-    } else {
-      fetchBalances();
-    }
-  }, [activeSubTab, selectedYear, selectedGroupId]);
+  const showToast = useCallback(message => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
 
-  const fetchRequests = async () => {
+  const fetchRequests = useCallback(async () => {
     setLoading(true);
     try {
       const params = {};
@@ -37,9 +34,9 @@ export default function LeaveManagement({ selectedGroupId = 'ALL' }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedGroupId, showToast]);
 
-  const fetchBalances = async () => {
+  const fetchBalances = useCallback(async () => {
     setLoading(true);
     try {
       const params = { year: selectedYear };
@@ -54,7 +51,15 @@ export default function LeaveManagement({ selectedGroupId = 'ALL' }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [selectedGroupId, selectedYear, showToast]);
+
+  useEffect(() => {
+    const requestId = window.setTimeout(() => {
+      if (activeSubTab === 'requests') fetchRequests();
+      else fetchBalances();
+    }, 0);
+    return () => window.clearTimeout(requestId);
+  }, [activeSubTab, fetchBalances, fetchRequests]);
 
   const handleAction = async (id, status) => {
     try {
@@ -73,11 +78,6 @@ export default function LeaveManagement({ selectedGroupId = 'ALL' }) {
       console.error('Lỗi cập nhật trạng thái đơn nghỉ:', err);
       showToast('❌ Lỗi xử lý yêu cầu: ' + err.message);
     }
-  };
-
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
   };
 
   const getRequestTypeLabel = (type) => {

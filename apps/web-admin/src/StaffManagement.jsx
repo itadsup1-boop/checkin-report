@@ -1,9 +1,57 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
-import { Users, Search, Edit3, Save, X, UserCheck, Briefcase, Calendar, FileDown, PauseCircle, PlayCircle } from 'lucide-react';
+import {
+  Briefcase,
+  Calendar,
+  Edit3,
+  PauseCircle,
+  PlayCircle,
+  Save,
+  Search,
+  UserCheck,
+  Users,
+  X
+} from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const PAUSABLE_GROUP_ROLES = ['report', 'report_tour', 'timekeep'];
+const ROW_GRID = 'grid-cols-[44px_minmax(230px,1.35fr)_minmax(180px,1fr)_minmax(310px,1.7fr)_minmax(190px,1fr)_150px]';
+
+function initials(name) {
+  return String(name || '?')
+    .trim()
+    .split(/\s+/)
+    .slice(-2)
+    .map(part => part.charAt(0))
+    .join('')
+    .toUpperCase();
+}
+
+function Tag({ children, tone = 'slate' }) {
+  const tones = {
+    slate: 'border-white/10 bg-white/[0.04] text-slate-300',
+    cyan: 'border-cyan-500/25 bg-cyan-500/10 text-cyan-400',
+    emerald: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400',
+    amber: 'border-amber-500/25 bg-amber-500/10 text-amber-400',
+    rose: 'border-rose-500/25 bg-rose-500/10 text-rose-400',
+    violet: 'border-violet-500/25 bg-violet-500/10 text-violet-400'
+  };
+  return <span className={`inline-flex items-center rounded-md border px-2 py-1 text-[11px] font-semibold whitespace-nowrap ${tones[tone]}`}>{children}</span>;
+}
+
+function CompactSummary({ icon: Icon, label, value, tone }) {
+  const tones = {
+    cyan: 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20',
+    emerald: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+    violet: 'bg-violet-500/10 text-violet-400 border-violet-500/20'
+  };
+  return (
+    <div className="flex min-h-[78px] items-center gap-3 rounded-2xl border border-white/[0.07] bg-[#111827]/70 px-4 py-3">
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${tones[tone]}`}><Icon className="h-5 w-5" /></div>
+      <div><p className="text-xs text-slate-400">{label}</p><strong className="text-2xl leading-none text-white">{value}</strong></div>
+    </div>
+  );
+}
 
 export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [staff, setStaff] = useState([]);
@@ -13,36 +61,44 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [editForm, setEditForm] = useState({});
   const [toast, setToast] = useState(null);
 
+  const showToast = useCallback(message => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
+
   const fetchStaff = useCallback(async () => {
+    setLoading(true);
     try {
-      const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${selectedGroupId}` : '';
-      const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
-      setStaff(res.data.map(user => ({
+      const params = selectedGroupId && selectedGroupId !== 'ALL'
+        ? `?group_id=${encodeURIComponent(selectedGroupId)}`
+        : '';
+      const response = await axios.get(`${API_URL}/admin/tk-users${params}`);
+      setStaff(response.data.map(user => ({
         ...user,
         need_report: user.group_need_report ?? user.need_report,
-        current_kpi_target: user.group_kpi_target ?? user.current_kpi_target,
+        current_kpi_target: user.group_kpi_target ?? user.current_kpi_target
       })));
-    } catch (err) {
-      console.error('Lỗi tải danh sách nhân viên:', err);
+    } catch (error) {
+      showToast(`❌ Không tải được danh sách nhân sự: ${error.message}`);
     } finally {
       setLoading(false);
     }
-  }, [selectedGroupId]);
+  }, [selectedGroupId, showToast]);
 
   useEffect(() => {
     const requestId = window.setTimeout(fetchStaff, 0);
     return () => window.clearTimeout(requestId);
   }, [fetchStaff]);
 
-  const startEdit = (user) => {
+  const startEdit = user => {
     setEditingId(user.id);
     setEditForm({
-      full_name: user.full_name,
-      role: user.role,
+      full_name: user.full_name || '',
+      role: user.role || '',
       leave_quota: user.leave_quota ?? 12,
-      is_exempt_checkin: !!user.is_exempt_checkin,
-      need_report: user.need_report !== undefined ? !!user.need_report : true,
-      is_active: user.is_active !== undefined ? !!user.is_active : true,
+      is_exempt_checkin: Boolean(user.is_exempt_checkin),
+      need_report: user.need_report !== false,
+      is_active: user.is_active !== false
     });
   };
 
@@ -51,23 +107,23 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
     setEditForm({});
   };
 
-  const saveEdit = async (id) => {
+  const saveEdit = async id => {
     try {
       await axios.put(`${API_URL}/admin/tk-users/${id}`, {
         ...editForm,
-        telegram_group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined,
+        telegram_group_id: selectedGroupId !== 'ALL' ? selectedGroupId : undefined
       });
-      showToast('✅ Cập nhật thông tin nhân viên thành công!');
+      showToast('✅ Đã cập nhật thông tin nhân sự.');
       setEditingId(null);
-      fetchStaff();
-    } catch (err) {
-      showToast('❌ Lỗi khi cập nhật: ' + err.message);
+      await fetchStaff();
+    } catch (error) {
+      showToast(`❌ Không thể cập nhật: ${error.response?.data?.error || error.message}`);
     }
   };
 
-  const updateMembershipStatus = async (user) => {
+  const updateMembershipStatus = async user => {
     if (!selectedGroupId || selectedGroupId === 'ALL') {
-      showToast('⚠️ Vui lòng chọn một nhóm cụ thể trước.');
+      showToast('⚠️ Hãy chọn một nhóm cụ thể trước.');
       return;
     }
 
@@ -75,343 +131,178 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
     const nextStatus = currentStatus === 'PAUSED' ? 'ACTIVE' : 'PAUSED';
     let pauseReason = '';
     if (nextStatus === 'PAUSED') {
-      pauseReason = window.prompt(`Lý do tạm dừng hoạt động của ${user.full_name} tại nhóm này:`, 'Tạm chuyển cơ sở');
+      pauseReason = window.prompt(`Lý do tạm dừng ${user.full_name} tại nhóm này:`, 'Tạm chuyển cơ sở');
       if (pauseReason === null) return;
-      if (!window.confirm(`Tạm dừng ${user.full_name} tại nhóm đang chọn? Lịch sử cũ vẫn được giữ nguyên.`)) return;
-    } else if (!window.confirm(`Kích hoạt lại KPI của ${user.full_name} tại nhóm đang chọn?`)) {
-      return;
-    }
+      if (!window.confirm(`Tạm dừng ${user.full_name} tại nhóm đang chọn?`)) return;
+    } else if (!window.confirm(`Kích hoạt lại ${user.full_name} tại nhóm đang chọn?`)) return;
 
     try {
       await axios.put(`${API_URL}/admin/tk-users/${user.id}/group-membership`, {
         telegram_group_id: selectedGroupId,
         status: nextStatus,
-        pause_reason: pauseReason,
+        pause_reason: pauseReason
       });
-      showToast(nextStatus === 'PAUSED'
-        ? '⏸ Đã tạm dừng nhân sự trong nhóm này.'
-        : '▶️ Đã kích hoạt lại nhân sự trong nhóm này.');
-      fetchStaff();
-    } catch (err) {
-      showToast('❌ ' + (err.response?.data?.error || err.message));
+      showToast(nextStatus === 'PAUSED' ? '⏸ Đã tạm dừng tại nhóm này.' : '▶ Đã kích hoạt lại tại nhóm này.');
+      await fetchStaff();
+    } catch (error) {
+      showToast(`❌ ${error.response?.data?.error || error.message}`);
     }
   };
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
+  const filteredStaff = useMemo(() => {
+    const keyword = searchTerm.trim().toLocaleLowerCase('vi');
+    return staff.filter(user => !keyword || `${user.full_name} ${user.role} ${user.telegram_id} ${user.group_name}`
+      .toLocaleLowerCase('vi')
+      .includes(keyword));
+  }, [searchTerm, staff]);
 
-  const handleExport = async () => {
-    try {
-      const res = await axios.get(`${API_URL}/export/today`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `daily_export_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      showToast('✅ Xuất dữ liệu thành công!');
-    } catch (err) {
-      console.error('[Export Error]', err);
-      showToast('❌ Xuất dữ liệu thất bại');
-    }
-  };
-
-  const filteredStaff = staff.filter(u =>
-    u.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.role?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.telegram_id?.includes(searchTerm)
-  );
-
-  const totalStaff = staff.length;
-  const roles = [...new Set(staff.map(s => s.role))];
+  const roles = useMemo(() => new Set(staff.map(user => user.role).filter(Boolean)).size, [staff]);
 
   return (
-    <>
-      {/* Page Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-3xl font-bold text-white tracking-tight mb-2">Quản lý Nhân sự</h2>
-          <p className="text-slate-400 text-sm">Danh sách nhân viên đã đăng ký qua Telegram Bot</p>
+          <h2 className="text-2xl font-bold tracking-tight text-white">Quản lý nhân sự</h2>
+          <p className="mt-1 text-xs text-slate-400">Nhân viên đã đăng ký qua Telegram Bot và thiết lập theo từng nhóm.</p>
         </div>
-        <div className="flex items-center bg-[#111827] rounded-full px-4 py-2 border border-white/5 w-full md:w-80 transition-all focus-within:border-cyan-500/50 focus-within:ring-1 focus-within:ring-cyan-500/50">
-          <Search className="w-5 h-5 text-slate-500" />
+        <div className="flex w-full items-center rounded-xl border border-white/10 bg-[#111827] px-3 py-2.5 lg:w-96 focus-within:border-cyan-500/50">
+          <Search className="h-4 w-4 shrink-0 text-slate-500" />
           <input
-            type="text"
-            placeholder="Tìm theo tên, vai trò, Telegram ID..."
-            className="bg-transparent border-none outline-none text-sm ml-3 w-full text-white placeholder-slate-500"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={event => setSearchTerm(event.target.value)}
+            placeholder="Tìm tên, vai trò, Telegram ID hoặc nhóm…"
+            className="ml-2 w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500"
           />
         </div>
       </div>
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div className="bg-gradient-to-br from-blue-500/10 to-blue-600/5 rounded-2xl p-5 border border-blue-500/20">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-[#0B0F19]/50 rounded-lg border border-white/5">
-              <Users className="w-5 h-5 text-blue-400" />
-            </div>
-            <span className="text-sm text-slate-300">Tổng nhân viên</span>
-          </div>
-          <p className="text-3xl font-bold text-white">{totalStaff}</p>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-500/10 to-emerald-600/5 rounded-2xl p-5 border border-emerald-500/20">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-[#0B0F19]/50 rounded-lg border border-white/5">
-              <Briefcase className="w-5 h-5 text-emerald-400" />
-            </div>
-            <span className="text-sm text-slate-300">Số vai trò</span>
-          </div>
-          <p className="text-3xl font-bold text-white">{roles.length}</p>
-        </div>
-        <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 rounded-2xl p-5 border border-purple-500/20">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-2 bg-[#0B0F19]/50 rounded-lg border border-white/5">
-              <Calendar className="w-5 h-5 text-purple-400" />
-            </div>
-            <span className="text-sm text-slate-300">Phép mặc định / năm</span>
-          </div>
-          <p className="text-3xl font-bold text-white">12 <span className="text-base font-normal text-slate-400">ngày</span></p>
-        </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <CompactSummary icon={Users} label="Tổng nhân sự" value={staff.length} tone="cyan" />
+        <CompactSummary icon={Briefcase} label="Vai trò đang sử dụng" value={roles} tone="emerald" />
+        <CompactSummary icon={Calendar} label="Phép mặc định / năm" value="12 ngày" tone="violet" />
       </div>
 
-      {/* Table */}
-      <div className="bg-[#111827]/60 backdrop-blur-md rounded-2xl border border-white/5 overflow-hidden shadow-xl">
-        <div className="p-6 border-b border-white/5 flex justify-between items-center">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <UserCheck className="w-5 h-5 text-cyan-400" />
-            Danh sách Nhân sự ({filteredStaff.length})
+      <section className="overflow-hidden rounded-2xl border border-white/[0.07] bg-[#111827]/70 shadow-xl">
+        <div className="flex min-h-16 flex-col gap-3 border-b border-white/[0.06] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <h3 className="flex items-center gap-2 text-base font-bold text-white">
+            <UserCheck className="h-5 w-5 text-cyan-400" />Danh sách nhân sự ({filteredStaff.length})
           </h3>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-emerald-500/15 text-slate-300 hover:text-emerald-400 rounded-lg text-sm font-medium transition-all border border-white/5 hover:border-emerald-500/30"
-          >
-            <FileDown className="w-4 h-4" />
-            Xuất Excel
-          </button>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-white/[0.02] text-slate-400 text-xs uppercase tracking-wider">
-                <th className="py-4 px-6 font-medium">#</th>
-                <th className="py-4 px-6 font-medium">Nhân viên</th>
-                <th className="py-4 px-6 font-medium">Telegram ID</th>
-                <th className="py-4 px-6 font-medium">Vai trò</th>
-                <th className="py-4 px-6 font-medium">Nhóm</th>
-                <th className="py-4 px-6 font-medium text-center">Số phép / năm</th>
-                <th className="py-4 px-6 font-medium text-center">Miễn Check-in</th>
-                <th className="py-4 px-6 font-medium text-center">Báo cáo KPI</th>
-                <th className="py-4 px-6 font-medium text-center">KPI tại nhóm</th>
-                <th className="py-4 px-6 font-medium text-center">Hoạt động tại nhóm</th>
-                <th className="py-4 px-6 font-medium text-center">Tài khoản</th>
-                <th className="py-4 px-6 font-medium">Ngày đăng ký</th>
-                <th className="py-4 px-6 font-medium text-right">Hành động</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5 text-sm">
-              {loading ? (
-                <tr>
-                  <td colSpan="13" className="py-12 text-center">
-                    <div className="inline-block w-8 h-8 border-4 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin"></div>
-                  </td>
-                </tr>
-              ) : filteredStaff.length === 0 ? (
-                <tr>
-                  <td colSpan="13" className="py-12 text-center text-slate-500">
-                    {searchTerm ? 'Không tìm thấy nhân viên phù hợp.' : 'Chưa có nhân viên nào đăng ký qua Telegram.'}
-                  </td>
-                </tr>
-              ) : (
-                filteredStaff.map((user, idx) => {
+          <div className="min-w-[1120px]">
+            <div className={`grid ${ROW_GRID} items-center gap-4 border-b border-white/[0.06] bg-white/[0.02] px-5 py-3 text-[10px] font-bold uppercase tracking-wider text-slate-500`}>
+              <span>#</span>
+              <span>Nhân viên</span>
+              <span>Vai trò & nhóm</span>
+              <span>Thiết lập nhân sự</span>
+              <span>Trạng thái</span>
+              <span className="text-right">Thao tác</span>
+            </div>
+
+            {loading ? (
+              <div className="flex h-40 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-cyan-500/25 border-t-cyan-500" /></div>
+            ) : filteredStaff.length === 0 ? (
+              <div className="flex h-40 items-center justify-center text-sm text-slate-500">
+                {searchTerm ? 'Không tìm thấy nhân sự phù hợp.' : 'Chưa có nhân sự đăng ký.'}
+              </div>
+            ) : (
+              <div className="divide-y divide-white/[0.05]">
+                {filteredStaff.map((user, index) => {
                   const isEditing = editingId === user.id;
-                  const colors = ['from-cyan-500 to-blue-500', 'from-emerald-500 to-green-500', 'from-purple-500 to-pink-500', 'from-amber-500 to-orange-500'];
-                  const gradientClass = colors[idx % colors.length];
+                  const canPause = selectedGroupId !== 'ALL' && PAUSABLE_GROUP_ROLES.includes(user.selected_group_role);
+                  const isPaused = (user.membership_status || 'ACTIVE') === 'PAUSED';
 
                   return (
-                    <tr key={user.id} className="hover:bg-white/[0.02] transition-colors group">
-                      <td className="py-4 px-6 text-slate-500 font-medium">{idx + 1}</td>
-                      <td className="py-4 px-6">
-                        <div className="flex items-center gap-3">
-                          <div className={`w-9 h-9 rounded-full bg-gradient-to-tr ${gradientClass} flex items-center justify-center text-white font-bold text-xs shrink-0`}>
-                            {user.full_name?.charAt(0) || '?'}
-                          </div>
-                          {isEditing ? (
-                            <input
-                              type="text"
-                              className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none w-40"
-                              value={editForm.full_name}
-                              onChange={e => setEditForm({ ...editForm, full_name: e.target.value })}
-                            />
-                          ) : (
-                            <span className="font-semibold text-white">{user.full_name}</span>
-                          )}
+                    <div key={user.id} className={`grid ${ROW_GRID} min-h-[92px] items-center gap-4 px-5 py-3 transition hover:bg-white/[0.02]`}>
+                      <span className="text-xs font-semibold text-slate-500">{index + 1}</span>
+
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-cyan-500 to-blue-600 text-xs font-bold text-white">
+                          {initials(user.full_name)}
                         </div>
-                      </td>
-                      <td className="py-4 px-6">
-                        <span className="px-2.5 py-1 bg-white/5 rounded-md text-xs border border-white/5 text-slate-300 font-mono">{user.telegram_id}</span>
-                      </td>
-                      <td className="py-4 px-6">
-                        {isEditing ? (
-                          <input
-                            type="text"
-                            className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none w-32"
-                            value={editForm.role}
-                            onChange={e => setEditForm({ ...editForm, role: e.target.value })}
-                          />
-                        ) : (
-                          <span className="px-2.5 py-1 bg-cyan-500/10 text-cyan-400 rounded-md text-xs border border-cyan-500/20">{user.role}</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-slate-300 text-xs">
-                        {user.group_name || <span className="text-slate-500 italic">N/A</span>}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {isEditing ? (
-                          <input
-                            type="number"
-                            className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-3 py-1.5 text-white text-sm focus:outline-none w-20 text-center"
-                            value={editForm.leave_quota}
-                            onChange={e => setEditForm({ ...editForm, leave_quota: parseInt(e.target.value) || 0 })}
-                          />
-                        ) : (
-                          <span className="px-2.5 py-1 bg-purple-500/10 text-purple-400 rounded-md text-xs border border-purple-500/20 font-semibold">
-                            {user.leave_quota ?? 12} ngày
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {isEditing ? (
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
-                            checked={editForm.is_exempt_checkin || false}
-                            onChange={e => setEditForm({ ...editForm, is_exempt_checkin: e.target.checked })}
-                          />
-                        ) : user.is_exempt_checkin ? (
-                          <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">
-                            ✅ Miễn
-                          </span>
-                        ) : (
-                          <span className="text-slate-500 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {isEditing ? (
-                          <input
-                            type="checkbox"
-                            className="w-4 h-4 accent-cyan-500 rounded cursor-pointer"
-                            checked={editForm.need_report !== false}
-                            onChange={e => setEditForm({ ...editForm, need_report: e.target.checked })}
-                          />
-                        ) : user.need_report !== false ? (
-                          <span className="px-2.5 py-1 bg-cyan-500/15 text-cyan-400 rounded-md text-xs border border-cyan-500/30 font-semibold">
-                            📝 Cần BC
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-md text-xs border border-amber-500/30 font-semibold">
-                            🚫 Miễn BC
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {selectedGroupId !== 'ALL' && PAUSABLE_GROUP_ROLES.includes(user.selected_group_role) ? (
-                          (user.membership_status || 'ACTIVE') === 'PAUSED' ? (
-                            <div className="flex flex-col items-center gap-1">
-                              <span className="px-2.5 py-1 bg-amber-500/15 text-amber-400 rounded-md text-xs border border-amber-500/30 font-semibold">⏸ Tạm dừng</span>
-                              {user.membership_pause_reason && <span className="text-[10px] text-slate-500 max-w-32 truncate" title={user.membership_pause_reason}>{user.membership_pause_reason}</span>}
-                            </div>
+                        <div className="min-w-0">
+                          {isEditing ? (
+                            <input value={editForm.full_name} onChange={event => setEditForm({ ...editForm, full_name: event.target.value })} className="w-full rounded-lg border border-cyan-500/40 bg-[#0B0F19] px-2.5 py-1.5 text-sm text-white outline-none" />
                           ) : (
-                            <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">▶️ Đang nhắc</span>
-                          )
-                        ) : (
-                          <span className="text-slate-500 text-xs">—</span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-center">
-                        {isEditing ? (
-                          <select
-                            className="bg-[#0B0F19] border border-cyan-500/50 rounded-lg px-2.5 py-1.5 text-white text-xs focus:outline-none cursor-pointer"
-                            value={editForm.is_active ? 'active' : 'disabled'}
-                            onChange={e => setEditForm({ ...editForm, is_active: e.target.value === 'active' })}
-                          >
-                            <option value="active">🟢 Hoạt động</option>
-                            <option value="disabled">🔴 Vô hiệu hóa</option>
-                          </select>
-                        ) : user.is_active !== false ? (
-                          <span className="px-2.5 py-1 bg-emerald-500/15 text-emerald-400 rounded-md text-xs border border-emerald-500/30 font-semibold">
-                            🟢 Hoạt động
-                          </span>
-                        ) : (
-                          <span className="px-2.5 py-1 bg-rose-500/15 text-rose-400 rounded-md text-xs border border-rose-500/30 font-semibold">
-                            🔴 Vô hiệu hóa
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-4 px-6 text-slate-400 text-xs">
-                        {user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : '—'}
-                      </td>
-                      <td className="py-4 px-6 text-right">
-                        {isEditing ? (
-                          <div className="flex items-center gap-2 justify-end">
-                            <button
-                              onClick={() => saveEdit(user.id)}
-                              className="px-3 py-1.5 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 rounded-lg text-xs font-medium transition-all border border-emerald-500/20 flex items-center gap-1"
-                            >
-                              <Save className="w-3.5 h-3.5" /> Lưu
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              className="px-3 py-1.5 bg-slate-500/15 hover:bg-slate-500/25 text-slate-400 rounded-lg text-xs font-medium transition-all border border-slate-500/20 flex items-center gap-1"
-                            >
-                              <X className="w-3.5 h-3.5" /> Hủy
-                            </button>
+                            <p className="truncate text-sm font-bold text-white" title={user.full_name}>{user.full_name}</p>
+                          )}
+                          <div className="mt-1 flex items-center gap-2 text-[10px] text-slate-500">
+                            <code className="rounded bg-white/[0.04] px-1.5 py-0.5 text-slate-400">{user.telegram_id || 'Chưa có ID'}</code>
+                            <span>Đăng ký {user.created_at ? new Date(user.created_at).toLocaleDateString('vi-VN') : '—'}</span>
                           </div>
+                        </div>
+                      </div>
+
+                      <div className="min-w-0 space-y-2">
+                        {isEditing ? (
+                          <input value={editForm.role} onChange={event => setEditForm({ ...editForm, role: event.target.value })} className="w-full rounded-lg border border-cyan-500/40 bg-[#0B0F19] px-2.5 py-1.5 text-xs text-white outline-none" />
+                        ) : <Tag tone="cyan">{user.role || 'Chưa có vai trò'}</Tag>}
+                        <p className="line-clamp-2 text-[11px] leading-4 text-slate-400" title={user.group_name || 'Chưa thuộc nhóm'}>{user.group_name || 'Chưa thuộc nhóm'}</p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        {isEditing ? (
+                          <>
+                            <label className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-[#0B0F19] px-2 py-1.5 text-[11px] text-slate-300">
+                              Phép <input type="number" min="0" value={editForm.leave_quota} onChange={event => setEditForm({ ...editForm, leave_quota: Number(event.target.value) || 0 })} className="w-10 bg-transparent text-center font-bold text-white outline-none" /> ngày
+                            </label>
+                            <label className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1.5 text-[11px] text-slate-300">
+                              <input type="checkbox" checked={editForm.is_exempt_checkin} onChange={event => setEditForm({ ...editForm, is_exempt_checkin: event.target.checked })} className="accent-cyan-500" />Miễn check-in
+                            </label>
+                            <label className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2 py-1.5 text-[11px] text-slate-300">
+                              <input type="checkbox" checked={editForm.need_report} onChange={event => setEditForm({ ...editForm, need_report: event.target.checked })} className="accent-cyan-500" />Cần báo cáo
+                            </label>
+                          </>
                         ) : (
-                          <div className="flex items-center justify-end gap-2">
-                            {selectedGroupId !== 'ALL' && PAUSABLE_GROUP_ROLES.includes(user.selected_group_role) && (
-                              <button
-                                onClick={() => updateMembershipStatus(user)}
-                                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all border flex items-center gap-1 ${
-                                  (user.membership_status || 'ACTIVE') === 'PAUSED'
-                                    ? 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/20'
-                                    : 'bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border-amber-500/20'
-                                }`}
-                              >
-                                {(user.membership_status || 'ACTIVE') === 'PAUSED'
-                                  ? <><PlayCircle className="w-3.5 h-3.5" /> Kích hoạt</>
-                                  : <><PauseCircle className="w-3.5 h-3.5" /> Tạm dừng</>}
+                          <>
+                            <Tag tone="violet">{user.leave_quota ?? 12} ngày phép</Tag>
+                            <Tag tone={user.is_exempt_checkin ? 'emerald' : 'slate'}>{user.is_exempt_checkin ? 'Miễn check-in' : 'Check-in thường'}</Tag>
+                            <Tag tone={user.need_report !== false ? 'cyan' : 'amber'}>{user.need_report !== false ? 'Cần báo cáo' : 'Miễn báo cáo'}</Tag>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-start gap-2">
+                        {isEditing ? (
+                          <select value={editForm.is_active ? 'active' : 'disabled'} onChange={event => setEditForm({ ...editForm, is_active: event.target.value === 'active' })} className="rounded-lg border border-cyan-500/40 bg-[#0B0F19] px-2.5 py-1.5 text-xs text-white outline-none">
+                            <option value="active">Tài khoản hoạt động</option>
+                            <option value="disabled">Tài khoản vô hiệu</option>
+                          </select>
+                        ) : (
+                          <Tag tone={user.is_active !== false ? 'emerald' : 'rose'}>{user.is_active !== false ? '● Tài khoản hoạt động' : '● Tài khoản vô hiệu'}</Tag>
+                        )}
+                        {canPause && <Tag tone={isPaused ? 'amber' : 'emerald'}>{isPaused ? '⏸ Tạm dừng tại nhóm' : '▶ Đang hoạt động tại nhóm'}</Tag>}
+                        {isPaused && user.membership_pause_reason && <p className="max-w-[180px] truncate text-[10px] text-slate-500" title={user.membership_pause_reason}>{user.membership_pause_reason}</p>}
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-end gap-2">
+                        {isEditing ? (
+                          <>
+                            <button onClick={() => saveEdit(user.id)} className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/25 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-400 hover:bg-emerald-500/20"><Save className="h-3.5 w-3.5" />Lưu</button>
+                            <button onClick={cancelEdit} className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs font-semibold text-slate-400 hover:text-white"><X className="h-3.5 w-3.5" />Hủy</button>
+                          </>
+                        ) : (
+                          <>
+                            {canPause && (
+                              <button onClick={() => updateMembershipStatus(user)} className={`inline-flex items-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold ${isPaused ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-400' : 'border-amber-500/25 bg-amber-500/10 text-amber-400'}`}>
+                                {isPaused ? <><PlayCircle className="h-3.5 w-3.5" />Kích hoạt</> : <><PauseCircle className="h-3.5 w-3.5" />Tạm dừng</>}
                               </button>
                             )}
-                            <button
-                              onClick={() => startEdit(user)}
-                              className="px-3 py-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded-lg text-xs font-medium transition-all border border-cyan-500/20 flex items-center gap-1"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" /> Sửa
-                            </button>
-                          </div>
+                            <button onClick={() => startEdit(user)} className="inline-flex items-center gap-1 rounded-lg border border-cyan-500/25 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-400 hover:bg-cyan-500/20"><Edit3 className="h-3.5 w-3.5" />Sửa</button>
+                          </>
                         )}
-                      </td>
-                    </tr>
+                      </div>
+                    </div>
                   );
-                })
-              )}
-            </tbody>
-          </table>
+                })}
+              </div>
+            )}
+          </div>
         </div>
-      </div>
+      </section>
 
-      {/* Toast */}
-      {toast && (
-        <div className="fixed bottom-6 right-6 bg-[#111827] border border-cyan-500/30 shadow-2xl shadow-cyan-500/20 text-white px-6 py-4 rounded-xl flex items-center gap-3 z-50 animate-[fadeIn_0.3s_ease-out]">
-          <p className="font-medium text-sm">{toast}</p>
-        </div>
-      )}
-    </>
+      {toast && <div className="fixed bottom-6 right-6 z-50 rounded-xl border border-cyan-500/30 bg-[#111827] px-5 py-3 text-sm font-medium text-white shadow-2xl">{toast}</div>}
+    </div>
   );
 }

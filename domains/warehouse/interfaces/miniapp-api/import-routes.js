@@ -2,7 +2,8 @@ export function registerWarehouseImportRoutes({
     botApp,
     pool,
     authenticateTelegramMiniApp,
-    receiveWarehouseImages
+    receiveWarehouseImages,
+    warehouseOrderService
 }) {
     botApp.post(
         '/api/warehouse/import',
@@ -51,54 +52,25 @@ export function registerWarehouseImportRoutes({
                 });
             }
 
+            let actor;
+            try {
+                actor = await warehouseOrderService.authorizeActor({
+                    telegramId,
+                    chatId,
+                    requireEmployee: true
+                });
+            } catch (error) {
+                return res.status(error.status || 403).json({
+                    success: false,
+                    message: error.message
+                });
+            }
+
+            const user = actor.employee;
+            const group = actor.group;
             const client = await pool.connect();
             try {
                 await client.query('BEGIN');
-                const [userResult, groupResult] = await Promise.all([
-                    client.query(
-                        `SELECT * FROM employees
-                         WHERE telegram_id = $1 AND is_active = TRUE
-                         ORDER BY CASE WHEN telegram_group_id = $2 THEN 0 ELSE 1 END ASC, created_at ASC
-                         LIMIT 1`,
-                        [telegramId, String(chatId)]
-                    ),
-                    client.query(
-                        `SELECT * FROM telegram_groups
-                         WHERE telegram_group_id = $1 AND bot_role = 'warehouse'
-                           AND is_active = TRUE AND COALESCE(is_deleted, FALSE) = FALSE
-                         LIMIT 1`,
-                        [String(chatId)]
-                    )
-                ]);
-                const user = userResult.rows[0];
-                const group = groupResult.rows[0];
-                if (!user) {
-                    throw Object.assign(new Error('Nhân sự chưa đăng ký hoặc đã bị vô hiệu hóa.'), { status: 403 });
-                }
-                if (!group) {
-                    throw Object.assign(new Error('Nhóm chưa được phân quyền quản lý kho.'), { status: 403 });
-                }
-                const accessResult = await client.query(
-                    `SELECT (
-                        $2::text = $3::text
-                        OR EXISTS (
-                            SELECT 1 FROM employee_group_memberships m
-                            WHERE m.employee_id = $1
-                              AND m.telegram_group_id = $3
-                              AND m.status = 'ACTIVE'
-                        )
-                        OR EXISTS (
-                            SELECT 1 FROM tk_warehouse_permissions wp
-                            WHERE wp.employee_id = $1
-                              AND wp.telegram_group_id = $3
-                              AND wp.is_active = TRUE
-                        )
-                    ) AS allowed`,
-                    [user.id, user.telegram_group_id, String(chatId)]
-                );
-                if (!accessResult.rows[0]?.allowed) {
-                    throw Object.assign(new Error('Bạn không phải thành viên của nhóm kho này.'), { status: 403 });
-                }
 
                 // Chặn trùng mã vạch trước khi ghi bất cứ thứ gì.
                 //

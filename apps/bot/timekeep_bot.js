@@ -504,7 +504,7 @@ botApp.post('/api/timekeep/register', async (req, res) => {
         }
 
         // Nhóm KPI dùng tài khoản nhân viên toàn cục + membership theo từng nhóm.
-        // Đăng ký MEDITECH không tạo bản sao và không kích hoạt lại UK đang PAUSED.
+        // Đăng ký lại chỉ kích hoạt membership của đúng nhóm hiện tại.
         if (KPI_GROUP_ROLES.includes(groupRecord.bot_role)) {
             const client = await pool.connect();
             try {
@@ -530,10 +530,6 @@ botApp.post('/api/timekeep/register', async (req, res) => {
                 let employee;
                 if (employeeResult.rows.length > 0) {
                     employee = employeeResult.rows[0];
-                    if (employee.is_active === false) {
-                        await client.query('ROLLBACK');
-                        return res.status(403).json({ success: false, message: 'Tài khoản đã bị vô hiệu hóa toàn hệ thống. Vui lòng liên hệ Admin.' });
-                    }
                     const updated = await client.query(
                         `UPDATE employees
                          SET telegram_id = $1, telegram_username = $2,
@@ -560,12 +556,6 @@ botApp.post('/api/timekeep/register', async (req, res) => {
                 const registration = await registerEmployeeInKpiGroup(client, employee, telegram_group_id, 'mini_app_registration');
                 if (!registration.ok) {
                     await client.query('ROLLBACK');
-                    if (registration.reason === 'PAUSED') {
-                        return res.status(409).json({
-                            success: false,
-                            message: 'Bạn đang được Admin tạm dừng KPI trong nhóm này. Bạn vẫn có thể đăng ký và hoạt động tại nhóm KPI khác.'
-                        });
-                    }
                     return res.status(400).json({ success: false, message: 'Nhóm này không phải nhóm KPI đang hoạt động.' });
                 }
 
@@ -2557,7 +2547,14 @@ botApp.get('/api/admin/dashboard', async (req, res) => {
             return res.json({ groups: [], group: null, today: getTodayVN(), employees: [], stats: emptyStats });
         }
 
-        const targetGroup = groups.find(g => g.id === group_id) || groups[0];
+        const allGroups = !group_id || group_id === 'ALL';
+        const targetGroup = allGroups
+            ? null
+            : groups.find(g => String(g.id) === String(group_id)
+                || String(g.telegram_group_id) === String(group_id));
+        if (!allGroups && !targetGroup) {
+            return res.status(404).json({ error: 'Không tìm thấy nhóm đã chọn.' });
+        }
         const today = getTodayVN();
         const { start: weekStart, end: weekEnd } = getIsoWeekRangeVN();
 
@@ -2585,9 +2582,10 @@ botApp.get('/api/admin/dashboard', async (req, res) => {
             LEFT JOIN tk_schedules s ON s.user_id = u.id AND s.date = $2
             LEFT JOIN tk_check_ins ci ON ci.user_id = u.id AND ci.date = $2
             LEFT JOIN tk_penalties p ON p.user_id = u.id AND p.date = $2 AND p.violation_type = 'LATE'
-            WHERE tg.id = $1
+            WHERE ($1::uuid IS NULL OR tg.id = $1)
+              AND u.is_active = TRUE
             ORDER BY u.full_name ASC
-        `, [targetGroup.id, today]);
+        `, [targetGroup?.id || null, today]);
 
         // Format check_in_time → HH:mm UTC+7
         const employees = employeesRes.rows.map(emp => {
@@ -2608,8 +2606,9 @@ botApp.get('/api/admin/dashboard', async (req, res) => {
             FROM tk_check_ins ci
             LEFT JOIN tk_penalties p ON p.user_id = ci.user_id AND p.date = ci.date AND p.violation_type = 'LATE'
             LEFT JOIN tk_penalties p2 ON p2.user_id = ci.user_id AND p2.date >= $2 AND p2.date <= $3 AND p2.violation_type = 'LATE'
-            WHERE ci.group_id = $1 AND ci.date >= $2 AND ci.date <= $3
-        `, [targetGroup.id, weekStart, weekEnd]);
+            WHERE ($1::uuid IS NULL OR ci.group_id = $1)
+              AND ci.date >= $2 AND ci.date <= $3
+        `, [targetGroup?.id || null, weekStart, weekEnd]);
 
         const ws = weeklyRes.rows[0];
         const totalCheckins = parseInt(ws.total_checkins) || 0;
@@ -2773,6 +2772,15 @@ botApp.get('/api/export/today', async (req, res) => {
             allowedGroupIds = mappingRes.rows.map(row => row.telegram_group_id);
         }
 
+        const requestedGroupId = req.query.group_id ? String(req.query.group_id) : null;
+        if (requestedGroupId && allowedGroupIds !== null) {
+            const canAccessGroup = allowedGroupIds.some(groupId => String(groupId) === requestedGroupId);
+            if (!canAccessGroup) {
+                return res.status(403).json({ success: false, message: 'Không có quyền xuất dữ liệu của nhóm này' });
+            }
+        }
+        const exportGroupIds = requestedGroupId ? [requestedGroupId] : allowedGroupIds;
+
         // Fetch data for the specified date
         let userQuery = `
             SELECT u.id, u.full_name, u.group_id, g.telegram_group_id, g.group_name
@@ -2780,8 +2788,8 @@ botApp.get('/api/export/today', async (req, res) => {
             LEFT JOIN telegram_groups g ON u.group_id = g.id
         `;
         const userParams = [];
-        if (allowedGroupIds !== null) {
-            userParams.push(allowedGroupIds);
+        if (exportGroupIds !== null) {
+            userParams.push(exportGroupIds);
             userQuery += ` WHERE g.telegram_group_id = ANY($1)`;
         }
         userQuery += ` ORDER BY g.group_name ASC, u.full_name ASC`;

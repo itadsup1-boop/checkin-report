@@ -138,10 +138,13 @@ test('luồng xuất kho cũ cũng dùng quyền Web Admin và khóa transaction
         'utf8'
     );
 
-    for (const source of [exportRoute, groupAction, singleAction]) {
+    for (const source of [groupAction, singleAction]) {
         assert.match(source, /tk_warehouse_permissions/);
         assert.doesNotMatch(source, /role\s+IN\s*\(/i);
     }
+    assert.match(exportRoute, /warehouseOrderService\.authorizeActor/);
+    assert.match(exportRoute, /actor\.permissions/);
+    assert.doesNotMatch(exportRoute, /role\s+IN\s*\(/i);
     assert.match(exportRoute, /FOR UPDATE/);
     assert.match(groupAction, /FOR UPDATE OF t/);
     assert.match(singleAction, /FOR UPDATE OF t/);
@@ -149,6 +152,32 @@ test('luồng xuất kho cũ cũng dùng quyền Web Admin và khóa transaction
     assert.match(singleAction, /BEGIN/);
     assert.match(proofHandler, /bot_role = 'warehouse'/);
     assert.match(proofHandler, /t\.group_id = \$2/);
+});
+
+test('mọi Mini App kho dùng chung bộ xác thực theo Telegram ID và nhóm', () => {
+    const importRoute = fs.readFileSync(
+        new URL('../interfaces/miniapp-api/import-routes.js', import.meta.url),
+        'utf8'
+    );
+    const exportRoute = fs.readFileSync(
+        new URL('../interfaces/miniapp-api/export-routes.js', import.meta.url),
+        'utf8'
+    );
+    const catalogRoute = fs.readFileSync(
+        new URL('../interfaces/miniapp-api/catalog-routes.js', import.meta.url),
+        'utf8'
+    );
+    const repository = fs.readFileSync(
+        new URL('../infrastructure/postgres/warehouse-query-repository.js', import.meta.url),
+        'utf8'
+    );
+
+    for (const source of [importRoute, exportRoute, catalogRoute]) {
+        assert.match(source, /warehouseOrderService\.authorizeActor/);
+    }
+    assert.match(repository, /employee_group_memberships/);
+    assert.match(repository, /tk_warehouse_permissions/);
+    assert.match(repository, /WHEN telegram_group_id = \$2 THEN 0/);
 });
 
 test('nhập kho chặn trùng mã vạch thay vì âm thầm đổi tên sản phẩm', () => {

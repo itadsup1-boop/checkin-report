@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
-import { UserPlus, Shield, Trash2, Edit, Check, X, Lock, Users, CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { UserPlus, Shield, Trash2, Edit, X, CheckSquare, Square } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -19,11 +19,7 @@ export default function AdminManagement({ groups = [] }) {
     assigned_groups: []
   });
 
-  useEffect(() => {
-    fetchAdmins();
-  }, []);
-
-  const fetchAdmins = async () => {
+  const fetchAdmins = useCallback(async () => {
     setLoading(true);
     try {
       const res = await axios.get(`${API_URL}/admin/accounts`);
@@ -33,7 +29,12 @@ export default function AdminManagement({ groups = [] }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const requestId = window.setTimeout(fetchAdmins, 0);
+    return () => window.clearTimeout(requestId);
+  }, [fetchAdmins]);
 
   const showToastMsg = (msg) => {
     setToast(msg);

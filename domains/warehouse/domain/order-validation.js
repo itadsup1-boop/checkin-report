@@ -23,6 +23,11 @@ export function validateOrderInput(input, { allowDraft = false } = {}) {
 
     if (!customerName) throw new WarehouseError('Tên khách hàng là bắt buộc.');
     if (!customerPhone) throw new WarehouseError('Số điện thoại khách hàng là bắt buộc.');
+    if (customerPhone.replace(/\D/g, '').length < 4) {
+        throw new WarehouseError('Số điện thoại khách hàng phải có ít nhất 4 chữ số.', {
+            code: 'INVALID_CUSTOMER_PHONE'
+        });
+    }
     if (!WAREHOUSE_BRANCHES.includes(branch)) {
         throw new WarehouseError('Cơ sở chỉ được chọn US/MEDITECH hoặc UK.');
     }

@@ -36,3 +36,13 @@ test('Admin có thể thêm sửa xóa dịch vụ và mặt hàng trong mẫu',
   assert.match(source, /default_quantity/);
   assert.match(source, /function suggestServiceCode/);
 });
+
+test('Danh sách sản phẩm hiển thị trực tiếp, không bị ẩn trong ô chọn', () => {
+  assert.match(source, /Danh mục sản phẩm có thể thêm/);
+  assert.match(source, /Sản phẩm đã chọn cho dịch vụ/);
+  assert.match(source, /selectableProducts\.map\(product/);
+  assert.match(source, /onClick=\{\(\) => addProduct\(product\.id\)\}/);
+  assert.match(source, /product\.stock_us/);
+  assert.match(source, /product\.stock_uk/);
+  assert.doesNotMatch(source, /\+ Chọn mặt hàng để thêm/);
+});

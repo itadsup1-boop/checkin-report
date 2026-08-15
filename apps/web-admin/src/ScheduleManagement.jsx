@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import axios from 'axios';
 import { CalendarDays, Users, ChevronLeft, ChevronRight, Clock, Coffee, Plus, PenLine, Trash2, Save, X, UserPlus } from 'lucide-react';
 
@@ -46,7 +46,6 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const [allUsers, setAllUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refDate, setRefDate] = useState(new Date());
-  const [expandedCell, setExpandedCell] = useState(null);
   const [toast, setToast] = useState(null);
 
   // Edit state
@@ -61,25 +60,20 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const fromDate = weekDates[0];
   const toDate = weekDates[6];
 
-  useEffect(() => {
-    fetchSchedules();
-    fetchUsers();
-  }, [fromDate, selectedGroupId]);
+  const showToast = useCallback(message => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const params = selectedGroupId && selectedGroupId !== 'ALL' ? `?group_id=${selectedGroupId}` : '';
       const res = await axios.get(`${API_URL}/admin/tk-users${params}`);
       setAllUsers(res.data);
     } catch (err) { console.error('Lỗi tải users:', err); }
-  };
+  }, [selectedGroupId]);
 
-  const fetchSchedules = async () => {
+  const fetchSchedules = useCallback(async () => {
     setLoading(true);
     try {
       const params = { from_date: fromDate, to_date: toDate };
@@ -93,7 +87,15 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [fromDate, selectedGroupId, toDate]);
+
+  useEffect(() => {
+    const requestId = window.setTimeout(() => {
+      fetchSchedules();
+      fetchUsers();
+    }, 0);
+    return () => window.clearTimeout(requestId);
+  }, [fetchSchedules, fetchUsers]);
 
   const changeWeek = (delta) => {
     const d = new Date(refDate);
@@ -123,10 +125,6 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const totalRegistered = schedules.filter(s => s.shift_type !== 'OFF').length;
   const totalOff = schedules.filter(s => s.shift_type === 'OFF').length;
   const uniqueUsers = [...new Set(schedules.map(s => s.user_id))].length;
-
-  const toggleExpand = (key) => {
-    setExpandedCell(expandedCell === key ? null : key);
-  };
 
   // Edit handlers
   const startEdit = (schedule) => {
