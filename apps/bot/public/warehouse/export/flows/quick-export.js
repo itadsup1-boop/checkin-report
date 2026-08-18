@@ -58,8 +58,9 @@ export function createQuickExportFlow({ catalog, onExit }) {
         })
         .filter(Boolean);
 
-    const totalQty = () => cartLines().reduce((sum, line) => sum + line.quantity, 0);
+    const totalQty = () => Number(cartLines().reduce((sum, line) => sum + line.quantity, 0).toFixed(1));
     const shortageLines = () => cartLines().filter(line => line.over);
+    const allowsDecimal = product => product.quantity_mode === 'DECIMAL';
 
     const filteredProducts = () => {
         const keyword = state.query.trim().toLowerCase();
@@ -72,11 +73,18 @@ export function createQuickExportFlow({ catalog, onExit }) {
 
     /* ---------- Thao tác ---------- */
 
-    function setQuantity(productId, quantity) {
-        if (quantity <= 0) state.cart.delete(productId);
-        else state.cart.set(productId, quantity);
+    function setQuantity(productId, quantity, { render: shouldRender = true } = {}) {
+        const product = catalog.products.find(item => item.id === productId);
+        const normalized = Number(Number(quantity).toFixed(1));
+        if (!product || !Number.isFinite(normalized)) return;
+        if (!allowsDecimal(product) && !Number.isInteger(normalized)) {
+            alertUser(`"${product.product_name}" chỉ cho phép xuất số nguyên.`);
+            return;
+        }
+        if (normalized <= 0) state.cart.delete(productId);
+        else state.cart.set(productId, normalized);
         persist();
-        render();
+        if (shouldRender) render();
     }
 
     function addToCart(product) {
@@ -161,8 +169,11 @@ export function createQuickExportFlow({ catalog, onExit }) {
             inCart > 0
                 ? stepper({
                     value: inCart,
+                    min: allowsDecimal(product) ? 0.1 : 0,
+                    step: allowsDecimal(product) ? 0.1 : 1,
+                    allowDecimal: allowsDecimal(product),
                     over,
-                    onChange: quantity => setQuantity(product.id, quantity)
+                    onChange: (quantity, options) => setQuantity(product.id, quantity, options)
                 })
                 : h('button', {
                     class: 'product__add',
@@ -211,8 +222,11 @@ export function createQuickExportFlow({ catalog, onExit }) {
                                 ),
                                 stepper({
                                     value: line.quantity,
+                                    min: allowsDecimal(line.product) ? 0.1 : 0,
+                                    step: allowsDecimal(line.product) ? 0.1 : 1,
+                                    allowDecimal: allowsDecimal(line.product),
                                     over: line.over,
-                                    onChange: quantity => setQuantity(line.product.id, quantity)
+                                    onChange: (quantity, options) => setQuantity(line.product.id, quantity, options)
                                 }),
                                 h('button', {
                                     class: 'btn-mini btn-mini--danger',

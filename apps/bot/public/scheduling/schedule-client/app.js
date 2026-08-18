@@ -22,13 +22,14 @@ import { createAddTab } from './tabs/add-tab.js';
 import { createEditTab } from './tabs/edit-tab.js';
 import { createTasksTab } from './tabs/tasks-tab.js';
 import { createMakeupTab } from './tabs/makeup-tab.js';
+import { createCompletionTab } from './tabs/completion-tab.js';
 
 const TABS = [
     { key: 'check', label: 'Check Lịch' },
     { key: 'add', label: 'Thêm Lịch' },
     { key: 'edit', label: 'Sửa/Hủy' },
-    { key: 'tasks', label: 'Nhiệm Vụ' },
-    { key: 'makeup', label: 'Báo Bù', tourOnly: true }
+    { key: 'tasks', label: 'Nhiệm Vụ', tourOnly: true },
+    { key: 'makeup', label: role => role === 'report_tour' ? 'Báo Bù' : 'Hoàn Tất Lịch', schedulingOnly: true }
 ];
 
 const params = new URLSearchParams(location.search);
@@ -53,12 +54,14 @@ function start() {
 
     // Vẽ khung trước, quyết định vai trò sau: mạng chậm cũng không để màn hình trắng.
     loadGroupRole()
-        .then(role => render(role === 'report_tour', payload))
-        .catch(() => render(false, payload));
+        .then(role => render(role, payload))
+        .catch(() => render(null, payload));
 }
 
-function render(isTour, payload) {
+function render(role, payload) {
     const mount = el('app');
+    const isTour = role === 'report_tour';
+    const isScheduling = role === 'report' || isTour;
 
     const tabs = {
         check: createCheckTab({ dateInput, getDate }),
@@ -72,11 +75,13 @@ function render(isTour, payload) {
         }),
         edit: createEditTab({ isTour, onChanged: () => tabs.check.reload() }),
         tasks: createTasksTab({ getDate }),
-        makeup: createMakeupTab()
+        makeup: isTour ? createMakeupTab() : createCompletionTab()
     };
 
-    const visible = TABS.filter(tab => !tab.tourOnly || isTour);
-    const active = wantedTab(payload);
+    const visible = TABS.filter(tab =>
+        (!tab.schedulingOnly || isScheduling) && (!tab.tourOnly || isTour));
+    const requested = wantedTab(payload);
+    const active = visible.some(tab => tab.key === requested) ? requested : 'check';
 
     const radios = {};
     const labels = [];
@@ -89,7 +94,8 @@ function render(isTour, payload) {
             onChange: event => { if (event.target.checked) tabs[tab.key].onOpen?.(); }
         });
         radios[tab.key] = radio;
-        labels.push(h('label', { class: 'tab-label', for: `radio-${tab.key}` }, tab.label));
+        labels.push(h('label', { class: 'tab-label', for: `radio-${tab.key}` },
+            typeof tab.label === 'function' ? tab.label(role) : tab.label));
         panels.push(h('div', { id: `tab-${tab.key}`, class: 'tab-content' }, tabs[tab.key].node));
     }
 
@@ -113,7 +119,7 @@ function render(isTour, payload) {
     // Chế độ cập nhật cũng bỏ qua vì thanh tab đang bị ẩn.
     if (active !== 'makeup' && !updateId) {
         tabs.check.reload();
-        tabs.tasks.reload();
+        if (radios.tasks) tabs.tasks.reload();
     }
 }
 

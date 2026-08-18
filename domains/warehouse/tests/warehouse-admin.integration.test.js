@@ -21,6 +21,7 @@ function createResponse() {
 test('các truy vấn đọc Warehouse Admin chạy được trên schema thật', async t => {
     let catalogServiceId;
     let catalogProductId;
+    let createdGroupId;
     t.after(async () => {
         if (catalogServiceId) {
             await pool.query('DELETE FROM tk_warehouse_template_audit WHERE service_id = $1', [catalogServiceId]);
@@ -28,8 +29,16 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
             await pool.query('DELETE FROM tk_warehouse_services WHERE id = $1', [catalogServiceId]);
         }
         if (catalogProductId) {
+            await pool.query(
+                `DELETE FROM tk_warehouse_template_audit
+                 WHERE service_id IS NULL AND after_data->>'id' = $1`,
+                [catalogProductId]
+            );
             await pool.query('DELETE FROM tk_inventory WHERE product_id = $1', [catalogProductId]);
             await pool.query('DELETE FROM tk_products WHERE id = $1', [catalogProductId]);
+        }
+        if (createdGroupId) {
+            await pool.query('DELETE FROM telegram_groups WHERE id = $1', [createdGroupId]);
         }
         await pool.end();
     });
@@ -41,11 +50,20 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
          ORDER BY created_at
          LIMIT 1`
     );
-    if (!groupResult.rows[0]) {
-        t.skip('Database không có group warehouse để kiểm tra truy vấn đọc.');
-        return;
+    let groupId = groupResult.rows[0]?.telegram_group_id;
+    if (!groupId) {
+        const createdGroup = await pool.query(
+            `INSERT INTO telegram_groups
+                (telegram_group_id, group_name, bot_role, is_active, is_deleted,
+                 warehouse_service_order_enabled)
+             VALUES ($1, 'Warehouse Admin Integration', 'warehouse', TRUE, FALSE, TRUE)
+             RETURNING id, telegram_group_id`,
+            [`-998${String(Date.now()).slice(-9)}`]
+        );
+        createdGroupId = createdGroup.rows[0].id;
+        groupId = createdGroup.rows[0].telegram_group_id;
     }
-    const groupId = String(groupResult.rows[0].telegram_group_id);
+    groupId = String(groupId);
     const routes = new Map();
     const app = {};
     for (const method of ['get', 'post', 'put']) {
@@ -81,6 +99,16 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
     );
     catalogProductId = productResult.rows[0].id;
 
+    const updateProduct = routes.get('PUT /api/admin/warehouse/products/:productId');
+    const decimalModeResponse = createResponse();
+    await updateProduct({
+        headers,
+        params: { productId: catalogProductId },
+        body: { quantity_mode: 'DECIMAL' }
+    }, decimalModeResponse);
+    assert.equal(decimalModeResponse.statusCode, 200, decimalModeResponse.body?.message);
+    assert.equal(decimalModeResponse.body.product.quantity_mode, 'DECIMAL');
+
     const createResponseValue = createResponse();
     await routes.get('POST /api/admin/warehouse/services')({
         headers,
@@ -98,9 +126,24 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
     await replaceTemplate({
         headers,
         params: { serviceId: catalogServiceId },
-        body: { items: [{ product_id: catalogProductId, default_quantity: 2 }] }
+        body: { items: [{ product_id: catalogProductId, default_quantity: 1.2 }] }
     }, addResponse);
     assert.equal(addResponse.statusCode, 200, addResponse.body?.message);
+    const savedDecimal = await pool.query(
+        `SELECT default_quantity
+         FROM tk_warehouse_service_products
+         WHERE service_id = $1 AND product_id = $2`,
+        [catalogServiceId, catalogProductId]
+    );
+    assert.equal(Number(savedDecimal.rows[0].default_quantity), 1.2);
+
+    const rejectIntegerMode = createResponse();
+    await updateProduct({
+        headers,
+        params: { productId: catalogProductId },
+        body: { quantity_mode: 'INTEGER' }
+    }, rejectIntegerMode);
+    assert.equal(rejectIntegerMode.statusCode, 400);
 
     const removeResponse = createResponse();
     await replaceTemplate({
@@ -116,4 +159,13 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
         [catalogServiceId, catalogProductId]
     );
     assert.equal(removed.rows[0]?.is_active, false, 'Mặt hàng bỏ khỏi mẫu phải được vô hiệu hóa');
+
+    const integerModeResponse = createResponse();
+    await updateProduct({
+        headers,
+        params: { productId: catalogProductId },
+        body: { quantity_mode: 'INTEGER' }
+    }, integerModeResponse);
+    assert.equal(integerModeResponse.statusCode, 200, integerModeResponse.body?.message);
+    assert.equal(integerModeResponse.body.product.quantity_mode, 'INTEGER');
 });

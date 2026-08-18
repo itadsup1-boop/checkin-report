@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { registerWarehouseModule } from '../index.js';
 import { WAREHOUSE_IMAGE_LIMITS } from '../interfaces/miniapp-api/warehouse-image-upload.js';
+import { buildPendingMessage } from '../infrastructure/outbox/outbox-worker.js';
 
 function createRegistrationHarness() {
     const routes = [];
@@ -58,6 +59,35 @@ function createRegistrationHarness() {
         moduleApi
     };
 }
+
+test('thông báo đơn xuất khách chờ duyệt hiển thị ngày và giờ tạo đơn theo giờ Việt Nam', () => {
+    const momentStub = value => ({
+        utcOffset(offset) {
+            assert.equal(value, '2026-08-17T10:49:00.000Z');
+            assert.equal(offset, 7);
+            return this;
+        },
+        format(pattern) {
+            return pattern === 'DD/MM/YYYY' ? '17/08/2026' : '17:49';
+        }
+    });
+    const message = buildPendingMessage({
+        order_code: 'ORD-TEST',
+        creator_name: 'Nhân viên',
+        customer_name: 'Khách hàng',
+        customer_phone: '7491',
+        doctor_name: 'Bác sĩ An',
+        technician_name: 'Kỹ thuật viên Bình',
+        branch: 'UK',
+        created_at: '2026-08-17T10:49:00.000Z',
+        services: []
+    }, String, [], momentStub);
+
+    assert.match(message, /Ngày tạo đơn:<\/b> 17\/08\/2026/);
+    assert.match(message, /Giờ tạo đơn:<\/b> 17:49/);
+    assert.match(message, /Bác sĩ:<\/b> Bác sĩ An/);
+    assert.match(message, /Kỹ thuật viên:<\/b> Kỹ thuật viên Bình/);
+});
 
 test('module kho đăng ký đủ endpoint cũ và không truy cập database lúc khởi động', () => {
     const harness = createRegistrationHarness();

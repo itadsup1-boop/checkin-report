@@ -14,6 +14,7 @@ export function registerOrderRoutes({ app, pool, getContext, requireWarehouseGro
             const group = await requireWarehouseGroup(context, req.params.groupId);
             const result = await pool.query(
                 `SELECT o.id, o.order_code, o.customer_name, o.customer_phone,
+                        o.doctor_name, o.technician_name,
                         o.branch, o.status, o.sync_status, o.created_at,
                         o.approved_at, o.reversed_at, o.reversed_by_admin_id,
                         COALESCE(creator.full_name,

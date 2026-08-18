@@ -595,6 +595,28 @@
             console.error(e);
         }
 
+        function getTodayInVietnam() {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Bangkok',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).formatToParts(new Date());
+            const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+            return `${values.year}-${values.month}-${values.day}`;
+        }
+
+        function isSundayInVietnam() {
+            return new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Bangkok',
+                weekday: 'short'
+            }).format(new Date()) === 'Sun';
+        }
+
+        function isPastScheduleDate(dateStr) {
+            return dateStr < getTodayInVietnam();
+        }
+
         // State variables
         let telegramId = "";
         let telegramUsername = "";
@@ -609,7 +631,9 @@
         let isCurrentWeekLocked = false;
         let isNextWeekLocked = false;
         let scheduleRegistrationOpen = true;
-        let currentTab = "current"; // 'current' or 'next'
+        // Chủ nhật là thời điểm đăng ký tuần mới, nên mở sẵn tuần sau để tránh
+        // nhân viên nhìn nhầm tuần hiện tại và lưu sai lịch.
+        let currentTab = isSundayInVietnam() ? 'next' : 'current';
 
         let allUsers = [];
         let selectedUserId = ""; // Target user UUID to view/edit
@@ -856,6 +880,8 @@
                 const displayDate = formatDateString(dateStr);
 
                 const selectedVal = currentSelections[dateStr] || ''; // Default: empty (needs choice)
+                const isPastDay = !isUserAdmin && isPastScheduleDate(dateStr);
+                const dayLocked = forceLocked || isPastDay;
 
                 // Check overlap warning (Only for OFF choice in edit mode)
                 const isOverlapping = checkRoleOverlap(dateStr, selectedVal);
@@ -875,6 +901,10 @@
                                 </div>`;
                 }
 
+                if (isPastDay) {
+                    metaHtml += '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">🔒 Ngày đã qua — chỉ xem</div>';
+                }
+
                 row.innerHTML = `
                     <div class="day-info">
                         <div>
@@ -888,11 +918,11 @@
                     </div>
                     <div class="options-group">
                         <button class="option-btn ${selectedVal === 'CA_SANG' ? 'selected' : ''}" 
-                                data-val="CA_SANG" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca 8h30</button>
+                                data-val="CA_SANG" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca 8h30</button>
                         <button class="option-btn ${selectedVal === 'CA_CHIEU' ? 'selected' : ''}" 
-                                data-val="CA_CHIEU" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca 9h30</button>
+                                data-val="CA_CHIEU" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca 9h30</button>
                         <button class="option-btn ${selectedVal === 'OFF' ? 'selected' : ''}" 
-                                data-val="OFF" ${forceLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'OFF')">Nghỉ (OFF)</button>
+                                data-val="OFF" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'OFF')">Nghỉ (OFF)</button>
                     </div>
                 `;
                 container.appendChild(row);
@@ -901,6 +931,7 @@
 
         // Option click handler
         function selectOption(dateStr, val) {
+            if (!isUserAdmin && isPastScheduleDate(dateStr)) return;
             currentSelections[dateStr] = val;
 
             // Re-render choices for this row
@@ -930,6 +961,11 @@
             updateSaveButtonState();
         }
 
+        function getEditableDays(days) {
+            if (isUserAdmin) return days;
+            return days.filter(dateStr => !isPastScheduleDate(dateStr));
+        }
+
         // Check if there is already another employee with same role off on this day
         function checkRoleOverlap(dateStr, selectedVal) {
             if (selectedVal !== 'OFF') return false;
@@ -946,7 +982,7 @@
 
         // Check if user has chosen >= 2 days OFF in active week (consecutive or not)
         function checkConsecutiveOff() {
-            const activeDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
+            const activeDays = getEditableDays(currentTab === 'current' ? currentWeekDays : nextWeekDays);
 
             // Count total OFF days
             let offDaysCount = 0;
@@ -973,10 +1009,10 @@
         // Update button active state
         function updateSaveButtonState() {
             const btnSave = document.getElementById('btnSave');
-            const activeDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
+            const activeDays = getEditableDays(currentTab === 'current' ? currentWeekDays : nextWeekDays);
 
             // Check if all 7 days of active week have a selection
-            let allFilled = true;
+            let allFilled = activeDays.length > 0;
             activeDays.forEach(d => {
                 if (!currentSelections[d]) {
                     allFilled = false;
@@ -1026,14 +1062,19 @@
             if (document.getElementById('btnSave').disabled) return;
 
             const targetDays = currentTab === 'current' ? currentWeekDays : nextWeekDays;
-            const daysToSave = targetDays.map(d => ({
+            const editableDays = getEditableDays(targetDays);
+            if (editableDays.length === 0) {
+                showAlert('Không còn ngày nào trong tuần này có thể đăng ký.', true);
+                return;
+            }
+            const daysToSave = editableDays.map(d => ({
                 date: d,
                 shift_type: currentSelections[d]
             }));
 
             // Validate all selected
             if (daysToSave.some(d => !d.shift_type)) {
-                showAlert('Vui lòng chọn ca làm việc cho tất cả 7 ngày!', true);
+                showAlert('Vui lòng chọn ca làm việc cho tất cả các ngày có thể đăng ký!', true);
                 return;
             }
 

@@ -400,6 +400,10 @@ CREATE TABLE public.tk_leave_requests (
     proof_url character varying,
     status character varying(20) DEFAULT 'PENDING'::character varying,
     approved_by character varying(100),
+    auto_accepted boolean DEFAULT false NOT NULL,
+    effective_applied_at timestamp with time zone,
+    rejected_at timestamp with time zone,
+    previous_schedule jsonb,
     created_at timestamp without time zone DEFAULT CURRENT_TIMESTAMP
 );
 

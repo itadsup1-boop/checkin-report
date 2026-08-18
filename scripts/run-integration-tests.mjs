@@ -22,6 +22,7 @@ if (!SOURCE || !TEST_URL.endsWith('/telegram_kpi_test')) {
 }
 
 const FILES = [
+    'domains/timekeep/tests/leave-request-service.integration.test.js',
     'domains/warehouse/tests/warehouse-order.integration.test.js',
     'domains/warehouse/tests/warehouse-import.integration.test.js',
     'domains/warehouse/tests/warehouse-admin.integration.test.js'

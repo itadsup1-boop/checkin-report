@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { parseQuantity, quantityModeLabel } from '../../domain/quantity-rules.js';
 
 export function registerWarehouseExportRoutes({
     botApp,
@@ -56,9 +57,7 @@ export function registerWarehouseExportRoutes({
 
             // Kiểm tra tồn kho trước khi thực hiện bất kỳ giao dịch nào (Tránh lỗi trừ âm nửa chừng)
             for (const item of items) {
-                const cleanBarcode = item.barcode.trim();
-                const qtyNum = parseInt(item.quantity, 10);
-                if (isNaN(qtyNum) || qtyNum <= 0) continue;
+                const cleanBarcode = String(item.barcode || '').trim();
 
                 const prodCheck = await pool.query('SELECT * FROM tk_products WHERE barcode = $1 LIMIT 1', [cleanBarcode]);
                 if (prodCheck.rows.length === 0) {
@@ -66,12 +65,21 @@ export function registerWarehouseExportRoutes({
                     continue;
                 }
                 const product = prodCheck.rows[0];
+                const qtyNum = parseQuantity(item.quantity, product.quantity_mode);
+                if (qtyNum === null) {
+                    failedItems.push({
+                        product_name: product.product_name,
+                        barcode: cleanBarcode,
+                        reason: `Số lượng phải là ${quantityModeLabel(product.quantity_mode)}`
+                    });
+                    continue;
+                }
 
                 // Lấy tồn kho 2 cơ sở
                 const usRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1 AND branch = $2', [product.id, 'US']);
                 const ukRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1 AND branch = $2', [product.id, 'UK']);
-                const usQty = usRes.rows.length > 0 ? usRes.rows[0].quantity : 0;
-                const ukQty = ukRes.rows.length > 0 ? ukRes.rows[0].quantity : 0;
+                const usQty = Number(usRes.rows[0]?.quantity || 0);
+                const ukQty = Number(ukRes.rows[0]?.quantity || 0);
                 const totalStock = usQty + ukQty;
 
                 if (totalStock < qtyNum) {

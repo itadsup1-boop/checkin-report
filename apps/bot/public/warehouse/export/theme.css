@@ -278,7 +278,8 @@ input, select, textarea { outline: none; }
   display: flex; align-items: center; justify-content: center;
 }
 .stepper__btn:active { transform: scale(.9); }
-.stepper__value { min-width: 26px; text-align: center; font-size: 14px; font-weight: 700; }
+.stepper__value { width: 52px; min-width: 26px; border: 0; outline: 0; background: transparent; text-align: center; font-size: 14px; font-weight: 700; color: var(--ink); }
+.stepper__value::-webkit-inner-spin-button, .stepper__value::-webkit-outer-spin-button { appearance: none; margin: 0; }
 .stepper__value--over { color: var(--bad); }
 
 /* ---------- Thông báo ---------- */

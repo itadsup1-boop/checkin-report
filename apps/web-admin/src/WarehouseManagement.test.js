@@ -46,3 +46,11 @@ test('Danh sách sản phẩm hiển thị trực tiếp, không bị ẩn trong
   assert.match(source, /product\.stock_uk/);
   assert.doesNotMatch(source, /\+ Chọn mặt hàng để thêm/);
 });
+
+test('Admin cấu hình số nguyên hoặc số thập phân riêng cho từng sản phẩm', () => {
+  assert.match(source, /quantity_mode/);
+  assert.match(source, /updateProductQuantityMode/);
+  assert.match(source, /Chỉ nhập số nguyên/);
+  assert.match(source, /Cho nhập thập phân/);
+  assert.match(source, /inputMode=\{item\.quantity_mode === 'DECIMAL' \? 'decimal' : 'numeric'\}/);
+});

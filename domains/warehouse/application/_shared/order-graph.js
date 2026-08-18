@@ -9,6 +9,7 @@
  */
 
 import { WarehouseError } from '../../domain/constants.js';
+import { parseQuantity, quantityModeLabel } from '../../domain/quantity-rules.js';
 
 export function createOrderGraphBuilder({ catalogRepo }) {
     async function validateAndSnapshotGraph(client, normalized) {
@@ -41,14 +42,25 @@ export function createOrderGraphBuilder({ catalogRepo }) {
         return normalized.services.map(service => ({
             ...service,
             snapshot: serviceMap.get(service.service_id),
-            items: service.items.map(item => ({
-                ...item,
-                product: productMap.get(item.product_id),
-                template_quantity: templateMap.get(`${service.service_id}:${item.product_id}`) || null,
-                item_source: templateMap.has(`${service.service_id}:${item.product_id}`)
-                    ? 'TEMPLATE'
-                    : 'MANUAL'
-            }))
+            items: service.items.map(item => {
+                const product = productMap.get(item.product_id);
+                const quantity = parseQuantity(item.actual_quantity, product.quantity_mode);
+                if (quantity === null) {
+                    throw new WarehouseError(
+                        `Số lượng của ${product.product_name} phải là ${quantityModeLabel(product.quantity_mode)}.`,
+                        { code: 'INVALID_PRODUCT_QUANTITY' }
+                    );
+                }
+                return {
+                    ...item,
+                    actual_quantity: quantity,
+                    product,
+                    template_quantity: templateMap.get(`${service.service_id}:${item.product_id}`) || null,
+                    item_source: templateMap.has(`${service.service_id}:${item.product_id}`)
+                        ? 'TEMPLATE'
+                        : 'MANUAL'
+                };
+            })
         }));
     }
 

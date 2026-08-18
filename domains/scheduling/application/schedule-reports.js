@@ -12,6 +12,7 @@ import { APPOINTMENT_STATUS, findMissingTourFields, parseRevenue } from '../doma
 import {
     buildTomorrowReport,
     buildDailySummary,
+    buildPhotoDebtSummary,
     buildTourIncomplete,
     buildTourValidSummary,
     TOUR_EMPTY_MESSAGE
@@ -49,6 +50,14 @@ export function createScheduleReportService({ repository, notifier, now = () => 
                 const appointments = await repository.findTodayOf(g.group_id);
                 await notifier.send(g.group_id, g.bot_role,
                     buildDailySummary(appointments, todayStr), 'schedule_daily_summary');
+
+                if (g.bot_role === 'report') {
+                    const debtMessage = buildPhotoDebtSummary(appointments, todayStr);
+                    if (debtMessage) {
+                        await notifier.send(g.group_id, 'report', debtMessage,
+                            'schedule_report_photo_debt_daily');
+                    }
+                }
             }
         } catch (e) {
             console.error('Lỗi cron 22h đêm lịch khách:', e);

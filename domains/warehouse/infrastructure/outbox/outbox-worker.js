@@ -1,10 +1,15 @@
-function buildPendingMessage(order, escapeHtml, transferSuggestions = []) {
+export function buildPendingMessage(order, escapeHtml, transferSuggestions = [], moment) {
+    const createdAt = moment(order.created_at).utcOffset(7);
     let message = `⚠️ <b>[ĐƠN XUẤT KHÁCH CHỜ DUYỆT]</b>\n\n` +
         `🆔 <b>Mã đơn:</b> <code>${escapeHtml(order.order_code)}</code>\n` +
         `👤 <b>Nhân viên:</b> ${escapeHtml(order.creator_name)}\n` +
         `🙋 <b>Khách:</b> ${escapeHtml(order.customer_name)}\n` +
         `📞 <b>SĐT:</b> ${escapeHtml(order.customer_phone)}\n` +
-        `🏢 <b>Cơ sở:</b> ${escapeHtml(order.branch)}\n\n`;
+        `🩺 <b>Bác sĩ:</b> ${escapeHtml(order.doctor_name || 'Chưa nhập')}\n` +
+        `🧑‍🔧 <b>Kỹ thuật viên:</b> ${escapeHtml(order.technician_name || 'Chưa nhập')}\n` +
+        `🏢 <b>Cơ sở:</b> ${escapeHtml(order.branch)}\n` +
+        `📅 <b>Ngày tạo đơn:</b> ${createdAt.format('DD/MM/YYYY')}\n` +
+        `🕒 <b>Giờ tạo đơn:</b> ${createdAt.format('HH:mm')}\n\n`;
     for (const service of order.services) {
         message += `<b>• ${escapeHtml(service.service_name_snapshot)}</b>\n`;
         service.items.filter(item => !item.is_removed).forEach(item => {
@@ -27,6 +32,8 @@ function buildApprovedMessage(order, escapeHtml) {
         `🆔 <b>Mã đơn:</b> <code>${escapeHtml(order.order_code)}</code>\n` +
         `🙋 <b>Khách:</b> ${escapeHtml(order.customer_name)}\n` +
         `📞 <b>SĐT:</b> ${escapeHtml(order.customer_phone)}\n` +
+        `🩺 <b>Bác sĩ:</b> ${escapeHtml(order.doctor_name || 'Chưa nhập')}\n` +
+        `🧑‍🔧 <b>Kỹ thuật viên:</b> ${escapeHtml(order.technician_name || 'Chưa nhập')}\n` +
         `🏢 <b>Cơ sở sử dụng:</b> ${escapeHtml(order.branch)}\n` +
         `👤 <b>Người order/bàn giao:</b> ${escapeHtml(order.creator_name)}\n`;
     if (order.transfers.length) {
@@ -230,7 +237,7 @@ export function startWarehouseOutboxWorker({
                 bot,
                 order.telegram_group_id,
                 'warehouse',
-                buildPendingMessage(order, escapeHtml, event.payload?.transfer_suggestions || []),
+                buildPendingMessage(order, escapeHtml, event.payload?.transfer_suggestions || [], moment),
                 {
                     parse_mode: 'HTML',
                     reply_markup: {
@@ -298,6 +305,8 @@ export function startWarehouseOutboxWorker({
             const rejectedMessage = `❌ <b>[ĐƠN XUẤT KHÁCH BỊ TỪ CHỐI]</b>\n\n` +
                 `🆔 <code>${escapeHtml(order.order_code)}</code>\n` +
                 `🙋 Khách: ${escapeHtml(order.customer_name)}\n` +
+                `🩺 Bác sĩ: ${escapeHtml(order.doctor_name || 'Chưa nhập')}\n` +
+                `🧑‍🔧 Kỹ thuật viên: ${escapeHtml(order.technician_name || 'Chưa nhập')}\n` +
                 `🏢 Cơ sở: ${escapeHtml(order.branch)}`;
             if (order.telegram_message_id) {
                 try {
@@ -342,6 +351,8 @@ export function startWarehouseOutboxWorker({
                 `↩️ <b>[ĐÃ HOÀN TÁC ĐƠN XUẤT KHO]</b>\n\n` +
                     `🆔 <code>${escapeHtml(order.order_code)}</code>\n` +
                     `🙋 Khách: ${escapeHtml(order.customer_name)}\n` +
+                    `🩺 Bác sĩ: ${escapeHtml(order.doctor_name || 'Chưa nhập')}\n` +
+                    `🧑‍🔧 Kỹ thuật viên: ${escapeHtml(order.technician_name || 'Chưa nhập')}\n` +
                     `🏢 Cơ sở: ${escapeHtml(order.branch)}\n` +
                     'Tồn kho đã được cộng trả bằng bút toán đảo; lịch sử cũ vẫn được giữ nguyên.',
                 { parse_mode: 'HTML' },

@@ -1,6 +1,6 @@
 # Mini App lịch khách (nhân viên)
 
-Màn hình nhân viên dùng để đặt lịch, sửa/hủy, trả ảnh nhiệm vụ và **báo bù công tour**.
+Màn hình nhân viên dùng để đặt lịch, sửa/hủy, trả ảnh nhiệm vụ, hoàn tất lịch thiếu và **báo bù công tour**.
 
 ## Điểm vào
 
@@ -33,7 +33,8 @@ scheduling/schedule-client/
     ├── add-tab.js            Tab 2 — thêm lịch / cập nhật
     ├── edit-tab.js           Tab 3 — tìm theo SĐT, sửa giờ, hủy
     ├── tasks-tab.js          Tab 4 — nợ ảnh trong ngày
-    └── makeup-tab.js         Tab 5 — Báo Bù Công Tour
+    ├── completion-tab.js     Tab 5 của report — hoàn tất lịch cũ trong 48 giờ
+    └── makeup-tab.js         Tab 5 của report_tour — Báo Bù Công Tour
 ```
 
 Hạ tầng dùng chung ở [`../../shared-ui/`](../../shared-ui/README.md).
@@ -50,9 +51,10 @@ Tab dùng `<input type="radio">` ẩn + `<label>`, đúng như bản cũ. JS ch�
 
 `GET /api/groups/role` quyết định:
 
-| Nhóm | Tab Báo Bù | Ô Bác sĩ / Điều dưỡng | Nút "Cập nhật" ở tab Sửa |
+| Nhóm | Tab thứ 5 | Ô Bác sĩ / Điều dưỡng | Nút "Cập nhật" ở tab Sửa |
 |---|---|---|---|
-| `report_tour` | hiện | hiện | hiện |
+| `report` | Hoàn Tất Lịch; ẩn Nhiệm Vụ để tránh trùng | ẩn | ẩn |
+| `report_tour` | Báo Bù; vẫn có Nhiệm Vụ | hiện | hiện |
 | khác | ẩn | ẩn | ẩn |
 
 Lỗi mạng khi hỏi vai trò thì coi như **không phải** tour — thà ẩn tính năng còn hơn mở

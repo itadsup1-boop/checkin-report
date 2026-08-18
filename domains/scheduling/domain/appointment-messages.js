@@ -58,7 +58,32 @@ export function buildDueReminder(a) {
         + `💇 Dịch vụ: ${a.service} - Buổi: ${a.sessions}\n`
         + line.sessionType + line.incurred + line.doctor + line.nurse + line.revenue
         + `💼 Nhân viên phụ trách: <b>${a.employee_name}</b>\n\n`
-        + '👉 <i>Vui lòng chuẩn bị đón khách!</i>';
+        + '👉 <i>Vui lòng chuẩn bị đón khách!</i>\n\n'
+        + `🆔 Mã Lịch: #${a.id}`;
+}
+
+/**
+ * Đọc định danh lịch từ nội dung tin nhắn mà nhân viên reply ảnh.
+ * Tin mới luôn có mã lịch; tên/SĐT/giờ chỉ là đường tương thích cho tin cũ.
+ */
+export function parseAppointmentReplyReference(text = '') {
+    const id = text.match(/Mã Lịch:\s*#(\d+)/i)?.[1] || null;
+    const customer = text.match(/Khách hàng:\s*(.+?)\s*\(SĐT:\s*([^\)]+)\)/i);
+    const appointmentTime = text.match(/Giờ hẹn:\s*(\d{1,2}:\d{2})/i)?.[1] || null;
+    return {
+        id,
+        customerName: customer?.[1]?.trim() || null,
+        phone: customer?.[2]?.trim() || null,
+        appointmentTime
+    };
+}
+
+export function normalizeAppointmentIdentityText(value = '') {
+    return String(value)
+        .normalize('NFC')
+        .toLocaleLowerCase('vi-VN')
+        .replace(/\s+/g, ' ')
+        .trim();
 }
 
 /** Một dòng trong danh sách tổng hợp; `withStatus` chỉ dùng cho bản tổng kết tối. */
@@ -96,6 +121,34 @@ export function buildDailySummary(appointments, todayStr) {
     }
     appointments.forEach(a => { message += listLine(a, { withStatus: true }); });
     return message;
+}
+
+/** Nhắc riêng role report hoàn tất ảnh, không dùng từ ngữ hoặc cách tính công tour. */
+export function buildPhotoDebtReminder(a) {
+    const state = a.status === APPOINTMENT_STATUS.ACTIVE
+        ? 'Chưa xác nhận khách đến và chưa gửi ảnh'
+        : 'Đã xác nhận khách đến nhưng còn thiếu ảnh';
+    return '⚠️ <b>LỊCH KHÁCH CHƯA HOÀN TẤT</b>\n\n'
+        + `👤 Khách hàng: <b>${a.customer_name}</b> — ${timeOf(a.appointment_time)}\n`
+        + `💼 Nhân viên phụ trách: <b>${a.employee_name}</b>\n\n`
+        + `📌 ${state}\n\n`
+        + '👉 Vui lòng reply ảnh vào tin lịch hoặc vào <b>/app → Hoàn Tất Lịch</b> trong vòng 48 giờ.'
+        + `\n\n🆔 Mã Lịch: #${a.id}`;
+}
+
+export function buildPhotoDebtSummary(appointments, dateStr) {
+    const missing = appointments.filter(item => item.status === APPOINTMENT_STATUS.ACTIVE
+        || (item.status === APPOINTMENT_STATUS.ARRIVED
+            && (item.is_photo_debt || !item.proof_image)));
+    if (missing.length === 0) return null;
+
+    let message = `⚠️ <b>LỊCH CHƯA HOÀN TẤT ẢNH — ${dateStr}</b>\n\n`;
+    missing.forEach((item, index) => {
+        const state = item.status === APPOINTMENT_STATUS.ACTIVE ? 'Chưa xác nhận hoàn tất' : 'Thiếu ảnh';
+        message += `${index + 1}. <b>${item.customer_name}</b> — ${timeOf(item.appointment_time)}\n`
+            + `   NV: ${item.employee_name} | ${state} | Mã #${item.id}\n`;
+    });
+    return message + '\n👉 Nhân viên còn 48 giờ từ giờ hẹn để bổ sung tại <b>/app → Hoàn Tất Lịch</b>.';
 }
 
 /** 00:00 — các lịch chưa đủ điều kiện tính công tour. */

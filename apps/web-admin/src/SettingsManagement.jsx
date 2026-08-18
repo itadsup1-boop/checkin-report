@@ -24,7 +24,7 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
 
   const role = form.bot_role;
   const showCustomerSheet = !role || ['customer', 'report', 'report_tour', 'warehouse'].includes(role);
-  const showKpiSheet = !role || ['timekeep', 'report', 'report_tour'].includes(role);
+  const showKpiSheet = !role || ['timekeep', 'report'].includes(role);
   const showDriveFolder = !role || ['customer', 'warehouse'].includes(role);
   const showTimekeep = !role || role === 'timekeep';
 

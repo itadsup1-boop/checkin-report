@@ -15,6 +15,7 @@
 
 import { createMakeupRepository } from './infrastructure/postgres/makeup-repository.js';
 import { createAppointmentRepository } from './infrastructure/postgres/appointment-repository.js';
+import { createCompletionRepository } from './infrastructure/postgres/completion-repository.js';
 import { createProofImageStore } from './infrastructure/storage/proof-image-store.js';
 import { createMakeupNotifier } from './interfaces/telegram/makeup-notification.js';
 import { createAppointmentNotifier } from './infrastructure/telegram/appointment-notifier.js';
@@ -97,6 +98,7 @@ export function registerSchedulingModule({
     /* ---------- Đặt lịch khách ---------- */
 
     const appointments = createAppointmentRepository({ pool });
+    const completionRepository = createCompletionRepository({ pool });
     const appointmentNotifier = createAppointmentNotifier({ bot, sendMessageToRoleGroup });
 
     const bookAppointment = createBookAppointmentService({
@@ -110,7 +112,7 @@ export function registerSchedulingModule({
         repository: appointments, notifier: appointmentNotifier
     });
     const remindDueAppointments = createRemindDueAppointments({
-        repository: appointments, notifier: appointmentNotifier, getGroupRole
+        repository: appointments, completionRepository, notifier: appointmentNotifier, getGroupRole
     });
 
     /* ---------- Lắp vào bot ---------- */
@@ -142,3 +144,8 @@ export function registerSchedulingModule({
         remindDueAppointments, scheduledJobs
     });
 }
+
+export {
+    parseAppointmentReplyReference,
+    normalizeAppointmentIdentityText
+} from './domain/appointment-messages.js';

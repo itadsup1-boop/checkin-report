@@ -21,7 +21,11 @@ import {
 } from '../../packages/shared/kpiMembership.js';
 import { getCustomerDocForGroup, getKpiDocForGroup } from './sheetManager.js';
 import { buildCustomerSheetRowKey, findCustomerSheetRow } from './customer-sheet-routing.js';
-import { registerSchedulingModule } from '../../domains/scheduling/index.js';
+import {
+    registerSchedulingModule,
+    parseAppointmentReplyReference,
+    normalizeAppointmentIdentityText
+} from '../../domains/scheduling/index.js';
 
 // Khởi chạy cronjob dọn ảnh rác lúc 03:00 sáng
 cron.schedule('0 3 * * *', async () => {
@@ -2228,27 +2232,26 @@ ${lichKhach}`;
         }
     });
 
-    botApp.get('/api/photo-debts', async (req, res) => {
+    botApp.get('/api/photo-debts', authenticateTelegramMiniApp, async (req, res) => {
         try {
-            const { date, telegram_id } = req.query; // optional
+            const { date, groupId } = req.query;
+            const telegramId = req.verifiedTelegramId;
+
+            if (!groupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu thông tin nhóm làm việc' });
+            }
 
             let query = `
             SELECT id, customer_name, employee_name, appointment_time, service, status, is_photo_debt, proof_image 
             FROM customer_appointments 
             WHERE is_photo_debt = TRUE AND status = 'ARRIVED'
+              AND telegram_id = $1 AND group_id = $2
         `;
-            let params = [];
-            let paramCount = 1;
+            const params = [telegramId, String(groupId)];
 
             if (date) {
-                query += ` AND DATE(appointment_time) = $${paramCount}`;
+                query += ' AND DATE(appointment_time) = $3';
                 params.push(date);
-                paramCount++;
-            }
-            if (telegram_id) {
-                query += ` AND telegram_id = $${paramCount}`;
-                params.push(telegram_id);
-                paramCount++;
             }
             query += ` ORDER BY appointment_time DESC`;
 
@@ -2260,16 +2263,35 @@ ${lichKhach}`;
         }
     });
 
-    botApp.post('/api/upload-proof', async (req, res) => {
+    botApp.post('/api/upload-proof', authenticateTelegramMiniApp, async (req, res) => {
         try {
-            const { id, imageBase64 } = req.body;
-            if (!id || !imageBase64) {
+            const { id, imageBase64, groupId } = req.body;
+            const telegramId = req.verifiedTelegramId;
+            if (!id || !imageBase64 || !groupId) {
                 return res.status(400).json({ success: false, error: 'Thiếu dữ liệu ảnh' });
             }
 
-            const aptRes = await pool.query('SELECT * FROM customer_appointments WHERE id = $1', [id]);
+            const aptRes = await pool.query(
+                `SELECT a.*, g.bot_role
+                 FROM customer_appointments a
+                 JOIN telegram_groups g ON g.telegram_group_id = a.group_id
+                 WHERE a.id = $1 AND a.group_id = $2 AND a.telegram_id = $3
+                   AND a.status IN ('ACTIVE', 'ARRIVED')
+                   AND NULLIF(a.proof_image, '') IS NULL
+                   AND g.is_active = TRUE
+                   AND g.bot_role IN ('report', 'report_tour')`,
+                [id, String(groupId), telegramId]
+            );
             if (aptRes.rows.length === 0) return res.status(404).json({ success: false, error: 'Không tìm thấy lịch hẹn' });
             const apt = aptRes.rows[0];
+
+            if (apt.bot_role === 'report'
+                && moment().diff(moment(apt.appointment_time), 'hours', true) > 48) {
+                return res.status(403).json({
+                    success: false,
+                    error: 'Lịch đã quá 48 giờ. Vui lòng nhờ Quản lý hoặc Admin bổ sung ảnh trên Telegram.'
+                });
+            }
 
             const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
             const buffer = Buffer.from(base64Data, 'base64');
@@ -2293,7 +2315,9 @@ ${lichKhach}`;
 
             // Cập nhật DB
             await pool.query(
-                'UPDATE customer_appointments SET is_photo_debt = FALSE, proof_image = $1 WHERE id = $2',
+                `UPDATE customer_appointments
+                 SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = $1
+                 WHERE id = $2`,
                 [proofUrl, id]
             );
 
@@ -2695,37 +2719,92 @@ ${lichKhach}`;
             const isCustomerNotice = text.includes('ĐÃ ĐẾN') || text.includes('BÁO ĐỘNG LỊCH KHÁCH') || text.includes('Mã Lịch') || text.includes('Khách hàng');
             if (!isCustomerNotice) return;
 
-            // Cố gắng tìm Mã Lịch nếu có (cho tương lai)
-            let aptId = null;
-            const idMatch = text.match(/Mã Lịch: #(\d+)/);
-            if (idMatch) {
-                aptId = idMatch[1];
-            } else {
-                // Cho các tin nhắn cũ
-                const regex = /Khách hàng:\s*(.+)\s*\(SĐT:\s*(\d+)\)/;
-                const match = text.match(regex);
-                if (match) {
-                    const customer_name = match[1].trim();
-                    const phone = match[2].trim();
-                    const aptRes = await pool.query(
-                        "SELECT id FROM customer_appointments WHERE customer_name = $1 AND phone = $2 AND status = 'ARRIVED' AND is_photo_debt = TRUE ORDER BY appointment_time DESC LIMIT 1",
-                        [customer_name, phone]
-                    );
-                    if (aptRes.rows.length > 0) {
-                        aptId = aptRes.rows[0].id;
-                    }
-                }
+            // Tin mới có mã lịch. Với tin cũ, dò thêm theo đúng nhóm, ngày,
+            // tên/SĐT và giờ hẹn để không nhận nhầm khách trùng tên.
+            const reference = parseAppointmentReplyReference(text);
+            let aptId = reference.id;
+            if (!aptId && reference.customerName && reference.phone) {
+                const replyDate = moment.unix(replyMsg.date || ctx.message.date)
+                    .utcOffset(7)
+                    .format('YYYY-MM-DD');
+                const aptRes = await pool.query(
+                    `SELECT id, customer_name
+                     FROM customer_appointments
+                     WHERE group_id = $1
+                       AND phone = $2
+                       AND status IN ('ACTIVE', 'ARRIVED')
+                       AND NULLIF(proof_image, '') IS NULL
+                       AND appointment_time::date = $3::date
+                       AND ($4::text IS NULL OR
+                            TO_CHAR(appointment_time, 'HH24:MI') = $4)
+                     ORDER BY appointment_time DESC
+                     LIMIT 5`,
+                    [String(ctx.chat.id), reference.phone, replyDate, reference.appointmentTime]
+                );
+                const normalizedName = normalizeAppointmentIdentityText(reference.customerName);
+                const exactName = aptRes.rows.find(row =>
+                    normalizeAppointmentIdentityText(row.customer_name) === normalizedName);
+                aptId = exactName?.id || (aptRes.rows.length === 1 ? aptRes.rows[0].id : null);
             }
 
             if (!aptId) {
                 return ctx.reply('⚠️ Không tìm thấy thông tin lịch hẹn hoặc ảnh này đã được nộp!', { reply_to_message_id: ctx.message.message_id });
             }
 
-            const aptRes = await pool.query('SELECT * FROM customer_appointments WHERE id = $1 AND is_photo_debt = TRUE', [aptId]);
+            const aptRes = await pool.query(
+                `SELECT *
+                 FROM customer_appointments
+                 WHERE id = $1
+                   AND group_id = $2
+                   AND status IN ('ACTIVE', 'ARRIVED')
+                   AND NULLIF(proof_image, '') IS NULL`,
+                [aptId, String(ctx.chat.id)]
+            );
             if (aptRes.rows.length === 0) {
-                return ctx.reply('⚠️ Ảnh chứng thực cho lịch này đã được nộp trước đó!', { reply_to_message_id: ctx.message.message_id });
+                return ctx.reply('⚠️ Lịch đã bị hủy, không thuộc nhóm này hoặc đã có ảnh chứng thực!', { reply_to_message_id: ctx.message.message_id });
             }
             const apt = aptRes.rows[0];
+
+            const groupRoleRes = await pool.query(
+                `SELECT bot_role FROM telegram_groups
+                 WHERE telegram_group_id = $1 AND is_active = TRUE LIMIT 1`,
+                [String(ctx.chat.id)]
+            );
+            const groupRole = groupRoleRes.rows[0]?.bot_role;
+
+            // Với nhóm Báo hẹn khách cũ, nhân viên chỉ tự bổ sung lịch của mình
+            // trong 48 giờ. Quá hạn chỉ Quản lý/Admin mới được xử lý hộ.
+            if (groupRole === 'report') {
+                const clickerId = String(ctx.from.id);
+                const isOwner = String(apt.telegram_id) === clickerId;
+                const isAdmin = String(process.env.ADMIN_IDS || '')
+                    .split(',')
+                    .map(value => value.trim())
+                    .filter(Boolean)
+                    .includes(clickerId);
+                const managerRes = await pool.query(
+                    `SELECT 1
+                     FROM employees e
+                     LEFT JOIN employee_group_memberships m ON m.employee_id = e.id
+                     WHERE e.telegram_id = $1 AND e.is_active = TRUE AND e.role = 'Quản lý'
+                       AND (e.telegram_group_id = $2
+                            OR (m.telegram_group_id = $2 AND m.status = 'ACTIVE'))
+                     LIMIT 1`,
+                    [clickerId, String(ctx.chat.id)]
+                );
+                const canOverride = isAdmin || managerRes.rows.length > 0;
+
+                if (!isOwner && !canOverride) {
+                    return ctx.reply('⚠️ Bạn chỉ được bổ sung ảnh cho lịch do chính mình phụ trách!', {
+                        reply_to_message_id: ctx.message.message_id
+                    });
+                }
+                if (moment().diff(moment(apt.appointment_time), 'hours', true) > 48 && !canOverride) {
+                    return ctx.reply('⚠️ Lịch đã quá 48 giờ. Vui lòng nhờ Quản lý hoặc Admin reply ảnh để xử lý!', {
+                        reply_to_message_id: ctx.message.message_id
+                    });
+                }
+            }
 
             // Lấy file_id lớn nhất (độ phân giải cao nhất)
             const photo = ctx.message.photo[ctx.message.photo.length - 1];
@@ -2749,10 +2828,19 @@ ${lichKhach}`;
             const proofUrl = process.env.MINI_APP_URL + '/mini-app/uploads/' + filename;
 
             // Cập nhật DB
-            await pool.query(
-                'UPDATE customer_appointments SET is_photo_debt = FALSE, proof_image = $1 WHERE id = $2',
+            const saved = await pool.query(
+                `UPDATE customer_appointments
+                 SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = $1
+                 WHERE id = $2
+                   AND status IN ('ACTIVE', 'ARRIVED')
+                   AND NULLIF(proof_image, '') IS NULL
+                 RETURNING id`,
                 [proofUrl, aptId]
             );
+            if (saved.rows.length === 0) {
+                if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                return ctx.reply('⚠️ Ảnh chứng thực cho lịch này đã được nộp trước đó!', { reply_to_message_id: ctx.message.message_id });
+            }
 
             // Cập nhật Google Sheet — dùng suffix [Tour] cho nhóm report_tour
             try {

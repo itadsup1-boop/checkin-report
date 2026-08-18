@@ -125,6 +125,7 @@ export function createWarehouseQueryRepository(pool) {
                                     'product_id', p.id,
                                     'product_name', p.product_name,
                                     'barcode', p.barcode,
+                                    'quantity_mode', p.quantity_mode,
                                     'default_quantity', sp.default_quantity,
                                     'display_order', sp.display_order
                                 )
@@ -142,15 +143,15 @@ export function createWarehouseQueryRepository(pool) {
                  ORDER BY s.display_order, s.service_name`
             ),
             pool.query(
-                `SELECT id, barcode, product_name
+                `SELECT id, barcode, product_name, quantity_mode
                  FROM tk_products
                  WHERE is_active = TRUE
                  ORDER BY product_name`
             ),
             pool.query(
                 `SELECT p.id AS product_id,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0)::int AS stock_us,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0)::int AS stock_uk
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0) AS stock_us,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0) AS stock_uk
                  FROM tk_products p
                  LEFT JOIN tk_inventory i ON i.product_id = p.id
                  WHERE p.is_active = TRUE

@@ -5,7 +5,7 @@
  * nằm ở order-draft.js, markup nằm ở steps/.
  *
  * Gửi tới POST /api/warehouse/service-orders với payload giữ đúng contract cũ:
- *   { customer_name, customer_phone, branch, idempotency_key,
+ *   { customer_name, customer_phone, doctor_name, technician_name, branch, idempotency_key,
  *     services: [{ service_id, items: [{ product_id, product_name, barcode,
  *                  actual_quantity, template_quantity, item_source, is_removed,
  *                  display_order }] }] }
@@ -45,6 +45,8 @@ export function createCustomerOrderFlow({ catalog, onExit }) {
         branch: null,
         customerName: '',
         customerPhone: '',
+        doctorName: '',
+        technicianName: '',
         /** Map<serviceId, Array<line>> — thứ tự chèn giữ đúng thứ tự người dùng chọn. */
         selections: new Map(),
         idempotencyKey: newIdempotencyKey(),
@@ -73,10 +75,10 @@ export function createCustomerOrderFlow({ catalog, onExit }) {
             persist();
             render();
         },
-        setLineQuantity(serviceId, productId, quantity) {
+        setLineQuantity(serviceId, productId, quantity, { render: shouldRender = true } = {}) {
             setLineQuantity(state, serviceId, productId, quantity);
             persist();
-            render();
+            if (shouldRender) render();
         },
         toggleRemoveLine(serviceId, productId) {
             toggleRemoveLine(state, serviceId, productId);
@@ -143,10 +145,22 @@ export function createCustomerOrderFlow({ catalog, onExit }) {
         }, CUSTOMER_LOOKUP_DELAY_MS);
     }
 
-    /** Gõ tên/SĐT chỉ cập nhật nút dưới, KHÔNG vẽ lại bước — vẽ lại là mất con trỏ. */
+    /** Gõ thông tin chỉ cập nhật nút dưới, KHÔNG vẽ lại bước — vẽ lại là mất con trỏ. */
     function onCustomerChange(field, value) {
         if (field === 'name') {
             state.customerName = value;
+            persist();
+            updateFooter();
+            return;
+        }
+        if (field === 'doctor') {
+            state.doctorName = value;
+            persist();
+            updateFooter();
+            return;
+        }
+        if (field === 'technician') {
+            state.technicianName = value;
             persist();
             updateFooter();
             return;

@@ -159,6 +159,7 @@ export default function WarehouseManagement() {
           ...item,
           product_name: item.product_name || byId.get(item.product_id)?.product_name,
           barcode: item.barcode || byId.get(item.product_id)?.barcode,
+          quantity_mode: item.quantity_mode || byId.get(item.product_id)?.quantity_mode || 'INTEGER',
           default_quantity: Number(item.default_quantity) || 1,
           display_order: index
         })));
@@ -311,6 +312,7 @@ export default function WarehouseManagement() {
       product_id: product.id,
       product_name: product.product_name,
       barcode: product.barcode,
+      quantity_mode: product.quantity_mode || 'INTEGER',
       default_quantity: 1,
       display_order: current.length
     }]);
@@ -319,6 +321,29 @@ export default function WarehouseManagement() {
 
   const updateItem = (productId, changes) => {
     setTemplateItems(current => current.map(item => item.product_id === productId ? { ...item, ...changes } : item));
+  };
+
+  const updateProductQuantityMode = async (productId, quantityMode) => {
+    setSaving(true);
+    setError('');
+    try {
+      const result = await request(`/admin/warehouse/products/${productId}`, {
+        method: 'PUT',
+        data: { quantity_mode: quantityMode }
+      });
+      const updated = result.data.product;
+      setProducts(current => current.map(product => product.id === productId ? { ...product, ...updated } : product));
+      setTemplateItems(current => current.map(item => item.product_id === productId
+        ? { ...item, quantity_mode: updated.quantity_mode }
+        : item));
+      setNotice(updated.quantity_mode === 'DECIMAL'
+        ? 'Đã cho phép sản phẩm xuất theo số thập phân.'
+        : 'Đã đặt sản phẩm chỉ xuất theo số nguyên.');
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   const removeItem = productId => {
@@ -339,9 +364,15 @@ export default function WarehouseManagement() {
 
   const saveTemplate = async () => {
     if (!selectedService) return;
-    const invalidItem = templateItems.find(item => !Number.isInteger(Number(item.default_quantity)) || Number(item.default_quantity) <= 0);
+    const invalidItem = templateItems.find(item => {
+      const quantity = Number(item.default_quantity);
+      const scaled = quantity * 10;
+      const hasValidPrecision = Math.abs(scaled - Math.round(scaled)) <= 1e-7;
+      return !Number.isFinite(quantity) || quantity <= 0 || !hasValidPrecision
+        || (item.quantity_mode !== 'DECIMAL' && !Number.isInteger(quantity));
+    });
     if (invalidItem) {
-      setError(`Số lượng của “${invalidItem.product_name}” phải là số nguyên lớn hơn 0.`);
+      setError(`Số lượng của “${invalidItem.product_name}” phải là ${invalidItem.quantity_mode === 'DECIMAL' ? 'số dương, tối đa 1 chữ số thập phân' : 'số nguyên lớn hơn 0'}.`);
       return;
     }
     setSaving(true);
@@ -548,32 +579,49 @@ export default function WarehouseManagement() {
                           </div>
                         </div>
 
-                        <div className="max-h-80 overflow-y-auto bg-white p-2">
+                        <div className="max-h-[28rem] overflow-y-auto bg-white p-3">
                           {selectableProducts.length ? (
-                            <div className="grid gap-2 md:grid-cols-2 2xl:grid-cols-3">
+                            <div className="grid gap-3 xl:grid-cols-2">
                               {selectableProducts.map(product => (
                                 <div
                                   key={product.id}
-                                  className="flex min-w-0 items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3"
+                                  className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-cyan-300 hover:bg-white"
                                 >
-                                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-50 text-cyan-700">
-                                    <Package className="h-5 w-5" />
-                                  </div>
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-bold text-slate-800" title={product.product_name}>{product.product_name}</div>
-                                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
-                                      <span className="font-mono">Mã: {product.barcode}</span>
-                                      <span>US: {Number(product.stock_us) || 0}</span>
-                                      <span>UK: {Number(product.stock_uk) || 0}</span>
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-100 text-cyan-700">
+                                      <Package className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="break-words text-sm font-bold leading-5 text-slate-900" title={product.product_name}>{product.product_name}</div>
+                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
+                                        <span className="rounded-md bg-slate-200 px-2 py-1 font-mono text-slate-600">Mã: {product.barcode || 'Chưa có'}</span>
+                                        <span className="rounded-md bg-emerald-50 px-2 py-1 font-bold text-emerald-700">US: {Number(product.stock_us) || 0}</span>
+                                        <span className="rounded-md bg-violet-50 px-2 py-1 font-bold text-violet-700">UK: {Number(product.stock_uk) || 0}</span>
+                                      </div>
                                     </div>
                                   </div>
-                                  <button
-                                    type="button"
-                                    onClick={() => addProduct(product.id)}
-                                    className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-cyan-600 px-3 py-2 text-xs font-bold text-white hover:bg-cyan-700"
-                                  >
-                                    <Plus className="h-3.5 w-3.5" />Thêm
-                                  </button>
+                                  <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-slate-200 pt-3">
+                                    <label className="min-w-0 text-[11px] font-bold text-slate-500">
+                                      Cách nhập số lượng khi xuất
+                                      <select
+                                        value={product.quantity_mode || 'INTEGER'}
+                                        disabled={saving}
+                                        onChange={event => updateProductQuantityMode(product.id, event.target.value)}
+                                        title="Kiểu số lượng khi xuất kho"
+                                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
+                                      >
+                                        <option value="INTEGER">Chỉ nhập số nguyên (1, 2, 3…)</option>
+                                        <option value="DECIMAL">Cho nhập thập phân (1.2, 2.3…)</option>
+                                      </select>
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => addProduct(product.id)}
+                                      className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-cyan-700"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />Thêm
+                                    </button>
+                                  </div>
                                 </div>
                               ))}
                             </div>
@@ -602,24 +650,38 @@ export default function WarehouseManagement() {
                       <div className="text-xs font-bold text-cyan-700">Đã chọn {templateItems.length}/{products.length}</div>
                     </div>
 
-                    <div className="mt-3 overflow-hidden rounded-xl border border-slate-200">
-                      <div className="hidden grid-cols-[minmax(0,1fr)_150px_90px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:grid">
-                        <div>Mặt hàng</div><div>Số lượng mặc định</div><div className="text-right">Thao tác</div>
-                      </div>
+                    <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                      <div className="sm:min-w-[760px]">
+                        <div className="hidden grid-cols-[minmax(220px,1fr)_210px_170px_110px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:grid">
+                        <div>Mặt hàng</div><div>Kiểu số lượng</div><div>Số lượng mặc định</div><div className="text-right">Thao tác</div>
+                        </div>
                       {loadingTemplate ? (
                         <div className="p-10 text-center text-sm text-slate-500"><RefreshCw className="mx-auto mb-2 h-5 w-5 animate-spin text-cyan-600" />Đang tải mặt hàng…</div>
                       ) : templateItems.length ? templateItems.map((item, index) => (
-                        <div key={item.product_id} className="grid gap-3 border-t border-slate-100 px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(0,1fr)_150px_90px] sm:items-center">
+                        <div key={item.product_id} className="grid gap-3 border-t border-slate-100 px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(220px,1fr)_210px_170px_110px] sm:items-center">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-bold text-slate-800">{item.product_name}</div>
                             <div className="mt-0.5 text-xs font-mono text-slate-400">{item.barcode}</div>
                           </div>
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 sm:block">
+                            <span className="sm:hidden">Kiểu số lượng:</span>
+                            <select
+                              value={item.quantity_mode || 'INTEGER'}
+                              disabled={saving}
+                              onChange={event => updateProductQuantityMode(item.product_id, event.target.value)}
+                              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-cyan-500"
+                            >
+                              <option value="INTEGER">Số nguyên (1, 2, 3…)</option>
+                              <option value="DECIMAL">Thập phân (1.2, 2.3…)</option>
+                            </select>
+                          </label>
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-500 sm:block">
                             <span className="sm:hidden">Số lượng:</span>
                             <input
                               type="number"
-                              min="1"
-                              step="1"
+                              min={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
+                              step={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
+                              inputMode={item.quantity_mode === 'DECIMAL' ? 'decimal' : 'numeric'}
                               value={item.default_quantity}
                               onChange={event => updateItem(item.product_id, { default_quantity: Number(event.target.value) })}
                               className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-bold text-slate-950 outline-none focus:border-cyan-500 sm:w-full"
@@ -634,6 +696,7 @@ export default function WarehouseManagement() {
                       )) : (
                         <div className="p-10 text-center"><Package className="mx-auto h-7 w-7 text-slate-300" /><div className="mt-3 text-sm font-bold text-slate-700">Dịch vụ chưa có mặt hàng</div><div className="mt-1 text-xs text-slate-500">Chọn mặt hàng ở ô phía trên để thêm vào mẫu.</div></div>
                       )}
+                      </div>
                     </div>
                   </section>
                 </div>

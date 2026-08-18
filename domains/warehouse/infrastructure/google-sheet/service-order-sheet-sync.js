@@ -88,8 +88,8 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
             ),
             pool.query(
                 `SELECT p.id, p.barcode, p.product_name,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0)::int AS stock_us,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0)::int AS stock_uk
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0) AS stock_us,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0) AS stock_uk
                  FROM tk_products p
                  JOIN tk_warehouse_order_items oi ON oi.product_id = p.id
                  JOIN tk_warehouse_order_services os ON os.id = oi.order_service_id

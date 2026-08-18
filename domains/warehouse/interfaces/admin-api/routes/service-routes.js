@@ -7,6 +7,7 @@
 
 import { sendError, normalizeServiceCode } from '../admin-context.js';
 import { WarehouseError } from '../../../domain/constants.js';
+import { parseQuantity, quantityModeLabel } from '../../../domain/quantity-rules.js';
 
 export function registerServiceRoutes({ app, pool, getContext, requireWarehouseCatalogAccess }) {
     app.get('/api/admin/warehouse/services', async (req, res) => {
@@ -128,7 +129,7 @@ export function registerServiceRoutes({ app, pool, getContext, requireWarehouseC
             const context = await getContext(req);
             await requireWarehouseCatalogAccess(context);
             const result = await pool.query(
-                `SELECT sp.*, p.product_name, p.barcode
+                `SELECT sp.*, p.product_name, p.barcode, p.quantity_mode
                  FROM tk_warehouse_service_products sp
                  JOIN tk_products p ON p.id = sp.product_id
                  WHERE sp.service_id = $1
@@ -152,9 +153,7 @@ export function registerServiceRoutes({ app, pool, getContext, requireWarehouseC
                 throw new WarehouseError('Một sản phẩm không được xuất hiện hai lần trong cùng dịch vụ.');
             }
             for (const item of items) {
-                if (!item.product_id || !Number.isInteger(Number(item.default_quantity)) || Number(item.default_quantity) <= 0) {
-                    throw new WarehouseError('Sản phẩm mẫu phải có số lượng nguyên dương.');
-                }
+                if (!item.product_id) throw new WarehouseError('Sản phẩm mẫu không hợp lệ.');
             }
 
             await client.query('BEGIN');
@@ -179,12 +178,21 @@ export function registerServiceRoutes({ app, pool, getContext, requireWarehouseC
 
             if (productIds.length) {
                 const products = await client.query(
-                    `SELECT id FROM tk_products
+                    `SELECT id, product_name, quantity_mode FROM tk_products
                      WHERE id = ANY($1::uuid[])`,
                     [productIds]
                 );
                 if (products.rows.length !== productIds.length) {
                     throw new WarehouseError('Có sản phẩm không tồn tại.');
+                }
+                const productMap = new Map(products.rows.map(product => [product.id, product]));
+                for (const item of items) {
+                    const product = productMap.get(String(item.product_id));
+                    if (parseQuantity(item.default_quantity, product.quantity_mode) === null) {
+                        throw new WarehouseError(
+                            `Số lượng mặc định của ${product.product_name} phải là ${quantityModeLabel(product.quantity_mode)}.`
+                        );
+                    }
                 }
             }
 

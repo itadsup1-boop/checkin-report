@@ -34,6 +34,13 @@ import {
     markAbsenceNotificationsSent,
     applyApprovedLeavePenalties
 } from '../../domains/timekeep/attendance-penalties.js';
+import {
+    IMMEDIATE_LEAVE_TYPES,
+    createAutoAcceptedLeaveRequest,
+    rejectAutoAcceptedLeaveRequest
+} from '../../domains/timekeep/leave-request-service.js';
+import { findEmployeeForTimekeepContext } from './timekeep-employee-context.js';
+import { validateScheduleDates } from '../../domains/timekeep/schedule-date-policy.js';
 
 // Tạm tắt phụ phí 100.000đ khi đi muộn mà không có đơn báo trước.
 // Giữ thành cờ riêng để có thể bật lại mà không ảnh hưởng mức phạt đi muộn gốc.
@@ -505,11 +512,10 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
         }
 
         // 1. Get user details
-        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (employeeRes.rows.length === 0) {
+        const user = await findEmployeeForTimekeepContext(pool, telegram_id, chat_id);
+        if (!user) {
             return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
         }
-        const user = employeeRes.rows[0];
 
         const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
         user.is_admin = isAdmin;
@@ -639,13 +645,30 @@ botApp.post('/api/timekeep/schedule/save', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Dữ liệu không hợp lệ!' });
         }
 
-        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (employeeRes.rows.length === 0) {
+        const caller = await findEmployeeForTimekeepContext(pool, telegram_id, chat_id);
+        if (!caller) {
             return res.status(404).json({ success: false, message: 'Tài khoản yêu cầu không tồn tại trong hệ thống!' });
         }
-        const caller = employeeRes.rows[0];
 
         const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || caller.role === 'admin';
+
+        const scheduleDateValidation = validateScheduleDates({
+            days,
+            today: moment().utcOffset(7).format('YYYY-MM-DD'),
+            isAdmin
+        });
+        if (!scheduleDateValidation.valid) {
+            if (scheduleDateValidation.reason === 'PAST_DATE') {
+                return res.status(400).json({
+                    success: false,
+                    message: `Không thể đăng ký hoặc thay đổi lịch của ngày đã qua (${moment(scheduleDateValidation.date).format('DD/MM/YYYY')}).`
+                });
+            }
+            return res.status(400).json({
+                success: false,
+                message: 'Danh sách ngày đăng ký không hợp lệ.'
+            });
+        }
         
         let schedule_registration_open = true;
         if (chat_id) {
@@ -982,15 +1005,20 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
         if (!telegram_id || !request_type || !date || !reason) {
             return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc!' });
         }
+        if (!IMMEDIATE_LEAVE_TYPES.includes(request_type)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Loại đơn này không thuộc luồng nghỉ đột xuất hoặc đi muộn.'
+            });
+        }
 
         // 1. Get user details
         console.log(`[DEBUG API XIN NGHỈ] Đang query DB employees...`);
         let userRes;
-        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (employeeRes.rows.length === 0) {
+        const user = await findEmployeeForTimekeepContext(pool, telegram_id, chat_id);
+        if (!user) {
             return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
         }
-        const user = employeeRes.rows[0];
 
         const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
 
@@ -1042,22 +1070,19 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
             }
         }
 
-        // 3.5. Cancel any existing requests for the same date (Auto-Overwrite)
-        await pool.query(
-            `UPDATE tk_leave_requests 
-             SET status = 'CANCELLED' 
-             WHERE user_id = $1 AND date = $2 AND status IN ('PENDING', 'APPROVED', 'REJECTED')`,
-            [user.id, date]
-        );
-
-        // 4. Save request into database
-        const insertRes = await pool.query(
-            `INSERT INTO tk_leave_requests (group_id, user_id, request_type, late_minutes, date, reason, proof_url, status)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING')
-             RETURNING id`,
-            [groupId, user.id, request_type, late_minutes, date, reason, proofUrl]
-        );
-        const requestId = insertRes.rows[0].id;
+        // 4. Đơn nghỉ đột xuất/đi muộn có hiệu lực ngay. Lịch cũ được chụp lại
+        // trong cùng transaction để có thể khôi phục chính xác nếu quản lý từ chối.
+        const autoAccepted = await createAutoAcceptedLeaveRequest({
+            pool,
+            groupId,
+            userId: user.id,
+            requestType: request_type,
+            lateMinutes: late_minutes,
+            date,
+            reason,
+            proofUrl
+        });
+        const requestId = autoAccepted.request.id;
 
         // 5. Send message to the group for approval
         if (telegramGroupId) {
@@ -1069,12 +1094,13 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
             const displayDate = moment(date).format('DD/MM/YYYY');
             const miniAppUrl = process.env.MINI_APP_URL || 'https://YOUR_TUNNEL.trycloudflare.com';
 
-            let msg = `🚨 <b>YÊU CẦU DUYỆT NGHỈ ĐỘT XUẤT / ĐI MUỘN</b>\n\n` +
+            let msg = `✅ <b>ĐƠN ĐÃ ĐƯỢC TỰ ĐỘNG CHẤP NHẬN</b>\n\n` +
                 `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
                 `💼 <b>Vị trí:</b> ${user.role}\n` +
                 `📅 <b>Ngày xin phép:</b> ${displayDate}\n` +
                 `📝 <b>Loại yêu cầu:</b> ${requestTypeName}\n` +
-                `💬 <b>Lý do:</b> ${reason}\n`;
+                `💬 <b>Lý do:</b> ${reason}\n` +
+                `📌 <b>Trạng thái:</b> Có hiệu lực ngay\n`;
 
             if (proofUrl) {
                 msg += `📸 <b>Minh chứng:</b> <a href="${miniAppUrl}${proofUrl}">Xem ảnh đính kèm</a>\n`;
@@ -1083,24 +1109,30 @@ botApp.post('/api/timekeep/leave-request/save', async (req, res) => {
             }
 
             msg += `\n------------------------------------------\n` +
-                `<i>Vui lòng Quản lý (Admin) bấm chọn nút dưới đây để phê duyệt:</i>`;
+                `<i>Quản lý/Admin chỉ bấm “Từ chối” nếu không chấp nhận đơn này.</i>`;
+
+            const actionRows = [[
+                { text: 'Từ chối ❌', callback_data: `reject_leave_${requestId}` }
+            ]];
+            if (autoAccepted.leavePenalties.consecutivePenaltyId) {
+                actionRows.push([{
+                    text: '✅ Miễn phạt nghỉ liên tiếp',
+                    callback_data: `excuse_penalty_${autoAccepted.leavePenalties.consecutivePenaltyId}`
+                }]);
+            }
 
             console.log(`[DEBUG API XIN NGHỈ] Đang gửi tin nhắn cho group ${telegramGroupId}`);
             await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, {
                 parse_mode: 'HTML',
                 reply_markup: {
-                    inline_keyboard: [
-                        [
-                            { text: 'Duyệt ✅', callback_data: `approve_leave_${requestId}` },
-                            { text: 'Từ chối ❌', callback_data: `reject_leave_${requestId}` }
-                        ]
-                    ]
+                    inline_keyboard: actionRows
                 }
             }, 'leave_request_notice');
             console.log(`[DEBUG API XIN NGHỈ] Đã gửi thành công.`);
         }
 
-        res.json({ success: true, message: 'Gửi yêu cầu thành công, đang chờ Quản lý duyệt!' });
+        syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
+        res.json({ success: true, message: 'Đơn đã được chấp nhận và có hiệu lực ngay. Quản lý có thể từ chối trên nhóm.' });
 
     } catch (error) {
         console.error('[Save Leave Request Error]:', error);
@@ -1122,11 +1154,10 @@ botApp.post('/api/timekeep/checkin/save', uploadCheckin.single('video_file'), as
         }
 
         // 1. Get user details
-        const employeeRes = await pool.query('SELECT * FROM employees WHERE telegram_id = $1 LIMIT 1', [telegram_id]);
-        if (employeeRes.rows.length === 0) {
+        const user = await findEmployeeForTimekeepContext(pool, telegram_id, chat_id);
+        if (!user) {
             return res.status(404).json({ success: false, message: 'Nhân sự chưa đăng ký tài khoản! Vui lòng đăng ký trước.' });
         }
-        const user = employeeRes.rows[0];
 
         const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
 
@@ -1316,14 +1347,12 @@ async function startHandler(ctx) {
 
             if (!botRole) {
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
                     `⚠️ Nhóm chưa được phân quyền. Vui lòng liên hệ Admin để set quyền cho Bot trong nhóm này.`,
                     { parse_mode: 'HTML' }
                 );
             } else if (botRole === 'timekeep') {
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
-                    `Vui lòng chọn chức năng chấm công:`,
+                    `Vui lòng chọn chức năng:`,
                     {
                         parse_mode: 'HTML',
                         reply_markup: {
@@ -1349,8 +1378,7 @@ async function startHandler(ctx) {
                 const whInventoryUrl = createWebAppUrl('whinventory', 'warehouse_inventory.html');
 
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
-                    `Vui lòng chọn chức năng quản lý kho:`,
+                    `Vui lòng chọn chức năng:`,
                     {
                         parse_mode: 'HTML',
                         reply_markup: {
@@ -1371,8 +1399,7 @@ async function startHandler(ctx) {
                 );
             } else if (botRole === 'report') {
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
-                    `Vui lòng chọn chức năng báo cáo:`,
+                    `Vui lòng chọn chức năng:`,
                     {
                         parse_mode: 'HTML',
                         reply_markup: {
@@ -1393,7 +1420,6 @@ async function startHandler(ctx) {
                 );
             } else if (botRole === 'report_tour') {
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
                     `Vui lòng chọn chức năng:`,
                     {
                         parse_mode: 'HTML',
@@ -1414,7 +1440,6 @@ async function startHandler(ctx) {
                 );
             } else if (botRole === 'customer' || botRole === 'customer_record') {
                 await ctx.reply(
-                    `👋 Xin chào các thành viên nhóm <b>${groupName}</b>!\n\n` +
                     `Vui lòng chọn chức năng:`,
                     {
                         parse_mode: 'HTML',
@@ -1679,7 +1704,11 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
 
         const request = requestRes.rows[0];
 
-        if (request.status !== 'PENDING') {
+        const isAutoReject = action === 'reject'
+            && request.auto_accepted === true
+            && request.status === 'APPROVED';
+
+        if (!isAutoReject && request.status !== 'PENDING') {
             return ctx.answerCbQuery(`Yêu cầu này đã được xử lý trước đó (Trạng thái: ${request.status})!`, { show_alert: true });
         }
 
@@ -1689,11 +1718,23 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
 
         const newStatus = action === 'approve' ? 'APPROVED' : 'REJECTED';
 
-        // 4. Update request status in DB
-        await pool.query(
-            'UPDATE tk_leave_requests SET status = $1, approved_by = $2 WHERE id = $3',
-            [newStatus, adminName, requestId]
-        );
+        // 4. Đơn mới đã có hiệu lực ngay; khi từ chối phải thu hồi hiệu lực và
+        // khôi phục lịch/phạt trong transaction. Đơn PENDING cũ vẫn giữ luồng cũ.
+        if (isAutoReject) {
+            const outcome = await rejectAutoAcceptedLeaveRequest({
+                pool,
+                requestId,
+                rejectedBy: adminName
+            });
+            if (outcome.result !== 'REJECTED') {
+                return ctx.answerCbQuery('Đơn này không còn ở trạng thái có thể từ chối!', { show_alert: true });
+            }
+        } else {
+            await pool.query(
+                'UPDATE tk_leave_requests SET status = $1, approved_by = $2 WHERE id = $3',
+                [newStatus, adminName, requestId]
+            );
+        }
 
         let penaltyButtons = [];
 
@@ -1789,6 +1830,10 @@ bot.action(/^(approve|reject)_leave_(.+)$/, async (ctx) => {
         });
 
         await ctx.answerCbQuery(`Đã ${newStatus === 'APPROVED' ? 'duyệt' : 'từ chối'} yêu cầu!`);
+
+        if (isAutoReject) {
+            syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
+        }
 
         // 7. Notify the employee directly in private message if possible
         try {
@@ -2133,6 +2178,7 @@ cron.schedule('*/1 * * * *', async () => {
                     const leaveReqRes = await pool.query(
                         `SELECT id FROM tk_leave_requests 
                          WHERE user_id = $1 AND date = $2 AND request_type = 'LATE'
+                           AND status = 'APPROVED'
                          LIMIT 1`,
                         [c.user_id, c.date]
                     );
@@ -2264,14 +2310,10 @@ botApp.get('/api/timekeep/personal-stats', async (req, res) => {
         const group = groupRes.rows[0];
 
         // 2. Tìm nhân sự
-        const employeeRes = await pool.query(
-            'SELECT id, full_name, role, group_id FROM employees WHERE telegram_id = $1 LIMIT 1',
-            [telegram_id]
-        );
-        if (employeeRes.rows.length === 0) {
+        const user = await findEmployeeForTimekeepContext(pool, telegram_id, chat_id);
+        if (!user) {
             return res.status(404).json({ error: 'Tài khoản chưa được đăng ký trong hệ thống' });
         }
-        const user = employeeRes.rows[0];
 
         const isAdmin = (process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id))) || user.role === 'admin';
 
@@ -2613,8 +2655,12 @@ async function sendSundayScheduleReminder(type) {
             const unregisteredRes = await pool.query(`
                 SELECT e.id, e.full_name, e.telegram_id, e.telegram_username
                 FROM employees e
+                LEFT JOIN employee_group_memberships gm
+                  ON gm.employee_id = e.id
+                 AND gm.telegram_group_id = $1
                 WHERE e.telegram_group_id = $1 
                   AND e.is_active = true 
+                  AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
                   AND e.full_name NOT LIKE '/%' 
                   AND e.full_name != 'tester'
                   AND NOT EXISTS (

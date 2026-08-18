@@ -3,12 +3,15 @@ import assert from 'node:assert/strict';
 import {
     WarehouseError,
     aggregateOrderItems,
+    parseQuantity,
     validateOrderInput
 } from '../index.js';
 
 const valid = {
     customer_name: 'Nguyễn Thị A',
     customer_phone: '0901234567',
+    doctor_name: 'Bác sĩ An',
+    technician_name: 'Kỹ thuật viên Bình',
     branch: 'US',
     idempotency_key: 'test-key',
     services: [
@@ -38,18 +41,41 @@ test('validation giữ sản phẩm theo dịch vụ nhưng aggregate cộng t�
     assert.equal(totals.get(valid.services[0].items[0].product_id), 5);
 });
 
-test('validation chặn số lượng thập phân, âm và cơ sở không hợp lệ', () => {
-    assert.throws(
-        () => validateOrderInput({
-            ...valid,
-            services: [{
-                ...valid.services[0],
-                items: [{ ...valid.services[0].items[0], actual_quantity: 1.5 }]
-            }]
-        }),
-        WarehouseError
-    );
+test('validation nhận số thập phân hợp lệ và vẫn chặn số âm, sai độ chính xác', () => {
+    const decimal = validateOrderInput({
+        ...valid,
+        services: [{
+            ...valid.services[0],
+            items: [{ ...valid.services[0].items[0], actual_quantity: 1.5 }]
+        }]
+    });
+    assert.equal(decimal.services[0].items[0].actual_quantity, 1.5);
+    assert.throws(() => validateOrderInput({
+        ...valid,
+        services: [{
+            ...valid.services[0],
+            items: [{ ...valid.services[0].items[0], actual_quantity: -1 }]
+        }]
+    }), WarehouseError);
+    assert.throws(() => validateOrderInput({
+        ...valid,
+        services: [{
+            ...valid.services[0],
+            items: [{ ...valid.services[0].items[0], actual_quantity: 1.02 }]
+        }]
+    }), WarehouseError);
     assert.throws(() => validateOrderInput({ ...valid, branch: 'HN' }), WarehouseError);
+});
+
+test('quy tắc số lượng áp dụng riêng theo cấu hình từng sản phẩm', () => {
+    assert.equal(parseQuantity(2, 'INTEGER'), 2);
+    assert.equal(parseQuantity(1.2, 'DECIMAL'), 1.2);
+    assert.equal(parseQuantity('2.300', 'DECIMAL'), 2.3);
+    assert.equal(parseQuantity(1.2, 'INTEGER'), null);
+    assert.equal(parseQuantity(1.02, 'DECIMAL'), null);
+    assert.equal(parseQuantity(1.002, 'DECIMAL'), null);
+    assert.equal(parseQuantity(1.2345, 'DECIMAL'), null);
+    assert.equal(parseQuantity(0, 'DECIMAL'), null);
 });
 
 test('số điện thoại khách hàng chỉ yêu cầu tối thiểu 4 chữ số', () => {
@@ -59,6 +85,14 @@ test('số điện thoại khách hàng chỉ yêu cầu tối thiểu 4 chữ s
         () => validateOrderInput({ ...valid, customer_phone: '12 3' }),
         error => error instanceof WarehouseError && error.code === 'INVALID_CUSTOMER_PHONE'
     );
+});
+
+test('đơn xuất theo khách bắt buộc có bác sĩ và kỹ thuật viên', () => {
+    const normalized = validateOrderInput(valid);
+    assert.equal(normalized.doctor_name, 'Bác sĩ An');
+    assert.equal(normalized.technician_name, 'Kỹ thuật viên Bình');
+    assert.throws(() => validateOrderInput({ ...valid, doctor_name: ' ' }), WarehouseError);
+    assert.throws(() => validateOrderInput({ ...valid, technician_name: '' }), WarehouseError);
 });
 
 test('sản phẩm bị loại không được cộng vào tổng tồn', () => {

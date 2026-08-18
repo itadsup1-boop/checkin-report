@@ -25,7 +25,9 @@ export function renderConfirmStep({ state, catalog }) {
             body: h('div', null,
                 summaryRow('Cơ sở', branchName(state.branch)),
                 summaryRow('Khách hàng', state.customerName.trim()),
-                summaryRow('Số điện thoại', state.customerPhone.trim())
+                summaryRow('Số điện thoại', state.customerPhone.trim()),
+                summaryRow('Bác sĩ', state.doctorName.trim()),
+                summaryRow('Kỹ thuật viên', state.technicianName.trim())
             )
         }),
 

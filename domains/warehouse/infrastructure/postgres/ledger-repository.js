@@ -8,6 +8,8 @@
  * thành công một bên thất bại là sổ lệch với tồn thực vĩnh viễn.
  */
 
+import { roundQuantity } from '../../domain/quantity-rules.js';
+
 export function createLedgerRepository(pool) {
     /** Bút toán xuất kho lấy từ chính cơ sở đang đứng. */
     async function recordLocalExport(db, {
@@ -73,7 +75,7 @@ export function createLedgerRepository(pool) {
                 toBranch,
                 quantity,
                 toBalanceAfterLocal,
-                toBalanceAfterLocal + quantity,
+                roundQuantity(toBalanceAfterLocal + quantity),
                 JSON.stringify({ from_branch: fromBranch, direct_use: true, virtual_balance: true }),
                 `${order.id}:${productId}:customer-transfer`,
                 -quantity,
@@ -92,7 +94,7 @@ export function createLedgerRepository(pool) {
     async function listPhysicalMovements(db, orderId) {
         const result = await db.query(
             `SELECT product_id, branch,
-                    SUM(-quantity_delta)::int AS restore_quantity,
+                    SUM(-quantity_delta) AS restore_quantity,
                     ARRAY_AGG(id ORDER BY created_at, id) AS source_ledger_ids
              FROM tk_warehouse_ledger
              WHERE order_id = $1

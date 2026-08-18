@@ -15,6 +15,7 @@
  */
 
 import { WAREHOUSE_ORDER_STATUSES, WarehouseError } from '../domain/constants.js';
+import { roundQuantity } from '../domain/quantity-rules.js';
 import { makeCode } from './_shared/codes.js';
 
 export function createApproveOrderUseCase({
@@ -91,9 +92,9 @@ export function createApproveOrderUseCase({
             const localBefore = allocation[order.branch];
             const otherBefore = allocation[otherBranch];
             const localDeduct = Math.min(allocation.required, localBefore);
-            const transferDeduct = allocation.required - localDeduct;
-            const localAfter = localBefore - localDeduct;
-            const otherAfter = otherBefore - transferDeduct;
+            const transferDeduct = roundQuantity(allocation.required - localDeduct);
+            const localAfter = roundQuantity(localBefore - localDeduct);
+            const otherAfter = roundQuantity(otherBefore - transferDeduct);
 
             // Bước 1: trừ phần lấy được ngay tại cơ sở đang đứng.
             if (localDeduct > 0) {
@@ -149,8 +150,8 @@ export function createApproveOrderUseCase({
             for (const item of productItems) {
                 const quantity = Number(item.actual_quantity);
                 const itemLocal = Math.min(quantity, remainingLocal);
-                const itemTransfer = quantity - itemLocal;
-                remainingLocal -= itemLocal;
+                const itemTransfer = roundQuantity(quantity - itemLocal);
+                remainingLocal = roundQuantity(remainingLocal - itemLocal);
                 await orderRepo.setItemAllocation(client, item.id, {
                     localQuantity: itemLocal,
                     transferQuantity: itemTransfer,

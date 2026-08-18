@@ -115,13 +115,13 @@ export function updateScheduleDetails(form) {
 
 export async function loadPhotoDebts(date) {
     const data = await request(`/api/photo-debts?${query({
-        date, telegram_id: getTelegramUserId()
-    })}`);
+        date, groupId: getGroupId()
+    })}`, { headers: authHeaders() });
     return data.data || [];
 }
 
 export function uploadProof({ id, imageBase64 }) {
-    return jsonPost('/api/upload-proof', { id, imageBase64 });
+    return jsonPost('/api/upload-proof', { id, imageBase64, groupId: getGroupId() });
 }
 
 /* ---------- Tab Báo bù công tour ---------- */

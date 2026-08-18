@@ -111,6 +111,8 @@ function orderInput(key, quantities = [2, 3]) {
     return {
         customer_name: 'Khách kiểm thử',
         customer_phone: '0900000000',
+        doctor_name: 'Bác sĩ kiểm thử',
+        technician_name: 'Kỹ thuật viên kiểm thử',
         branch: 'UK',
         idempotency_key: `${key}-${suffix}`,
         services: ids.serviceIds.map((serviceId, index) => ({
@@ -213,6 +215,8 @@ test('warehouse service order integration', async t => {
             submit: true
         }));
         assert.equal(order.status, 'PENDING_APPROVAL');
+        assert.equal(order.doctor_name, 'Bác sĩ kiểm thử');
+        assert.equal(order.technician_name, 'Kỹ thuật viên kiểm thử');
         assert.equal(order.services.length, 2);
         assert.equal(order.services[0].items[0].actual_quantity, 2);
         assert.equal(order.services[1].items[0].actual_quantity, 3);
@@ -220,7 +224,7 @@ test('warehouse service order integration', async t => {
             'SELECT branch, quantity FROM tk_inventory WHERE product_id = $1 ORDER BY branch',
             [ids.productId]
         );
-        assert.deepEqual(stock.rows.map(row => [row.branch, row.quantity]), [['UK', 2], ['US', 10]]);
+        assert.deepEqual(stock.rows.map(row => [row.branch, Number(row.quantity)]), [['UK', 2], ['US', 10]]);
         const pendingEvent = await pool.query(
             `SELECT payload
              FROM tk_warehouse_outbox
@@ -254,7 +258,7 @@ test('warehouse service order integration', async t => {
             'SELECT branch, quantity FROM tk_inventory WHERE product_id = $1 ORDER BY branch',
             [ids.productId]
         );
-        assert.deepEqual(stock.rows.map(row => [row.branch, row.quantity]), [['UK', 0], ['US', 7]]);
+        assert.deepEqual(stock.rows.map(row => [row.branch, Number(row.quantity)]), [['UK', 0], ['US', 7]]);
         const ledger = await pool.query(
             `SELECT event_type, quantity_delta
              FROM tk_warehouse_ledger WHERE order_id = $1 ORDER BY created_at, event_type`,
@@ -364,7 +368,7 @@ test('warehouse service order integration', async t => {
             'SELECT branch, quantity FROM tk_inventory WHERE product_id = $1 ORDER BY branch',
             [ids.productId]
         );
-        assert.deepEqual(stock.rows.map(row => [row.branch, row.quantity]), [['UK', 2], ['US', 6]]);
+        assert.deepEqual(stock.rows.map(row => [row.branch, Number(row.quantity)]), [['UK', 2], ['US', 6]]);
 
         const reversals = await pool.query(
             `SELECT branch, quantity_delta, actor_telegram_id
@@ -374,7 +378,7 @@ test('warehouse service order integration', async t => {
             [ids.orderIds[0]]
         );
         assert.deepEqual(
-            reversals.rows.map(row => [row.branch, row.quantity_delta, row.actor_telegram_id]),
+            reversals.rows.map(row => [row.branch, Number(row.quantity_delta), row.actor_telegram_id]),
             [['UK', 2, 'admin:integration-admin'], ['US', 3, 'admin:integration-admin']]
         );
 
@@ -432,6 +436,65 @@ test('warehouse service order integration', async t => {
         });
         assert.equal(rejected.status, 'REJECTED');
         assert.equal(rejected.rejected_by_telegram_id, 'admin:web-admin-1');
+    });
+
+    await t.test('sản phẩm bật thập phân xuất chính xác 1.2 và 2.3, sản phẩm số nguyên vẫn chặn', async () => {
+        await pool.query(
+            `UPDATE tk_products SET quantity_mode = 'DECIMAL' WHERE id = $1`,
+            [ids.productId]
+        );
+        await pool.query(
+            `UPDATE tk_inventory
+             SET quantity = CASE branch WHEN 'UK' THEN 2 ELSE 10 END
+             WHERE product_id = $1`,
+            [ids.productId]
+        );
+
+        const pending = await remember(await service.createOrder({
+            telegramId: creatorTelegramId,
+            chatId: groupTelegramId,
+            input: orderInput('decimal-export', [1.2, 2.3]),
+            submit: true
+        }));
+        await service.approveOrder({
+            orderId: pending.id,
+            telegramId: managerTelegramId,
+            chatId: groupTelegramId
+        });
+
+        const stock = await pool.query(
+            'SELECT branch, quantity FROM tk_inventory WHERE product_id = $1 ORDER BY branch',
+            [ids.productId]
+        );
+        assert.deepEqual(stock.rows.map(row => [row.branch, Number(row.quantity)]), [['UK', 0], ['US', 8.5]]);
+        const exported = await pool.query(
+            `SELECT SUM(-quantity_delta) AS quantity
+             FROM tk_warehouse_ledger
+             WHERE order_id = $1 AND event_type = 'CUSTOMER_EXPORT'`,
+            [pending.id]
+        );
+        assert.equal(Number(exported.rows[0].quantity), 3.5);
+
+        await assert.rejects(
+            service.createOrder({
+                telegramId: creatorTelegramId,
+                chatId: groupTelegramId,
+                input: orderInput('decimal-rejects-extra-precision', [1.02, 1]),
+                submit: true
+            }),
+            error => error instanceof WarehouseError && error.code === 'INVALID_QUANTITY'
+        );
+
+        await pool.query(`UPDATE tk_products SET quantity_mode = 'INTEGER' WHERE id = $1`, [ids.productId]);
+        await assert.rejects(
+            service.createOrder({
+                telegramId: creatorTelegramId,
+                chatId: groupTelegramId,
+                input: orderInput('integer-rejects-decimal', [1.2, 1]),
+                submit: true
+            }),
+            error => error instanceof WarehouseError && error.code === 'INVALID_PRODUCT_QUANTITY'
+        );
     });
 
 });

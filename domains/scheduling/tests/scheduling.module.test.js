@@ -15,6 +15,10 @@ import {
 import {
     buildDueReminder,
     buildArrivedMessage,
+    buildPhotoDebtReminder,
+    buildPhotoDebtSummary,
+    parseAppointmentReplyReference,
+    normalizeAppointmentIdentityText,
     arrivalKeyboard,
     cancelReasonKeyboard
 } from '../domain/appointment-messages.js';
@@ -365,6 +369,7 @@ test('tin nhắn giữ nguyên nút cũ và mã lịch', () => {
         service: 'S', sessions: '1/10', employee_name: 'Lan'
     };
     assert.match(buildDueReminder(appointment), /BÁO ĐỘNG LỊCH KHÁCH HÀNG ĐẾN GIỜ/);
+    assert.match(buildDueReminder(appointment), /🆔 Mã Lịch: #7/);
     assert.match(buildArrivedMessage('tin cũ', 7), /🆔 Mã Lịch: #7/);
     assert.match(buildArrivedMessage('tin cũ', 7), /NỢ 1 ẢNH BẰNG CHỨNG/);
 
@@ -374,6 +379,67 @@ test('tin nhắn giữ nguyên nút cũ và mã lịch', () => {
         cancelReasonKeyboard(7).inline_keyboard.map(row => row[0].callback_data),
         ['cr_bom_7', 'cr_ban_7', 'cr_tien_7', 'cr_khacspa_7', 'cr_app_7', 'cr_back_7']
     );
+});
+
+test('nhóm report được nhắc lịch thiếu sau 30 phút và cuối ngày, không dùng công tour', () => {
+    const item = {
+        id: 7,
+        appointment_time: '2026-08-14T02:00:00Z',
+        customer_name: 'Khách A',
+        employee_name: 'Lan',
+        status: 'ACTIVE',
+        proof_image: null,
+        is_photo_debt: false
+    };
+    const reminder = buildPhotoDebtReminder(item);
+    const summary = buildPhotoDebtSummary([item], '14/08/2026');
+
+    assert.match(reminder, /LỊCH KHÁCH CHƯA HOÀN TẤT/);
+    assert.match(reminder, /Hoàn Tất Lịch/);
+    assert.match(summary, /LỊCH CHƯA HOÀN TẤT ẢNH/);
+    assert.doesNotMatch(`${reminder}\n${summary}`, /công tour|doanh thu/i);
+
+    const repository = fs.readFileSync(
+        path.join(DOMAIN_DIR, 'infrastructure', 'postgres', 'completion-repository.js'), 'utf8');
+    assert.match(repository, /completion_reminded_at IS NULL/);
+    assert.match(repository, /INTERVAL '30 minutes'/);
+    assert.match(repository, /markCompletionReminded/);
+    assert.match(repository, /g\.bot_role = 'report'/);
+});
+
+test('reply ảnh đọc mã lịch mới và vẫn nhận diện được tin nhắn cũ', () => {
+    assert.deepEqual(parseAppointmentReplyReference(
+        '⏰ Giờ hẹn: 09:30\n👤 Khách hàng: Vũ thị quyên (SĐT: 02468)\n🆔 Mã Lịch: #543'
+    ), {
+        id: '543',
+        customerName: 'Vũ thị quyên',
+        phone: '02468',
+        appointmentTime: '09:30'
+    });
+    assert.deepEqual(parseAppointmentReplyReference(
+        '⏰ Giờ hẹn: 09:30\n👤 Khách hàng: Vũ thị quyên (SĐT: 02468)'
+    ), {
+        id: null,
+        customerName: 'Vũ thị quyên',
+        phone: '02468',
+        appointmentTime: '09:30'
+    });
+    assert.equal(
+        normalizeAppointmentIdentityText('Vũ thị Quyên'),
+        normalizeAppointmentIdentityText('Vũ thị Quyên')
+    );
+});
+
+test('reply ảnh lịch khách nhận cả ACTIVE và luôn giới hạn đúng nhóm', () => {
+    const source = fs.readFileSync(
+        fileURLToPath(new URL('../../../apps/bot/kpi_features.js', import.meta.url)), 'utf8');
+    assert.match(source, /status IN \('ACTIVE', 'ARRIVED'\)/);
+    assert.match(source, /group_id = \$2/);
+    assert.match(source, /SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = \$1/);
+    assert.match(source, /TO_CHAR\(appointment_time, 'HH24:MI'\)/);
+    assert.match(source, /groupRole === 'report'/);
+    assert.match(source, /diff\(moment\(apt\.appointment_time\), 'hours', true\) > 48/);
+    assert.match(source, /canOverride = isAdmin \|\| managerRes\.rows\.length > 0/);
 });
 
 /* ---------- Luật kiến trúc, nhân bản từ domains/warehouse ---------- */

@@ -528,6 +528,8 @@ test('Mini App xuất kho giữ đúng contract của hai API xuất kho', () =>
     assert.match(quick, /barcode:/);
     assert.match(quick, /quantity:/);
     assert.match(quick, /branch/);
+    assert.match(quick, /quantity_mode === 'DECIMAL'/);
+    assert.match(quick, /allowDecimal/);
 
     // Luồng đơn khách hàng đã tách thành thư mục riêng vì file cũ dài 610 dòng.
     // Gộp lại để soi contract như một khối, tránh sót khi thêm bước mới.
@@ -539,6 +541,8 @@ test('Mini App xuất kho giữ đúng contract của hai API xuất kho', () =>
 
     assert.match(customer, /\/api\/warehouse\/service-orders/);
     assert.match(customer, /service_id/);
+    assert.match(customer, /doctor_name/);
+    assert.match(customer, /technician_name/);
     assert.match(customer, /is_removed/);
     assert.match(customer, /item_source/);
     assert.match(customer, /template_quantity/);
@@ -546,11 +550,28 @@ test('Mini App xuất kho giữ đúng contract của hai API xuất kho', () =>
     assert.match(customer, /phoneDigitCount\(state\.customerPhone\) >= 4/);
     assert.match(customer, /Nhập ít nhất 4 số/);
     assert.doesNotMatch(customer, /customerPhone\.trim\(\)\.length >= (?:8|10)/);
+    assert.match(customer, /quantity_mode/);
+
+    const components = readExportModule('ui/components.js');
+    assert.match(components, /inputMode: allowDecimal \? 'decimal' : 'numeric'/);
+    assert.match(components, /type: 'number'/);
 
     // Chống mất dữ liệu khi Mini App bị đóng giữa lúc nhập.
     const draft = readSharedModule('core/draft.js');
     assert.match(draft, /localStorage\.setItem/);
     assert.match(draft, /localStorage\.removeItem/);
+});
+
+test('Mini App xuất kho chỉ nhận tối đa một chữ số sau dấu thập phân', () => {
+    const components = readExportModule('ui/components.js');
+    const quick = readExportModule('flows/quick-export.js');
+    const orderDraft = readExportModule('flows/order/order-draft.js');
+    const productStep = readExportModule('flows/order/steps/product-step.js');
+
+    assert.match(components, /toFixed\(1\)/);
+    assert.match(components, /next \* 10/);
+    assert.doesNotMatch(components, /toFixed\(3\)/);
+    assert.doesNotMatch(`${quick}\n${orderDraft}\n${productStep}`, /0\.001|toFixed\(3\)/);
 });
 
 test('asset Mini App kho có cơ chế đổi URL theo phiên bản', () => {

@@ -8,6 +8,7 @@
 
 import { WarehouseError } from '../../domain/constants.js';
 import { aggregateOrderItems } from '../../domain/order-validation.js';
+import { roundQuantity } from '../../domain/quantity-rules.js';
 
 export function createAvailabilityService({ inventoryRepo }) {
     /**
@@ -46,7 +47,7 @@ export function createAvailabilityService({ inventoryRepo }) {
         const allocations = [];
         for (const [productId, required] of totals) {
             const stock = stocks.get(productId);
-            const totalStock = stock.US + stock.UK;
+            const totalStock = roundQuantity(stock.US + stock.UK);
             if (totalStock < required) {
                 shortages.push({
                     product_id: productId,
@@ -55,7 +56,7 @@ export function createAvailabilityService({ inventoryRepo }) {
                     required,
                     stock_us: stock.US,
                     stock_uk: stock.UK,
-                    missing: required - totalStock
+                    missing: roundQuantity(required - totalStock)
                 });
             }
             allocations.push({ ...stock, required });

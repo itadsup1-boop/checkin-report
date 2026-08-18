@@ -45,6 +45,7 @@ export async function loadCatalog() {
         id: row.product_id,
         barcode: row.barcode || '',
         product_name: row.product_name || '',
+        quantity_mode: row.quantity_mode === 'DECIMAL' ? 'DECIMAL' : 'INTEGER',
         stock_us: Number(row.stock_us) || 0,
         stock_uk: Number(row.stock_uk) || 0
     }));
@@ -70,6 +71,7 @@ export async function loadCatalog() {
             product_id: item.product_id,
             product_name: item.product_name,
             barcode: item.barcode || '',
+            quantity_mode: item.quantity_mode === 'DECIMAL' ? 'DECIMAL' : 'INTEGER',
             default_quantity: Number(item.default_quantity) || 1,
             display_order: Number(item.display_order ?? index)
         }))

@@ -67,17 +67,21 @@ test('mọi module lịch khách có cú pháp hợp lệ và không import ch�
     }
 });
 
-test('đủ 5 tab và tab Báo Bù chỉ dành cho nhóm report_tour', () => {
+test('đủ 5 tab; report có Hoàn Tất Lịch, report_tour giữ Báo Bù', () => {
     const app = readModule('app.js');
     for (const key of ['check', 'add', 'edit', 'tasks', 'makeup']) {
         assert.match(app, new RegExp(`key: '${key}'`), `thiếu tab ${key}`);
     }
-    // Gate vai trò: chỉ nhóm tour thấy tab Báo Bù.
-    assert.match(app, /tourOnly: true/);
-    assert.match(app, /!tab\.tourOnly \|\| isTour/);
+    // Hai role lịch khách cùng có tab thứ 5, nhưng dùng đúng nghiệp vụ riêng.
+    assert.match(app, /role === 'report_tour' \? 'Báo Bù' : 'Hoàn Tất Lịch'/);
+    assert.match(app, /role === 'report' \|\| isTour/);
     assert.match(app, /role === 'report_tour'/);
-    // Lỗi mạng khi hỏi vai trò thì coi như KHÔNG phải tour.
-    assert.match(app, /\.catch\(\(\) => render\(false,/);
+    assert.match(app, /isTour \? createMakeupTab\(\) : createCompletionTab\(\)/);
+    assert.match(app, /key: 'tasks', label: 'Nhiệm Vụ', tourOnly: true/);
+    assert.match(app, /!tab\.tourOnly \|\| isTour/);
+    assert.match(app, /if \(radios\.tasks\) tabs\.tasks\.reload\(\)/);
+    // Lỗi mạng khi hỏi vai trò thì không mở nhầm tính năng scheduling đặc biệt.
+    assert.match(app, /\.catch\(\(\) => render\(null,/);
 });
 
 test('chuyển tab bằng radio CSS, không dùng JS', () => {
@@ -124,6 +128,18 @@ test('báo bù công tour giữ đúng contract và quy tắc khoá ô', () => {
     const repo = readModule('data/schedule-repo.js');
     assert.match(repo, /\/api\/schedules\/makeup/);
     assert.match(repo, /imageBase64/);
+});
+
+test('nhóm report chỉ hoàn tất lịch cũ trong 48 giờ, không tạo công tour', () => {
+    const tab = readModule('tabs/completion-tab.js');
+    const repo = readModule('data/schedule-repo.js');
+
+    assert.match(tab, /loadIncompleteSchedules/);
+    assert.match(tab, /uploadProof/);
+    assert.match(tab, /Không có lịch thiếu trong 48 giờ/);
+    assert.match(tab, /không tạo lịch mới và không tính công tour/);
+    assert.doesNotMatch(stripComments(tab), /submitMakeupRequest|MAKEUP_MISSING|revenue/i);
+    assert.match(repo, /groupId: getGroupId\(\)/);
 });
 
 test('không dựng HTML từ dữ liệu khách hàng', () => {

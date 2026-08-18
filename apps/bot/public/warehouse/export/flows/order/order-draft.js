@@ -30,10 +30,18 @@ export function applyDraft(state, saved, catalog, newKey) {
     state.branch = saved.branch || null;
     state.customerName = saved.customer_name || '';
     state.customerPhone = saved.customer_phone || '';
+    state.doctorName = saved.doctor_name || '';
+    state.technicianName = saved.technician_name || '';
     state.idempotencyKey = saved.idempotency_key || newKey;
     for (const entry of saved.services || []) {
         const service = catalog.services.find(item => item.id === entry.service_id);
-        if (service) state.selections.set(service.id, entry.items || []);
+        if (service) state.selections.set(service.id, (entry.items || []).map(line => {
+            const product = catalog.products.find(item => item.id === line.product_id);
+            return {
+                ...line,
+                quantity_mode: product?.quantity_mode === 'DECIMAL' ? 'DECIMAL' : 'INTEGER'
+            };
+        }));
     }
 }
 
@@ -42,6 +50,8 @@ export function buildPayload(state) {
     return {
         customer_name: state.customerName.trim(),
         customer_phone: state.customerPhone.trim(),
+        doctor_name: state.doctorName.trim(),
+        technician_name: state.technicianName.trim(),
         branch: state.branch,
         idempotency_key: state.idempotencyKey,
         services: [...state.selections.entries()].map(([serviceId, items]) => ({
@@ -58,7 +68,7 @@ export function requiredByProduct(state) {
     const totals = new Map();
     for (const items of state.selections.values()) {
         for (const line of activeLines(items)) {
-            totals.set(line.product_id, (totals.get(line.product_id) || 0) + Number(line.actual_quantity || 0));
+            totals.set(line.product_id, Number(((totals.get(line.product_id) || 0) + Number(line.actual_quantity || 0)).toFixed(1)));
         }
     }
     return totals;
@@ -85,8 +95,9 @@ export function availability(state, catalog) {
     return rows;
 }
 
-export const totalQty = state =>
-    [...requiredByProduct(state).values()].reduce((sum, value) => sum + value, 0);
+export const totalQty = state => Number(
+    [...requiredByProduct(state).values()].reduce((sum, value) => sum + value, 0).toFixed(1)
+);
 
 export const missingRows = (state, catalog) =>
     availability(state, catalog).filter(row => row.missing > 0);
@@ -108,6 +119,7 @@ export function toggleService(state, catalog, serviceId) {
         product_id: item.product_id,
         product_name: item.product_name,
         barcode: item.barcode,
+        quantity_mode: item.quantity_mode === 'DECIMAL' ? 'DECIMAL' : 'INTEGER',
         actual_quantity: item.default_quantity,
         template_quantity: item.default_quantity,
         item_source: 'TEMPLATE',
@@ -119,7 +131,8 @@ export function toggleService(state, catalog, serviceId) {
 export function setLineQuantity(state, serviceId, productId, quantity) {
     const line = state.selections.get(serviceId)?.find(item => item.product_id === productId);
     if (!line) return;
-    line.actual_quantity = Math.max(1, quantity);
+    const minimum = line.quantity_mode === 'DECIMAL' ? 0.1 : 1;
+    line.actual_quantity = Math.max(minimum, Number(Number(quantity).toFixed(1)));
 }
 
 /**
@@ -149,6 +162,7 @@ export function addProductToService(state, catalog, serviceId, productId) {
         product_id: product.id,
         product_name: product.product_name,
         barcode: product.barcode,
+        quantity_mode: product.quantity_mode === 'DECIMAL' ? 'DECIMAL' : 'INTEGER',
         actual_quantity: 1,
         template_quantity: null,
         item_source: 'MANUAL',
@@ -162,7 +176,10 @@ export function addProductToService(state, catalog, serviceId, productId) {
 export function canAdvance(state) {
     switch (state.step) {
         case 0: return Boolean(state.branch);
-        case 1: return state.customerName.trim().length > 0 && phoneDigitCount(state.customerPhone) >= 4;
+        case 1: return state.customerName.trim().length > 0
+            && phoneDigitCount(state.customerPhone) >= 4
+            && state.doctorName.trim().length > 0
+            && state.technicianName.trim().length > 0;
         case 2: return state.selections.size > 0;
         case 3: return totalQty(state) > 0;
         default: return true;

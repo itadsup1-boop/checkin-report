@@ -21,7 +21,7 @@ export function createCatalogRepository(pool) {
     /** Các sản phẩm đang bật. */
     async function listActiveProducts(db, productIds) {
         const result = await db.query(
-            `SELECT id, barcode, product_name
+            `SELECT id, barcode, product_name, quantity_mode
              FROM tk_products
              WHERE id = ANY($1::uuid[]) AND is_active = TRUE`,
             [productIds]

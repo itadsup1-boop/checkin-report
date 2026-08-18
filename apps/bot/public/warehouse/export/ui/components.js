@@ -106,16 +106,35 @@ export function textField({ label, iconName, value, placeholder, onInput, inputM
     );
 }
 
-export function stepper({ value, onChange, over = false, min = 0 }) {
+export function stepper({ value, onChange, over = false, min = 0, step = 1, allowDecimal = false }) {
+    const round = next => Number(Number(next).toFixed(1));
+    const changeFromInput = event => {
+        const next = Number(event.target.value);
+        const hasValidPrecision = Math.abs(next * 10 - Math.round(next * 10)) <= 1e-7;
+        if (!Number.isFinite(next) || next < min || (allowDecimal ? !hasValidPrecision : !Number.isInteger(next))) {
+            event.target.value = String(value);
+            return;
+        }
+        onChange(round(next), { render: false });
+    };
     return h('div', { class: 'stepper' },
         h('button', {
             class: 'stepper__btn', type: 'button', 'aria-label': 'Giảm',
-            onClick: () => onChange(Math.max(min, value - 1))
+            onClick: () => onChange(round(Math.max(min, Number(value) - step)))
         }, icon('minus', { size: 13 })),
-        h('span', { class: cx('stepper__value', over && 'stepper__value--over') }, String(value)),
+        h('input', {
+            class: cx('stepper__value', over && 'stepper__value--over'),
+            type: 'number',
+            inputMode: allowDecimal ? 'decimal' : 'numeric',
+            min: String(min),
+            step: String(step),
+            value: String(value),
+            'aria-label': 'Số lượng',
+            onChange: changeFromInput
+        }),
         h('button', {
             class: 'stepper__btn', type: 'button', 'aria-label': 'Tăng',
-            onClick: () => onChange(value + 1)
+            onClick: () => onChange(round(Number(value) + step))
         }, icon('plus', { size: 13 }))
     );
 }

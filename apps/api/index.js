@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
 import { applyApprovedLeavePenalties } from '../../domains/timekeep/attendance-penalties.js';
+import { rejectAutoAcceptedLeaveRequest } from '../../domains/timekeep/leave-request-service.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import {
     KPI_GROUP_ROLES,
@@ -767,14 +768,30 @@ app.put('/api/admin/leave-requests/:id', async (req, res) => {
         }
         const request = reqRes.rows[0];
 
-        // 2. Update request status
-        await pool.query(
-            `UPDATE tk_leave_requests SET status = $1, approved_by = $2 WHERE id = $3`,
-            [status, approved_by || 'Admin', id]
-        );
+        // 2. Đơn tự chấp nhận phải được thu hồi bằng service để khôi phục đúng
+        // lịch cũ và tính lại phạt. Các đơn PENDING cũ vẫn dùng luồng tương thích.
+        const isAutoReject = request.auto_accepted === true
+            && request.status === 'APPROVED'
+            && status === 'REJECTED';
+
+        if (isAutoReject) {
+            const outcome = await rejectAutoAcceptedLeaveRequest({
+                pool,
+                requestId: id,
+                rejectedBy: approved_by || 'Admin (Dashboard)'
+            });
+            if (outcome.result !== 'REJECTED') {
+                return res.status(409).json({ success: false, message: 'Đơn không còn ở trạng thái có thể từ chối' });
+            }
+        } else {
+            await pool.query(
+                `UPDATE tk_leave_requests SET status = $1, approved_by = $2 WHERE id = $3`,
+                [status, approved_by || 'Admin', id]
+            );
+        }
 
         // 3. Special logic if APPROVED for FULL/HALF days
-        if (status === 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
+        if (!isAutoReject && status === 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
             const formattedDate = new Date(request.date).toISOString().split('T')[0];
             let newShift = 'OFF';
             if (request.request_type === 'HALF_DAY_AM') newShift = 'HALF_DAY_PM_WORK';
@@ -793,7 +810,7 @@ app.put('/api/admin/leave-requests/:id', async (req, res) => {
                 request: { ...request, date: formattedDate }
             });
             syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
-        } else if (request.status === 'APPROVED' && status !== 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
+        } else if (!isAutoReject && request.status === 'APPROVED' && status !== 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
             // Revert schedule if the request was previously approved but now rejected/reset
             const formattedDate = new Date(request.date).toISOString().split('T')[0];
             await pool.query(
@@ -801,6 +818,10 @@ app.put('/api/admin/leave-requests/:id', async (req, res) => {
                  WHERE user_id = $1 AND date = $2 AND shift_type IN ('OFF', 'CA_CHIEU', 'CA_SANG', 'HALF_DAY_PM_WORK')`,
                 [request.user_id, formattedDate]
             );
+        }
+
+        if (isAutoReject) {
+            syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
         }
 
         // 4. Notify employee via Telegram Bot

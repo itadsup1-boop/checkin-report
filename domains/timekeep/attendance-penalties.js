@@ -35,7 +35,9 @@ function formatVietnameseDate(date) {
 export async function finalizeUnauthorizedAbsences({
     pool,
     date,
-    requireScheduleBeforeShift = false
+    requireScheduleBeforeShift = false,
+    groupId = null,
+    userId = null
 }) {
     const candidatesResult = await pool.query(
         `SELECT s.group_id,
@@ -72,6 +74,8 @@ export async function finalizeUnauthorizedAbsences({
            AND COALESCE(e.is_exempt_checkin, FALSE) = FALSE
            AND e.full_name NOT LIKE '/%'
            AND e.full_name <> 'tester'
+           AND ($5::uuid IS NULL OR s.group_id = $5::uuid)
+           AND ($6::uuid IS NULL OR s.user_id = $6::uuid)
            AND (
                COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
                OR s.date < COALESCE(gm.paused_at::date, CURRENT_DATE)
@@ -99,10 +103,10 @@ export async function finalizeUnauthorizedAbsences({
                  AND r.user_id = s.user_id
                  AND r.date = s.date
                  AND r.request_type = ANY($3::text[])
-                 AND UPPER(COALESCE(r.status, 'PENDING')) <> 'CANCELLED'
+                 AND UPPER(r.status) = 'APPROVED'
            )
          ORDER BY g.group_name, e.full_name`,
-        [date, WORKING_SHIFTS, LEAVE_REQUEST_TYPES, requireScheduleBeforeShift]
+        [date, WORKING_SHIFTS, LEAVE_REQUEST_TYPES, requireScheduleBeforeShift, groupId, userId]
     );
 
     const processed = [];

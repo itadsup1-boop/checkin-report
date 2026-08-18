@@ -53,6 +53,8 @@ export function createCreateCustomerOrderUseCase({
                 createdByTelegramId: actorContext.telegramId,
                 customerName: normalized.customer_name,
                 customerPhone: normalized.customer_phone,
+                doctorName: normalized.doctor_name,
+                technicianName: normalized.technician_name,
                 branch: normalized.branch,
                 status,
                 idempotencyKey: normalized.idempotency_key,

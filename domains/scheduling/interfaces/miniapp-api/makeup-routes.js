@@ -37,6 +37,11 @@ export function registerMakeupRoutes({
                 return res.status(400).json({ success: false, error: 'Thiếu thông tin groupId!' });
             }
 
+            const groupRole = await repository.findSchedulingGroupRole(groupId);
+            if (!groupRole) {
+                return res.status(403).json({ success: false, error: 'Nhóm này không sử dụng chức năng lịch khách!' });
+            }
+
             const employee = await repository.findEmployeeForGroup(telegramId, groupId);
             if (!employee) {
                 return res.status(403).json({ success: false, error: 'Bạn không thuộc nhóm làm việc này!' });

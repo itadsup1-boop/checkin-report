@@ -6,9 +6,11 @@
  */
 
 import { isRealGroupId } from '../domain/appointment-rules.js';
-import { buildDueReminder, arrivalKeyboard } from '../domain/appointment-messages.js';
+import {
+    buildDueReminder, buildPhotoDebtReminder, arrivalKeyboard
+} from '../domain/appointment-messages.js';
 
-export function createRemindDueAppointments({ repository, notifier, getGroupRole }) {
+export function createRemindDueAppointments({ repository, completionRepository, notifier, getGroupRole }) {
     /** Lịch không gắn nhóm (dữ liệu cũ) thì nhắc mọi nhóm đang bật thông báo. */
     async function resolveTargets(appointment, defaultTargets) {
         if (!isRealGroupId(appointment.group_id)) return defaultTargets;
@@ -34,6 +36,12 @@ export function createRemindDueAppointments({ repository, notifier, getGroupRole
                         arrivalKeyboard(appointment.id));
                 }
                 await repository.markReminded(appointment.id);
+            }
+
+            for (const appointment of await completionRepository.findReportPhotoDebtsDueForReminder()) {
+                const sent = await notifier.send(appointment.group_id, 'report',
+                    buildPhotoDebtReminder(appointment), 'schedule_report_photo_debt_30m');
+                if (sent) await completionRepository.markCompletionReminded(appointment.id);
             }
         } catch (e) {
             console.error('Lỗi cron nhắc lịch khách đúng giờ:', e);

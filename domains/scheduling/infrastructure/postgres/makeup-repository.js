@@ -29,6 +29,19 @@ export function createMakeupRepository({ pool }) {
         return anyGroup.rows[0] || null;
     }
 
+    async function findSchedulingGroupRole(groupId) {
+        const result = await pool.query(
+            `SELECT bot_role
+             FROM telegram_groups
+             WHERE telegram_group_id = $1 AND is_active = TRUE
+               AND COALESCE(is_deleted, FALSE) = FALSE
+               AND bot_role IN ('report', 'report_tour')
+             LIMIT 1`,
+            [groupId]
+        );
+        return result.rows[0]?.bot_role || null;
+    }
+
     /**
      * Lịch còn thiếu trong 48 giờ qua: đang chờ, hoặc đã đến mà còn nợ ảnh.
      * Đây chính là danh sách hiện trong ô "Chọn lịch thiếu cần bổ sung".
@@ -243,6 +256,7 @@ export function createMakeupRepository({ pool }) {
         markApproved,
         markRejected,
         findEmployeeForGroup,
+        findSchedulingGroupRole,
         listIncompleteAppointments,
         listRequestHistory,
         lockActiveGroup,

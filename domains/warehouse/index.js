@@ -33,6 +33,14 @@ export {
     aggregateOrderItems,
     validateOrderInput
 } from './domain/order-validation.js';
+export {
+    MAX_QUANTITY_DECIMALS,
+    QUANTITY_MODES,
+    normalizeQuantityMode,
+    parseQuantity,
+    quantityModeLabel,
+    roundQuantity
+} from './domain/quantity-rules.js';
 export { createWarehouseOrderService } from './application/warehouse-order-service.js';
 export { createWarehouseQueryRepository } from './infrastructure/postgres/warehouse-query-repository.js';
 

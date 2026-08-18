@@ -170,8 +170,8 @@ test('nhập kho trả lời sớm và outbox chỉ xóa ảnh sau khi đồng b
         [transactionId]
     );
     productId = stateAfterResponse.rows[0].product_id;
-    assert.equal(stateAfterResponse.rows[0].quantity, 4);
-    assert.equal(stateAfterResponse.rows[0].quantity_delta, 4);
+    assert.equal(Number(stateAfterResponse.rows[0].quantity), 4);
+    assert.equal(Number(stateAfterResponse.rows[0].quantity_delta), 4);
     assert.equal(stateAfterResponse.rows[0].proof_folder_url, null);
     assert.equal(stateAfterResponse.rows[0].outbox_status, 'PENDING');
 

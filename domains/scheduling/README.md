@@ -1,6 +1,6 @@
 # Domain lịch khách
 
-Nghiệp vụ lịch khách của role `report_tour` (một phần dùng chung với role `report`).
+Nghiệp vụ lịch khách dùng chung cho `report` và `report_tour`; phần công tour chỉ áp dụng cho `report_tour`.
 
 **Phạm vi: đặt lịch · nhắc lịch · xác nhận khách đến/hủy · tổng hợp công tour · báo bù.**
 Còn nợ hai phần nhỏ, xem mục "Còn nợ" bên dưới.
@@ -24,6 +24,7 @@ domains/scheduling/
 │   └── review-makeup-request.js                 Báo bù: duyệt / từ chối
 ├── infrastructure/
 │   ├── postgres/appointment-repository.js       SQL của customer_appointments
+│   ├── postgres/completion-repository.js        Lịch report còn thiếu cần nhắc sau 30 phút
 │   ├── postgres/makeup-repository.js            SQL của tour_makeup_requests
 │   ├── telegram/appointment-notifier.js         Gửi tin qua sendMessageToRoleGroup
 │   └── storage/proof-image-store.js             Giải mã base64, ghi file, dọn khi lỗi
@@ -80,9 +81,9 @@ Sáu chuỗi `callback_data` cũng là hợp đồng, vì **tin nhắn cũ trong
 | Giờ | Việc | Nhóm nhận |
 |---|---|---|
 | `2 20 * * *` | Lịch của ngày mai | `report` + `report_tour` (opt-out) |
-| `0 22 * * *` | Tổng kết lịch trong ngày | `report` + `report_tour` (opt-out) |
+| `0 22 * * *` | Tổng kết lịch; `report` nhận thêm danh sách lịch thiếu ảnh | `report` + `report_tour` (opt-out) |
 | `0 0 * * *` | Tổng hợp công tour hôm qua | **chỉ** `report_tour` |
-| `* * * * *` | Nhắc khi tới giờ hẹn | theo nhóm của từng lịch |
+| `* * * * *` | Nhắc khi tới giờ; `report` được nhắc lại nếu sau 30 phút chưa hoàn tất | theo nhóm của từng lịch |
 
 **Opt-out**: nhóm chưa có dòng nào trong `schedule_notification_groups` **vẫn nhận** tin.
 Chỉ nhóm đặt `is_disabled = true` mới bị loại. Đó là lý do phải `LEFT JOIN` + `COALESCE`.
@@ -99,6 +100,11 @@ Chỉ nhóm đặt `is_disabled = true` mới bị loại. Đó là lý do phả
    thà nhắc thừa còn hơn sót khách.
 5. **Cửa sổ báo bù 48 giờ**, chỉ áp dụng cho lịch còn thiếu, chống trùng hai lớp
    (`FOR UPDATE` / `FOR SHARE`), và **gửi Telegram ngoài transaction**.
+6. **Nhóm `report` có tab “Hoàn Tất Lịch”**: chỉ chọn lịch cũ của chính nhân viên,
+   bổ sung ảnh trong 48 giờ và ghi nhận ngay; không tạo lịch mới, không tính công tour.
+   Quá 48 giờ chỉ Quản lý đúng nhóm hoặc Admin được reply ảnh vào tin lịch để xử lý.
+7. **Nhắc thiếu ảnh có dấu bền vững** `completion_reminded_at`: bot nghỉ ở phút thứ 30
+   thì khi chạy lại vẫn gửi bù, nhưng không gửi trùng hoặc gửi ngược cho lịch cũ.
 
 ## Ai được duyệt báo bù
 

@@ -33,8 +33,8 @@ export function registerWarehouseCatalogRoutes({
 
                 const usRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1 AND branch = $2', [product.id, 'US']);
                 const ukRes = await pool.query('SELECT quantity FROM tk_inventory WHERE product_id = $1 AND branch = $2', [product.id, 'UK']);
-                const usQty = usRes.rows.length > 0 ? usRes.rows[0].quantity : 0;
-                const ukQty = ukRes.rows.length > 0 ? ukRes.rows[0].quantity : 0;
+                const usQty = Number(usRes.rows[0]?.quantity || 0);
+                const ukQty = Number(ukRes.rows[0]?.quantity || 0);
 
                 return res.json({
                     success: true,
@@ -43,6 +43,7 @@ export function registerWarehouseCatalogRoutes({
                         id: product.id,
                         barcode: product.barcode,
                         product_name: product.product_name,
+                        quantity_mode: product.quantity_mode,
                         stock_us: usQty,
                         stock_uk: ukQty,
                         quantity: usQty + ukQty
@@ -60,7 +61,9 @@ export function registerWarehouseCatalogRoutes({
     botApp.get('/api/warehouse/products', authenticateTelegramMiniApp, async (req, res) => {
         try {
             if (!await requireWarehouseGroup(req, res)) return;
-            const productsRes = await pool.query('SELECT id, barcode, product_name FROM tk_products ORDER BY product_name ASC');
+            const productsRes = await pool.query(
+                'SELECT id, barcode, product_name, quantity_mode FROM tk_products ORDER BY product_name ASC'
+            );
             res.json({ success: true, products: productsRes.rows });
         } catch (e) {
             console.error('Lỗi get products list API:', e);
@@ -170,13 +173,14 @@ export function registerWarehouseCatalogRoutes({
                 `SELECT p.id AS product_id,
                         p.barcode,
                         p.product_name,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0)::int AS stock_us,
-                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0)::int AS stock_uk,
+                        p.quantity_mode,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0) AS stock_us,
+                        COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0) AS stock_uk,
                         MAX(i.updated_at) AS updated_at
                  FROM tk_products p
                  LEFT JOIN tk_inventory i ON i.product_id = p.id
                  WHERE p.is_active = TRUE
-                 GROUP BY p.id, p.barcode, p.product_name
+                 GROUP BY p.id, p.barcode, p.product_name, p.quantity_mode
                  ORDER BY p.product_name`
             );
             res.json({ success: true, products: result.rows });

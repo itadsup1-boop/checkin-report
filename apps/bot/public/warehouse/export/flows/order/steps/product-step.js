@@ -25,6 +25,7 @@ function renderLine({ state, catalog, serviceId, line, actions }) {
     const total = entry.stock_us + entry.stock_uk;
     const over = line.actual_quantity > total;
     const needTransfer = !over && line.actual_quantity > local;
+    const allowDecimal = line.quantity_mode === 'DECIMAL';
 
     let stockNote = `Tồn ${branchName(state.branch)}: ${local}`;
     if (over) stockNote += ' · không đủ toàn hệ thống';
@@ -62,9 +63,13 @@ function renderLine({ state, catalog, serviceId, line, actions }) {
             ? h('div', { style: { marginTop: '10px', display: 'flex' } },
                 stepper({
                     value: line.actual_quantity,
-                    min: 1,
+                    min: allowDecimal ? 0.1 : 1,
+                    step: allowDecimal ? 0.1 : 1,
+                    allowDecimal,
                     over,
-                    onChange: quantity => actions.setLineQuantity(serviceId, line.product_id, quantity)
+                    onChange: (quantity, options) => actions.setLineQuantity(
+                        serviceId, line.product_id, quantity, options
+                    )
                 })
             )
             : null

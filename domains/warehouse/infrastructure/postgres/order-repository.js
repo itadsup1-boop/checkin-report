@@ -35,18 +35,19 @@ export function createOrderRepository(pool) {
 
     async function create(db, {
         orderCode, groupId, createdBy, createdByTelegramId,
-        customerName, customerPhone, branch, status, idempotencyKey, telegramChatId
+        customerName, customerPhone, doctorName, technicianName,
+        branch, status, idempotencyKey, telegramChatId
     }) {
         const result = await db.query(
             `INSERT INTO tk_warehouse_orders
                 (order_code, group_id, created_by, created_by_telegram_id,
-                 customer_name, customer_phone, branch, status,
-                 idempotency_key, telegram_chat_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+                 customer_name, customer_phone, doctor_name, technician_name,
+                 branch, status, idempotency_key, telegram_chat_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
              RETURNING *`,
             [
                 orderCode, groupId, createdBy, createdByTelegramId,
-                customerName, customerPhone, branch, status,
+                customerName, customerPhone, doctorName, technicianName, branch, status,
                 idempotencyKey, telegramChatId
             ]
         );

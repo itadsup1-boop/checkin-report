@@ -103,6 +103,8 @@ CREATE TABLE IF NOT EXISTS public.tk_warehouse_orders (
     created_by_telegram_id VARCHAR(64) NOT NULL,
     customer_name VARCHAR(255) NOT NULL,
     customer_phone VARCHAR(50) NOT NULL,
+    doctor_name VARCHAR(255) NOT NULL,
+    technician_name VARCHAR(255) NOT NULL,
     branch VARCHAR(10) NOT NULL,
     status VARCHAR(30) NOT NULL DEFAULT 'DRAFT',
     idempotency_key VARCHAR(100) NOT NULL,
@@ -121,6 +123,8 @@ CREATE TABLE IF NOT EXISTS public.tk_warehouse_orders (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT tk_warehouse_orders_customer_name_not_blank CHECK (BTRIM(customer_name) <> ''),
     CONSTRAINT tk_warehouse_orders_customer_phone_not_blank CHECK (BTRIM(customer_phone) <> ''),
+    CONSTRAINT tk_warehouse_orders_doctor_name_not_blank CHECK (BTRIM(doctor_name) <> ''),
+    CONSTRAINT tk_warehouse_orders_technician_name_not_blank CHECK (BTRIM(technician_name) <> ''),
     CONSTRAINT tk_warehouse_orders_branch_check CHECK (branch IN ('US', 'UK')),
     CONSTRAINT tk_warehouse_orders_status_check CHECK (
         status IN ('DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'REJECTED', 'REVERSED')

@@ -14,7 +14,7 @@ import { textField } from '../../../ui/components.js';
  * @param {object} params
  * @param {object} params.state
  * @param {HTMLElement} params.suggestionSlot
- * @param {(field:'name'|'phone', value:string) => void} params.onChange
+ * @param {(field:'name'|'phone'|'doctor'|'technician', value:string) => void} params.onChange
  */
 export function renderCustomerStep({ state, suggestionSlot, onChange }) {
     return h('div', null,
@@ -34,6 +34,22 @@ export function renderCustomerStep({ state, suggestionSlot, onChange }) {
             inputMode: 'tel',
             maxLength: 20,
             onInput: value => onChange('phone', value)
+        }),
+        textField({
+            label: 'Bác sĩ',
+            iconName: 'user',
+            value: state.doctorName,
+            placeholder: 'Nhập tên bác sĩ',
+            maxLength: 255,
+            onInput: value => onChange('doctor', value)
+        }),
+        textField({
+            label: 'Kỹ thuật viên',
+            iconName: 'users',
+            value: state.technicianName,
+            placeholder: 'Nhập tên kỹ thuật viên',
+            maxLength: 255,
+            onInput: value => onChange('technician', value)
         }),
         suggestionSlot
     );
