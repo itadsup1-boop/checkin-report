@@ -12,6 +12,7 @@
     "test:kpi-membership-api": "node packages/database/test_kpi_membership_api.js",
     "test:customer-sheet-routing": "node --experimental-test-isolation=none --test apps/bot/customer-sheet-routing.test.js",
     "test:timekeep-penalties": "node --experimental-test-isolation=none --test domains/timekeep/tests/attendance-penalties.test.js",
+    "test:timekeep-module": "node --experimental-test-isolation=none --test domains/timekeep/tests/timekeep.module.test.js",
     "test:warehouse-module": "node --experimental-test-isolation=none --test domains/warehouse/tests/warehouse.module.test.js",
     "test:warehouse-admin": "node --experimental-test-isolation=none --test domains/warehouse/tests/warehouse-admin.test.js",
     "test:warehouse-admin-ui": "node --experimental-test-isolation=none --test apps/web-admin/src/WarehouseManagement.test.js",

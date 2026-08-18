@@ -25,6 +25,7 @@ import multer from 'multer';
 import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseModule } from '../../domains/warehouse/index.js';
 import { registerCustomerModule } from '../../domains/customer/index.js';
+import { registerTimekeepModule } from '../../domains/timekeep/index.js';
 import {
     buildAbsenceNotificationText,
     finalizeUnauthorizedAbsences,
@@ -469,156 +470,24 @@ botApp.use('/api/timekeep', async (req, res, next) => {
 // ==========================================
 // 1. API ĐĂNG KÝ THÔNG TIN NHÂN SỰ
 // ==========================================
-botApp.post('/api/timekeep/register', async (req, res) => {
-    try {
-        const { telegram_username, full_name, role, telegram_group_id } = req.body;
-        const telegram_id = req.verifiedTelegramId || req.body.telegram_id;
-
-        console.log(`[Registration] Nhận yêu cầu đăng ký: ID=${telegram_id}, Name=${full_name}, Role=${role}, GroupID=${telegram_group_id}`);
-
-        if (!telegram_id || !full_name || !role) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin đăng ký bắt buộc!' });
-        }
-
-        if (!telegram_group_id) {
-            return res.status(400).json({
-                success: false,
-                message: 'Vui lòng mở Mini App từ liên kết Đăng ký trong nhóm làm việc của bạn để xác định nhóm trực thuộc!'
-            });
-        }
-
-        // Get or create group in telegram_groups
-        let groupRes = await pool.query('SELECT * FROM telegram_groups WHERE telegram_group_id = $1', [telegram_group_id]);
-        let groupId;
-        let groupRecord;
-        if (groupRes.rows.length > 0) {
-            groupId = groupRes.rows[0].id;
-            groupRecord = groupRes.rows[0];
-        } else {
-            const insertGroup = await pool.query(
-                'INSERT INTO telegram_groups (telegram_group_id, group_name) VALUES ($1, $2) RETURNING *',
-                [telegram_group_id, 'Nhóm làm việc']
-            );
-            groupId = insertGroup.rows[0].id;
-            groupRecord = insertGroup.rows[0];
-        }
-
-        // Nhóm KPI dùng tài khoản nhân viên toàn cục + membership theo từng nhóm.
-        // Đăng ký lại chỉ kích hoạt membership của đúng nhóm hiện tại.
-        if (KPI_GROUP_ROLES.includes(groupRecord.bot_role)) {
-            const client = await pool.connect();
-            try {
-                await client.query('BEGIN');
-                let employeeResult = await client.query(
-                    'SELECT * FROM employees WHERE telegram_id = $1 ORDER BY created_at ASC LIMIT 1 FOR UPDATE',
-                    [String(telegram_id)]
-                );
-
-                if (employeeResult.rows.length === 0) {
-                    employeeResult = await client.query(
-                        `SELECT * FROM employees
-                         WHERE group_id = $1
-                           AND LOWER(TRIM(full_name)) = LOWER(TRIM($2))
-                           AND (telegram_id IS NULL OR telegram_id = '')
-                         ORDER BY created_at ASC
-                         LIMIT 1
-                         FOR UPDATE`,
-                        [groupId, full_name]
-                    );
-                }
-
-                let employee;
-                if (employeeResult.rows.length > 0) {
-                    employee = employeeResult.rows[0];
-                    const updated = await client.query(
-                        `UPDATE employees
-                         SET telegram_id = $1, telegram_username = $2,
-                             full_name = $3, role = COALESCE(NULLIF(role, ''), $4)
-                         WHERE id = $5
-                         RETURNING *`,
-                        [String(telegram_id), telegram_username || '', full_name, role, employee.id]
-                    );
-                    employee = updated.rows[0];
-                } else {
-                    const employeeCode = `EMP-${telegram_id}-${Date.now().toString().slice(-4)}`;
-                    const inserted = await client.query(
-                        `INSERT INTO employees
-                            (group_id, telegram_group_id, telegram_id, telegram_username,
-                             full_name, role, employee_code, department, position,
-                             current_kpi_target, need_report, is_active)
-                         VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, 40, TRUE, TRUE)
-                         RETURNING *`,
-                        [groupId, String(telegram_id), telegram_username || '', full_name, role, employeeCode, 'Chưa xếp', 'Nhân viên']
-                    );
-                    employee = inserted.rows[0];
-                }
-
-                const registration = await registerEmployeeInKpiGroup(client, employee, telegram_group_id, 'mini_app_registration');
-                if (!registration.ok) {
-                    await client.query('ROLLBACK');
-                    return res.status(400).json({ success: false, message: 'Nhóm này không phải nhóm KPI đang hoạt động.' });
-                }
-
-                await client.query('COMMIT');
-                return res.json({ success: true, message: 'Đăng ký hoạt động KPI trong nhóm thành công!' });
-            } catch (error) {
-                await client.query('ROLLBACK');
-                throw error;
-            } finally {
-                client.release();
-            }
-        }
-
-        // Check if user already exists in employees for this group
-        const userRes = await pool.query(
-            'SELECT id FROM employees WHERE group_id = $1 AND telegram_id = $2',
-            [groupId, telegram_id]
-        );
-
-        if (userRes.rows.length > 0) {
-            // User already registered in this group – do not allow duplicate registration
-            console.log(`[Registration] Người dùng đã tồn tại trong nhóm, từ chối đăng ký lại. telegram_id=${telegram_id}, group_id=${groupId}`);
-            return res.status(400).json({ success: false, message: 'Người dùng đã đăng ký trong nhóm này.' });
-        }
-
-        const employeeCode = `EMP-${telegram_id}-${Date.now().toString().slice(-4)}`;
-        // Ưu tiên liên kết hồ sơ đã được Admin tạo sẵn trong đúng nhóm.
-        const unlinkedRes = await pool.query(
-            `SELECT id FROM employees
-             WHERE group_id = $1
-               AND LOWER(TRIM(full_name)) = LOWER(TRIM($2))
-               AND (telegram_id IS NULL OR telegram_id = '')
-             ORDER BY id ASC
-             LIMIT 1`,
-            [groupId, full_name]
-        );
-
-        if (unlinkedRes.rows.length > 0) {
-            await pool.query(
-                `UPDATE employees
-                 SET telegram_group_id = $1,
-                     telegram_id = $2,
-                     telegram_username = $3,
-                     role = COALESCE(NULLIF(role, ''), $4),
-                     is_active = true
-                 WHERE id = $5`,
-                [telegram_group_id, telegram_id, telegram_username || '', role, unlinkedRes.rows[0].id]
-            );
-        } else {
-            await pool.query(
-                'INSERT INTO employees (group_id, telegram_group_id, telegram_id, telegram_username, full_name, role, employee_code, department, position) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-                [groupId, telegram_group_id, telegram_id, telegram_username || '', full_name, role, employeeCode, 'Chưa xếp', 'Nhân viên']
-            );
-        }
-        console.log(`[Registration] Thêm mới thành công user: ${full_name}`);
-
-        res.json({ success: true, message: 'Đăng ký tài khoản thành công!' });
-
-    } catch (error) {
-        console.error('[Registration Error] Lỗi đăng ký:', error);
-        res.status(500).json({ success: false, message: 'Lỗi hệ thống: ' + error.message });
-    }
+// ---------------------------------------------------------------------
+// Module chấm công — xem domains/timekeep/README.md.
+// Đợt này mới lấy 7 chức năng khép kín: đăng ký nhân sự, mở/đóng đăng ký lịch,
+// cấu hình nhóm, bảng điều khiển, quản trị ca trực, đồng bộ Sheet, cron 23:00.
+// Phần lõi (check-in, xin nghỉ, lưu lịch tuần, nhắc Chủ Nhật) CÒN Ở FILE NÀY.
+// ---------------------------------------------------------------------
+registerTimekeepModule({
+    botApp,
+    pool,
+    cron,
+    kpiGroupRoles: KPI_GROUP_ROLES,
+    registerEmployeeInKpiGroup,
+    syncAllTimekeepSheets,
+    // Hàm chứ không phải chuỗi: ADMIN_IDS đọc lại từ .env mỗi lần dùng.
+    adminIds: () => process.env.ADMIN_IDS,
+    spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID
 });
+
 
 // ==========================================
 // 2. API TRUY VẤN LỊCH TUẦN (FRONTEND LOAD)
@@ -757,43 +626,6 @@ botApp.get('/api/timekeep/schedule/data', async (req, res) => {
 // ==========================================
 // 3. API BẬT/TẮT ĐĂNG KÝ LỊCH (CHO QUẢN LÝ / ADMIN)
 // ==========================================
-botApp.post('/api/timekeep/schedule/toggle', async (req, res) => {
-    try {
-        const { chat_id } = req.body;
-        const telegram_id = req.verifiedTelegramId || req.body.telegram_id;
-
-        if (!telegram_id || !chat_id) {
-            return res.status(400).json({ success: false, message: 'Dữ liệu không hợp lệ!' });
-        }
-
-        const callerRes = await pool.query(
-            `SELECT u.role, g.id as group_id, g.schedule_registration_open 
-             FROM employees u 
-             JOIN telegram_groups g ON u.group_id = g.id 
-             WHERE u.telegram_id = $1 AND g.telegram_group_id = $2`,
-            [telegram_id, chat_id]
-        );
-
-        if (callerRes.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Tài khoản không tồn tại trong nhóm này!' });
-        }
-
-        const caller = callerRes.rows[0];
-        const isAdmin = process.env.ADMIN_IDS && process.env.ADMIN_IDS.split(',').includes(String(telegram_id));
-
-        if (!isAdmin && !['Quản lý', 'Quản lý kho'].includes(caller.role)) {
-            return res.status(403).json({ success: false, message: 'Bạn không có quyền thao tác tính năng này!' });
-        }
-
-        const newState = !caller.schedule_registration_open;
-        await pool.query('UPDATE telegram_groups SET schedule_registration_open = $1 WHERE id = $2', [newState, caller.group_id]);
-
-        res.json({ success: true, message: newState ? 'Đã MỞ đăng ký lịch.' : 'Đã ĐÓNG đăng ký lịch.', new_state: newState });
-    } catch (error) {
-        console.error('[Toggle Schedule Error]:', error);
-        res.status(500).json({ success: false, message: 'Lỗi hệ thống: ' + error.message });
-    }
-});
 
 // ==========================================
 // 4. API LƯU LỊCH TUẦN & FILE MINH CHỨNG
@@ -1430,103 +1262,6 @@ botApp.post('/api/timekeep/checkin/save', uploadCheckin.single('video_file'), as
 
 
 // API endpoint to update group_settings (used by Admin UI)
-botApp.put('/api/tk_group_settings/:telegram_group_id', async (req, res) => {
-    try {
-        const { telegram_group_id } = req.params;
-        const {
-            penalty_under_15,
-            penalty_under_90,
-            penalty_over_90,
-            shift_1_time,
-            shift_2_time,
-            auto_reminder_enabled = true,
-            bot_role,
-            schedule_registration_open,
-            remind_time_1 = '17:00:00',
-            photo_deadline_minutes = 60,
-            penalty_missing_kpi = 100000,
-            penalty_per_photo = 20000,
-            penalty_missing_report = 100000,
-            kpi_sheet_id,
-            customer_sheet_id,
-            customer_drive_folder_id
-        } = req.body;
-
-        function extractSheetId(input) {
-            if (!input) return null;
-            const match = input.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
-            if (match) return match[1];
-            return input.trim();
-        }
-
-        const cleanKpiSheetId = extractSheetId(kpi_sheet_id);
-        const cleanCustomerSheetId = extractSheetId(customer_sheet_id);
-
-        // Cập nhật hoặc tạo mới nhóm và gán bot_role
-        await pool.query(
-            `INSERT INTO telegram_groups (telegram_group_id, group_name, bot_role, schedule_registration_open, kpi_sheet_id, customer_sheet_id, customer_drive_folder_id) 
-             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7)
-             ON CONFLICT (telegram_group_id) DO UPDATE SET 
-             bot_role = EXCLUDED.bot_role, 
-             schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open),
-             kpi_sheet_id = COALESCE(EXCLUDED.kpi_sheet_id, telegram_groups.kpi_sheet_id),
-             customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id),
-             customer_drive_folder_id = COALESCE(EXCLUDED.customer_drive_folder_id, telegram_groups.customer_drive_folder_id)`,
-            [telegram_group_id, `Group ${telegram_group_id}`, bot_role || null, schedule_registration_open, cleanKpiSheetId, cleanCustomerSheetId, customer_drive_folder_id || null]
-        );
-
-        const checkRes = await pool.query(
-            'SELECT id FROM group_settings WHERE telegram_group_id = $1',
-            [telegram_group_id]
-        );
-
-        if (checkRes.rows.length > 0) {
-            await pool.query(
-                `UPDATE group_settings SET
-              penalty_under_15 = $1,
-              penalty_under_90 = $2,
-              penalty_over_90 = $3,
-              shift_1_time = $4,
-              shift_2_time = $5,
-              auto_reminder_enabled = $6
-           WHERE telegram_group_id = $7`,
-                [
-                    penalty_under_15,
-                    penalty_under_90,
-                    penalty_over_90,
-                    shift_1_time,
-                    shift_2_time,
-                    auto_reminder_enabled,
-                    telegram_group_id
-                ]
-            );
-        } else {
-            await pool.query(
-                `INSERT INTO group_settings
-            (telegram_group_id, remind_time_1, auto_reminder_enabled,
-             photo_deadline_minutes, penalty_missing_kpi, penalty_per_photo,
-             penalty_missing_report, shift_1_time, shift_2_time)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-                [
-                    telegram_group_id,
-                    remind_time_1,
-                    auto_reminder_enabled,
-                    photo_deadline_minutes,
-                    penalty_missing_kpi,
-                    penalty_per_photo,
-                    penalty_missing_report,
-                    shift_1_time,
-                    shift_2_time
-                ]
-            );
-        }
-
-        res.json({ success: true });
-    } catch (error) {
-        console.error('[group_settings API] Error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 
 // ==========================================
@@ -2508,141 +2243,7 @@ botApp.get('/isdocker', (req, res) => {
 // DASHBOARD API – Thống kê chấm công
 // ========================================
 // UTC+7 helpers (hoạt động cả host lẫn Docker bất kể TZ container)
-function getTodayVN() {
-    const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    return now.toISOString().slice(0, 10);
-}
-function getIsoWeekRangeVN() {
-    const now = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    const day = now.getUTCDay();
-    const diffToMonday = (day === 0) ? -6 : 1 - day;
-    const monday = new Date(now);
-    monday.setUTCDate(now.getUTCDate() + diffToMonday);
-    const sunday = new Date(monday);
-    sunday.setUTCDate(monday.getUTCDate() + 6);
-    return {
-        start: monday.toISOString().slice(0, 10),
-        end: sunday.toISOString().slice(0, 10)
-    };
-}
 
-botApp.get('/api/admin/dashboard', async (req, res) => {
-    try {
-        const { group_id } = req.query;
-
-        const groupsRes = await pool.query(
-            `SELECT id, telegram_group_id, group_name FROM telegram_groups ORDER BY created_at ASC`
-        );
-        const groups = groupsRes.rows;
-
-        const emptyStats = {
-            total_scheduled_today: 0, total_checked_in_today: 0,
-            total_absent_today: 0, total_not_checked_yet: 0,
-            weekly_late_count: 0, weekly_on_time_count: 0,
-            weekly_total_checkins: 0, weekly_punctual_rate: 0,
-            weekly_penalty_total: 0
-        };
-
-        if (groups.length === 0) {
-            return res.json({ groups: [], group: null, today: getTodayVN(), employees: [], stats: emptyStats });
-        }
-
-        const allGroups = !group_id || group_id === 'ALL';
-        const targetGroup = allGroups
-            ? null
-            : groups.find(g => String(g.id) === String(group_id)
-                || String(g.telegram_group_id) === String(group_id));
-        if (!allGroups && !targetGroup) {
-            return res.status(404).json({ error: 'Không tìm thấy nhóm đã chọn.' });
-        }
-        const today = getTodayVN();
-        const { start: weekStart, end: weekEnd } = getIsoWeekRangeVN();
-
-        // Danh sách nhân sự + lịch + checkin + penalty hôm nay
-        const employeesRes = await pool.query(`
-            SELECT
-                u.id AS user_id,
-                u.full_name,
-                u.telegram_id,
-                u.role,
-                s.shift_type,
-                ci.check_in_time,
-                ci.status AS checkin_status,
-                COALESCE(p.late_minutes, 0) AS late_minutes,
-                COALESCE(p.amount, 0) AS penalty_amount,
-                CASE
-                    WHEN s.id IS NULL THEN 'NO_SCHEDULE'
-                    WHEN s.shift_type = 'OFF' THEN 'OFF'
-                    WHEN ci.id IS NULL THEN 'NOT_CHECKED_IN'
-                    WHEN p.late_minutes > 0 THEN 'LATE'
-                    ELSE 'ON_TIME'
-                END AS status
-            FROM employees u
-            JOIN telegram_groups tg ON u.telegram_group_id = tg.telegram_group_id
-            LEFT JOIN tk_schedules s ON s.user_id = u.id AND s.date = $2
-            LEFT JOIN tk_check_ins ci ON ci.user_id = u.id AND ci.date = $2
-            LEFT JOIN tk_penalties p ON p.user_id = u.id AND p.date = $2 AND p.violation_type = 'LATE'
-            WHERE ($1::uuid IS NULL OR tg.id = $1)
-              AND u.is_active = TRUE
-            ORDER BY u.full_name ASC
-        `, [targetGroup?.id || null, today]);
-
-        // Format check_in_time → HH:mm UTC+7
-        const employees = employeesRes.rows.map(emp => {
-            let checkInDisplay = null;
-            if (emp.check_in_time) {
-                const t = new Date(new Date(emp.check_in_time).getTime() + 7 * 60 * 60 * 1000);
-                checkInDisplay = t.toISOString().slice(11, 16);
-            }
-            return { ...emp, check_in_time: checkInDisplay };
-        });
-
-        // Thống kê tuần
-        const weeklyRes = await pool.query(`
-            SELECT
-                COUNT(*) AS total_checkins,
-                SUM(CASE WHEN p.id IS NOT NULL THEN 1 ELSE 0 END) AS late_count,
-                COALESCE(SUM(p2.amount), 0) AS penalty_total
-            FROM tk_check_ins ci
-            LEFT JOIN tk_penalties p ON p.user_id = ci.user_id AND p.date = ci.date AND p.violation_type = 'LATE'
-            LEFT JOIN tk_penalties p2 ON p2.user_id = ci.user_id AND p2.date >= $2 AND p2.date <= $3 AND p2.violation_type = 'LATE'
-            WHERE ($1::uuid IS NULL OR ci.group_id = $1)
-              AND ci.date >= $2 AND ci.date <= $3
-        `, [targetGroup?.id || null, weekStart, weekEnd]);
-
-        const ws = weeklyRes.rows[0];
-        const totalCheckins = parseInt(ws.total_checkins) || 0;
-        const weeklyLateCount = parseInt(ws.late_count) || 0;
-        const weeklyOnTimeCount = totalCheckins - weeklyLateCount;
-        const weeklyPunctualRate = totalCheckins > 0
-            ? Math.round((weeklyOnTimeCount / totalCheckins) * 1000) / 10 : 0;
-
-        const scheduledToday = employees.filter(e => e.shift_type && e.shift_type !== 'OFF').length;
-        const checkedInToday = employees.filter(e => e.check_in_time !== null).length;
-
-        res.json({
-            groups,
-            group: targetGroup,
-            today,
-            week: { start: weekStart, end: weekEnd },
-            employees,
-            stats: {
-                total_scheduled_today: scheduledToday,
-                total_checked_in_today: checkedInToday,
-                total_absent_today: Math.max(0, scheduledToday - checkedInToday),
-                total_not_checked_yet: employees.filter(e => e.status === 'NOT_CHECKED_IN').length,
-                weekly_late_count: weeklyLateCount,
-                weekly_on_time_count: weeklyOnTimeCount,
-                weekly_total_checkins: totalCheckins,
-                weekly_punctual_rate: weeklyPunctualRate,
-                weekly_penalty_total: parseInt(ws.penalty_total) || 0
-            }
-        });
-    } catch (error) {
-        console.error('[Dashboard Error]', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 botApp.get('/api/timekeep/personal-stats', async (req, res) => {
     try {
@@ -3139,133 +2740,17 @@ cron.schedule('0 20 * * 0', async () => {
 }, { scheduled: true, timezone: "Asia/Ho_Chi_Minh" });
 
 // Daily export cron job at 23:00
-cron.schedule('0 23 * * *', async () => {
-    try {
-        console.log('[Cron] Starting daily export to Google Spreadsheet');
-        const today = new Date();
-        const dateStr = today.toISOString().slice(0, 10);
-        const scheduleRes = await pool.query('SELECT * FROM group_settings');
-        const checkinRes = await pool.query('SELECT * FROM tk_check_ins WHERE date = $1', [dateStr]);
-        const penaltyRes = await pool.query('SELECT * FROM tk_penalties WHERE date = $1', [dateStr]);
-        const leaveRes = await pool.query('SELECT * FROM tk_leave_requests WHERE date = $1', [dateStr]);
-
-        const rows = [];
-        rows.push(['Type', 'Group ID', 'User ID', 'Date', 'Details']);
-        rows.push(['Schedule', r.telegram_group_id, '', r.date, JSON.stringify(r)]);
-
-        checkinRes.rows.forEach(r => {
-            rows.push(['Checkin', r.group_id, r.user_id, r.date, `Video: ${r.video_file_id}`]);
-        });
-        penaltyRes.rows.forEach(r => {
-            rows.push(['Penalty', r.group_id, r.user_id, r.date, `${r.violation_type} - ${r.amount}`]);
-        });
-        leaveRes.rows.forEach(r => {
-            rows.push(['Leave', r.group_id, r.user_id, r.date, `${r.reason}`]);
-        });
-        // Google Sheets API
-        const auth = new google.auth.GoogleAuth({
-            scopes: ['https://www.googleapis.com/auth/spreadsheets']
-        });
-        const authClient = await auth.getClient();
-        const sheets = google.sheets({ version: 'v4', auth: authClient });
-        await sheets.spreadsheets.values.update({
-            spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
-            range: 'DailyExport!A1',
-            valueInputOption: 'RAW',
-            requestBody: { values: rows }
-        });
-        console.log('[Cron] Export completed successfully');
-    } catch (err) {
-        console.error('[Cron] Error during daily export:', err);
-    }
-});
 // =====================================
 // ADMIN SCHEDULE MANAGEMENT APIs
 // =====================================
 
 // Admin cập nhật ca trực (thay đổi shift_type)
-botApp.put('/api/admin/schedules/:id', async (req, res) => {
-    try {
-        const { shift_type } = req.body;
-        const validShifts = ['CA_SANG', 'CA_CHIEU', 'FULL_DAY', 'OFF'];
-        if (!validShifts.includes(shift_type)) {
-            return res.status(400).json({ success: false, message: 'Ca trực không hợp lệ' });
-        }
-        const result = await pool.query(
-            `UPDATE tk_schedules SET shift_type = $1, updated_by = 'admin', updated_at = NOW() WHERE id = $2 RETURNING id, group_id, user_id, date::text AS date, shift_type, is_locked, created_at, proof_url, updated_by, updated_at`,
-            [shift_type, req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy lịch' });
-        }
-        res.json({ success: true, data: result.rows[0] });
-    } catch (error) {
-        console.error('[Admin Schedule PUT Error]', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // Admin thêm lịch trực thủ công
-botApp.post('/api/admin/schedules', async (req, res) => {
-    try {
-        const { user_id, date, shift_type } = req.body;
-        if (!user_id || !date || !shift_type) {
-            return res.status(400).json({ success: false, message: 'Thiếu thông tin bắt buộc' });
-        }
-        // Lấy group_id của user
-        const userRes = await pool.query(
-            `SELECT tg.id AS group_id 
-             FROM employees u 
-             JOIN telegram_groups tg ON u.telegram_group_id = tg.telegram_group_id 
-             WHERE u.id = $1`,
-            [user_id]
-        );
-        const group_id = userRes.rows[0]?.group_id || null;
-
-        const result = await pool.query(
-            `INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked, updated_by, updated_at)
-             VALUES ($1, $2, $3, $4, false, 'admin', NOW())
-             ON CONFLICT (user_id, date)
-             DO UPDATE SET shift_type = $4, updated_by = 'admin', updated_at = NOW()
-             RETURNING  id, group_id, user_id, date::text AS date, shift_type, is_locked, created_at, proof_url, updated_by, updated_at`,
-            [group_id, user_id, date, shift_type]
-        );
-
-        console.log('Kết quả trả về:', result.rows[0]);
-        res.json({ success: true, data: result.rows[0] });
-    } catch (error) {
-        console.error('[Admin Schedule POST Error]', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // Admin xóa lịch trực
-botApp.delete('/api/admin/schedules/:id', async (req, res) => {
-    try {
-        const result = await pool.query(
-            `DELETE FROM tk_schedules WHERE id = $1 RETURNING id, group_id, user_id, date::text AS date, shift_type, is_locked, created_at, proof_url, updated_by, updated_at`,
-            [req.params.id]
-        );
-        if (result.rows.length === 0) {
-            return res.status(404).json({ success: false, message: 'Không tìm thấy lịch' });
-        }
-        syncAllTimekeepSheets().catch(e => console.error('Sync sheet error:', e));
-        res.json({ success: true });
-    } catch (error) {
-        console.error('[Admin Schedule DELETE Error]', error);
-        res.status(500).json({ error: error.message });
-    }
-});
 
 // Admin đồng bộ Google Sheet Chấm công & Lịch
-botApp.post('/api/admin/timekeep/sync-sheet', async (req, res) => {
-    try {
-        const result = await syncAllTimekeepSheets();
-        res.json(result);
-    } catch (e) {
-        res.status(500).json({ success: false, message: e.message });
-    }
-});
 
 // Cache lưu video gần nhất của từng user để hỗ trợ check-in bằng cách gửi video trước, nhắn tin "checkin" sau (Chỉ áp dụng cho chính user đó, chống check-in hộ)
 const recentUserVideos = new Map();
