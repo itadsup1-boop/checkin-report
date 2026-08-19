@@ -1,3 +1,6 @@
+import { calculateBaseQuantity } from '../../domain/unit-conversion.js';
+import { roundQuantity } from '../../domain/quantity-rules.js';
+
 export function registerWarehouseImportRoutes({
     botApp,
     pool,
@@ -132,7 +135,7 @@ export function registerWarehouseImportRoutes({
                             is_active = TRUE
                          WHERE lower(regexp_replace(btrim(tk_products.product_name), '[[:space:]]+', ' ', 'g'))
                              = lower(regexp_replace(btrim(EXCLUDED.product_name), '[[:space:]]+', ' ', 'g'))
-                         RETURNING id, barcode, product_name`,
+                         RETURNING id, barcode, product_name, base_unit, import_unit, conversion_rate`,
                         [item.barcode, item.productName]
                     );
                     const product = productResult.rows[0];
@@ -145,6 +148,21 @@ export function registerWarehouseImportRoutes({
                             { status: 409 }
                         );
                     }
+                    // QUY ĐỔI ĐƠN VỊ.
+                    //
+                    // Nhân viên chỉ gõ số lượng theo đơn vị ĐÓNG GÓI mà Admin đã cấu
+                    // hình (ví dụ 2 Lọ). Kho luôn lưu theo đơn vị CƠ SỞ (ví dụ ml),
+                    // nên nhân hệ số ngay tại đây — trước mọi phép ghi.
+                    //
+                    // Sản phẩm chưa cấu hình quy đổi thì hệ số bằng 1, nhân vào không
+                    // đổi gì. Sản phẩm mới tạo lần đầu cũng rơi vào trường hợp này.
+                    const donViNhap = product.import_unit;
+                    const heSo = Number(product.conversion_rate) || 1;
+                    const coQuyDoi = Boolean(donViNhap) && heSo > 1;
+                    const soLuongKho = coQuyDoi
+                        ? calculateBaseQuantity(item.quantity, heSo)
+                        : item.quantity;
+
                     const inventoryResult = await client.query(
                         `INSERT INTO tk_inventory (product_id, branch, quantity, updated_at)
                          VALUES ($1, $2, $3, NOW())
@@ -152,17 +170,17 @@ export function registerWarehouseImportRoutes({
                             quantity = tk_inventory.quantity + EXCLUDED.quantity,
                             updated_at = NOW()
                          RETURNING quantity`,
-                        [product.id, branch, item.quantity]
+                        [product.id, branch, soLuongKho]
                     );
                     const balanceAfter = Number(inventoryResult.rows[0].quantity);
-                    const balanceBefore = balanceAfter - item.quantity;
+                    const balanceBefore = roundQuantity(balanceAfter - soLuongKho);
                     const transactionResult = await client.query(
                         `INSERT INTO tk_warehouse_transactions
                             (group_id, user_id, transaction_type, product_id, quantity,
                              status, proof_folder_url, branch)
                          VALUES ($1, $2, 'IMPORT', $3, $4, 'APPROVED', NULL, $5)
                          RETURNING id`,
-                        [group.id, user.id, product.id, item.quantity, branch]
+                        [group.id, user.id, product.id, soLuongKho, branch]
                     );
                     const transactionId = transactionResult.rows[0].id;
                     await client.query(
@@ -179,19 +197,33 @@ export function registerWarehouseImportRoutes({
                             group.id,
                             product.id,
                             branch,
-                            item.quantity,
+                            soLuongKho,
                             balanceBefore,
                             balanceAfter,
                             user.id,
                             String(telegramId),
-                            JSON.stringify({ source: 'MINI_APP' })
+                            JSON.stringify(coQuyDoi
+                                ? {
+                                    source: 'MINI_APP',
+                                    nhap: item.quantity,
+                                    don_vi_nhap: donViNhap,
+                                    he_so: heSo,
+                                    don_vi_kho: product.base_unit
+                                }
+                                : { source: 'MINI_APP' })
                         ]
                     );
                     resultItems.push({
                         product_name: product.product_name,
                         barcode: product.barcode,
-                        quantity: item.quantity,
-                        newStock: balanceAfter
+                        quantity: soLuongKho,
+                        newStock: balanceAfter,
+                        // Số nhân viên đã gõ và đơn vị họ dùng, để màn hình xác nhận
+                        // nói đúng "2 Lọ = 5 ml" thay vì chỉ hiện con số đã quy đổi.
+                        entered_quantity: item.quantity,
+                        import_unit: coQuyDoi ? donViNhap : null,
+                        base_unit: product.base_unit || 'chiếc',
+                        conversion_rate: coQuyDoi ? heSo : 1
                     });
                     transactionItems.push({
                         transactionId,

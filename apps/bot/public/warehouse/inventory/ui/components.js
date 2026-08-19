@@ -95,11 +95,34 @@ export function statusBadge(status) {
 
 /* ---------- Dòng sản phẩm ---------- */
 
+export function formatDualStockDisplay(qty, baseUnit = 'chiếc', importUnit = null, conversionRate = 1) {
+    const cleanBase = baseUnit || 'chiếc';
+    const cleanImport = importUnit && String(importUnit).trim();
+    const rate = Number(conversionRate) || 1;
+    const n = Number(qty) || 0;
+
+    if (!cleanImport || rate <= 1 || cleanImport.toLowerCase() === cleanBase.toLowerCase()) {
+        return `${n} ${cleanBase}`;
+    }
+
+    const fullPacks = Math.floor(n / rate);
+    const rem = Number((n - (fullPacks * rate)).toFixed(1));
+
+    if (fullPacks === 0) {
+        return `${n} ${cleanBase}`;
+    }
+    if (rem === 0) {
+        return `${n} ${cleanBase} (~${fullPacks} ${cleanImport})`;
+    }
+    return `${n} ${cleanBase} (~${fullPacks} ${cleanImport} + ${rem} ${cleanBase})`;
+}
+
 /**
  * @param {object} params
  * @param {boolean} params.showSplit hiện "US x / UK y" khi đang xem Tất cả
  */
 export function productRow({ item, quantity, status, showSplit, onOpen }) {
+    const qtyText = formatDualStockDisplay(quantity, item.baseUnit, item.importUnit, item.conversionRate);
     return h('button', { class: 'product', type: 'button', onClick: onOpen },
         h('div', { class: 'product__thumb' }, icon('package', { size: 17 })),
         h('div', { class: 'product__main' },
@@ -107,12 +130,12 @@ export function productRow({ item, quantity, status, showSplit, onOpen }) {
             h('div', { class: 'product__meta' },
                 item.barcode ? h('span', { class: 'product__code' }, item.barcode) : null,
                 showSplit
-                    ? h('span', { class: 'product__split' }, `· US ${item.stockUS} / UK ${item.stockUK}`)
+                    ? h('span', { class: 'product__split' }, `· US ${item.stockUS} / UK ${item.stockUK} ${item.baseUnit || 'chiếc'}`)
                     : null
             )
         ),
         h('div', { class: 'product__right' },
-            h('div', { class: 'product__qty' }, String(quantity)),
+            h('div', { class: 'product__qty' }, qtyText),
             statusBadge(status)
         ),
         icon('chevronRight', { size: 15, class: 'text-muted' })

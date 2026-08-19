@@ -126,6 +126,9 @@ export function createWarehouseQueryRepository(pool) {
                                     'product_name', p.product_name,
                                     'barcode', p.barcode,
                                     'quantity_mode', p.quantity_mode,
+                                    'base_unit', p.base_unit,
+                                    'import_unit', p.import_unit,
+                                    'conversion_rate', p.conversion_rate,
                                     'default_quantity', sp.default_quantity,
                                     'display_order', sp.display_order
                                 )
@@ -143,7 +146,7 @@ export function createWarehouseQueryRepository(pool) {
                  ORDER BY s.display_order, s.service_name`
             ),
             pool.query(
-                `SELECT id, barcode, product_name, quantity_mode
+                `SELECT id, barcode, product_name, quantity_mode, base_unit, import_unit, conversion_rate
                  FROM tk_products
                  WHERE is_active = TRUE
                  ORDER BY product_name`
@@ -198,6 +201,10 @@ export function createWarehouseQueryRepository(pool) {
                                     'product_id', oi.product_id,
                                     'product_name', oi.product_name_snapshot,
                                     'barcode', oi.barcode_snapshot,
+                                    'unit', COALESCE(oi.unit_snapshot, p.base_unit, 'chiếc'),
+                                    'base_unit', p.base_unit,
+                                    'import_unit', p.import_unit,
+                                    'conversion_rate', p.conversion_rate,
                                     'template_quantity', oi.template_quantity,
                                     'actual_quantity', oi.actual_quantity,
                                     'item_source', oi.item_source,
@@ -213,6 +220,7 @@ export function createWarehouseQueryRepository(pool) {
                         ) AS items
                  FROM tk_warehouse_order_services os
                  LEFT JOIN tk_warehouse_order_items oi ON oi.order_service_id = os.id
+                 LEFT JOIN tk_products p ON p.id = oi.product_id
                  WHERE os.order_id = $1
                  GROUP BY os.id
                  ORDER BY os.display_order, os.created_at`,

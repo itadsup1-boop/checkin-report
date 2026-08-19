@@ -54,3 +54,13 @@ test('Admin cấu hình số nguyên hoặc số thập phân riêng cho từng 
   assert.match(source, /Cho nhập thập phân/);
   assert.match(source, /inputMode=\{item\.quantity_mode === 'DECIMAL' \? 'decimal' : 'numeric'\}/);
 });
+
+test('Admin cấu hình đơn vị tính cơ sở và quy đổi đóng gói khi nhập', () => {
+  assert.match(source, /ProductUnitsModal/);
+  assert.match(source, /saveProductUnits/);
+  assert.match(source, /Bật quy đổi đóng gói khi nhập hàng/);
+  assert.match(source, /base_unit/);
+  assert.match(source, /import_unit/);
+  assert.match(source, /conversion_rate/);
+});
+

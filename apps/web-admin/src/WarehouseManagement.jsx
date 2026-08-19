@@ -11,6 +11,7 @@ import {
   RefreshCw,
   Save,
   Search,
+  Settings,
   Trash2,
   X
 } from 'lucide-react';
@@ -39,6 +40,199 @@ function EmptyState({ icon: Icon, title, description, action }) {
         <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500">{description}</p>
         {action && <div className="mt-5">{action}</div>}
       </div>
+    </div>
+  );
+}
+
+function ProductUnitsModal({ product, saving, onClose, onSave }) {
+  const [baseUnit, setBaseUnit] = useState(product?.base_unit || 'chiếc');
+  const [hasConversion, setHasConversion] = useState(Boolean(product?.import_unit && Number(product?.conversion_rate) > 1));
+  const [importUnit, setImportUnit] = useState(product?.import_unit || 'Lọ');
+  const [conversionRate, setConversionRate] = useState(product?.conversion_rate ? String(product.conversion_rate) : '2.5');
+  const [quantityMode, setQuantityMode] = useState(product?.quantity_mode || 'INTEGER');
+  const [syncInventory, setSyncInventory] = useState(false);
+
+  const hasCurrentStock = (Number(product?.stock_us) || 0) > 0 || (Number(product?.stock_uk) || 0) > 0;
+  const isAlreadyConfigured = product?.import_unit && Number(product?.conversion_rate) > 1;
+
+  const handleBaseUnitChange = value => {
+    setBaseUnit(value);
+    if (['ml', 'cc', 'unit', 'u', 'liều', 'gam', 'g'].includes(value.toLowerCase().trim())) {
+      setQuantityMode('DECIMAL');
+    }
+  };
+
+  const submit = event => {
+    event.preventDefault();
+    onSave(product.id, {
+      base_unit: baseUnit.trim() || 'chiếc',
+      import_unit: hasConversion ? (importUnit.trim() || 'Lọ') : null,
+      conversion_rate: hasConversion ? Number(conversionRate) || 1.0 : 1.0,
+      quantity_mode: quantityMode,
+      sync_inventory: syncInventory && hasConversion
+    });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-sm">
+      <form onSubmit={submit} className="w-full max-w-lg overflow-hidden rounded-2xl bg-white text-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-slate-950">Cấu hình Đơn vị & Quy đổi</h2>
+            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-bold text-slate-800">{product?.product_name}</span>
+              <span className="font-mono text-slate-500">({product?.barcode || 'Chưa có mã'})</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-slate-200 hover:text-slate-700">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="space-y-4 p-6">
+          {/* Banner trạng thái hiện tại */}
+          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs">
+            <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Cấu hình hiện tại trong hệ thống:</span>
+            <div className="mt-1 flex flex-wrap items-center gap-2 font-medium text-slate-800">
+              <span className="rounded bg-cyan-100 px-2 py-0.5 font-bold text-cyan-900">
+                Đơn vị cơ sở: {product?.base_unit || 'chiếc'}
+              </span>
+              {isAlreadyConfigured ? (
+                <span className="rounded bg-amber-100 px-2 py-0.5 font-bold text-amber-900 border border-amber-300">
+                  📦 Đang quy đổi: 1 {product.import_unit} = {product.conversion_rate} {product.base_unit || 'chiếc'}
+                </span>
+              ) : (
+                <span className="rounded bg-slate-200 px-2 py-0.5 text-slate-700">
+                  Chưa bật quy đổi đóng gói
+                </span>
+              )}
+              <span className="text-slate-500">· Tồn: US ({Number(product?.stock_us) || 0}) / UK ({Number(product?.stock_uk) || 0})</span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-800">
+              Đơn vị cơ sở (khi xuất làm dịch vụ) <span className="text-rose-500">*</span>
+            </label>
+            <input
+              required
+              value={baseUnit}
+              onChange={e => handleBaseUnitChange(e.target.value)}
+              placeholder="Ví dụ: chiếc, ml, unit, tuýp, cái..."
+              className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-950 outline-none focus:border-cyan-500 focus:ring-2 focus:ring-cyan-100"
+            />
+            <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-slate-500">
+              <span className="font-medium">Gợi ý:</span>
+              {['chiếc', 'ml', 'unit', 'cái', 'tuýp', 'hộp', 'bộ', 'ống', 'gói'].map(u => (
+                <button
+                  type="button"
+                  key={u}
+                  onClick={() => handleBaseUnitChange(u)}
+                  className={`rounded-md px-2 py-0.5 font-medium transition ${baseUnit === u ? 'bg-cyan-600 text-white font-bold' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+                >
+                  {u}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-bold text-slate-800">
+              Kiểu số lượng khi xuất
+            </label>
+            <select
+              value={quantityMode}
+              onChange={e => setQuantityMode(e.target.value)}
+              className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-950 outline-none focus:border-cyan-500"
+            >
+              <option value="INTEGER">Chỉ nhập số nguyên (1, 2, 3…)</option>
+              <option value="DECIMAL">Cho nhập số thập phân (1.2, 2.5…)</option>
+            </select>
+          </div>
+
+          <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-4">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={hasConversion}
+                onChange={e => setHasConversion(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-cyan-600 focus:ring-cyan-500"
+              />
+              <span className="text-sm font-bold text-slate-950">Bật quy đổi đóng gói khi nhập hàng</span>
+            </label>
+            <p className="mt-1 text-xs text-slate-600 ml-6">
+              Áp dụng cho mặt hàng nhập theo Lọ/Hộp/Chai nhưng xuất dùng theo ml/cc/unit/chiếc.
+            </p>
+
+            {hasConversion && (
+              <div className="mt-4 pt-3 border-t border-cyan-200 grid gap-3 sm:grid-cols-2">
+                <label className="block text-xs font-bold text-slate-800">
+                  Đơn vị khi nhập hàng
+                  <input
+                    required={hasConversion}
+                    value={importUnit}
+                    onChange={e => setImportUnit(e.target.value)}
+                    placeholder="Ví dụ: Lọ, Hộp, Chai"
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-950 outline-none focus:border-cyan-500"
+                  />
+                </label>
+                <label className="block text-xs font-bold text-slate-800">
+                  Quy cách (1 {importUnit || 'Lọ'} = ... {baseUnit})
+                  <input
+                    required={hasConversion}
+                    type="number"
+                    step="0.1"
+                    min="0.1"
+                    value={conversionRate}
+                    onChange={e => setConversionRate(e.target.value)}
+                    placeholder="Ví dụ: 2.5"
+                    className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-950 outline-none focus:border-cyan-500"
+                  />
+                </label>
+                <div className="sm:col-span-2 text-xs font-medium text-cyan-900 bg-white rounded-lg p-2.5 border border-cyan-200 shadow-sm">
+                  💡 <b>Quy đổi:</b> 1 {importUnit || 'Lọ'} = <b>{conversionRate || '2.5'}</b> {baseUnit}
+                  <br />
+                  <span className="text-slate-600 text-[11px]">Khi nhân viên nhập 2 {importUnit || 'Lọ'}, tồn kho sẽ tự động cộng {(2 * (Number(conversionRate) || 0)).toFixed(1)} {baseUnit}.</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {hasConversion && hasCurrentStock && (
+            <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-slate-900 shadow-sm">
+              <label className="flex items-start gap-2.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={syncInventory}
+                  onChange={e => setSyncInventory(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-amber-500 text-amber-600 focus:ring-amber-500"
+                />
+                <div>
+                  <span className="text-sm font-bold text-slate-950">Quy đổi lại số lượng tồn kho cũ hiện có</span>
+                  <p className="mt-1 text-xs text-slate-700">
+                    Tích chọn nếu số lượng cũ trong kho trước đây được nhập theo số Lọ và bạn muốn nhân hệ số để thành tổng dung tích {baseUnit}:
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs font-bold">
+                    <span className="rounded bg-white px-2.5 py-1 text-amber-950 border border-amber-300 shadow-xs">
+                      US: {Number(product?.stock_us) || 0} Lọ → <b className="text-emerald-700">{((Number(product?.stock_us) || 0) * (Number(conversionRate) || 1)).toFixed(1)} {baseUnit}</b>
+                    </span>
+                    <span className="rounded bg-white px-2.5 py-1 text-amber-950 border border-amber-300 shadow-xs">
+                      UK: {Number(product?.stock_uk) || 0} Lọ → <b className="text-violet-700">{((Number(product?.stock_uk) || 0) * (Number(conversionRate) || 1)).toFixed(1)} {baseUnit}</b>
+                    </span>
+                  </div>
+                </div>
+              </label>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
+          <button type="button" onClick={onClose} className="rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-100">Hủy</button>
+          <button disabled={saving} className="rounded-xl bg-cyan-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-cyan-700 disabled:opacity-50 shadow-sm">
+            {saving ? 'Đang lưu…' : 'Lưu cấu hình'}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
@@ -118,6 +312,7 @@ export default function WarehouseManagement() {
   const [products, setProducts] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState(null);
   const [templateItems, setTemplateItems] = useState([]);
+  const [editingProductUnits, setEditingProductUnits] = useState(null);
   const [serviceDraft, setServiceDraft] = useState({ service_name: '', description: '', display_order: 0 });
   const [serviceSearch, setServiceSearch] = useState('');
   const [productSearch, setProductSearch] = useState('');
@@ -339,6 +534,38 @@ export default function WarehouseManagement() {
       setNotice(updated.quantity_mode === 'DECIMAL'
         ? 'Đã cho phép sản phẩm xuất theo số thập phân.'
         : 'Đã đặt sản phẩm chỉ xuất theo số nguyên.');
+    } catch (saveError) {
+      setError(saveError.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveProductUnits = async (productId, unitConfig) => {
+    setSaving(true);
+    setError('');
+    try {
+      const result = await request(`/admin/warehouse/products/${productId}`, {
+        method: 'PUT',
+        data: unitConfig
+      });
+      const updated = result.data.product;
+      if (unitConfig.sync_inventory) {
+        await loadCatalog({ keepSelection: true });
+      } else {
+        setProducts(current => current.map(product => product.id === productId ? { ...product, ...updated } : product));
+        setTemplateItems(current => current.map(item => item.product_id === productId
+          ? {
+              ...item,
+              quantity_mode: updated.quantity_mode,
+              base_unit: updated.base_unit,
+              import_unit: updated.import_unit,
+              conversion_rate: updated.conversion_rate
+            }
+          : item));
+      }
+      setEditingProductUnits(null);
+      setNotice(`Đã cập nhật cấu hình đơn vị tính cho “${updated.product_name}”.`);
     } catch (saveError) {
       setError(saveError.message);
     } finally {
@@ -592,35 +819,53 @@ export default function WarehouseManagement() {
                                       <Package className="h-5 w-5" />
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <div className="break-words text-sm font-bold leading-5 text-slate-900" title={product.product_name}>{product.product_name}</div>
-                                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px]">
-                                        <span className="rounded-md bg-slate-200 px-2 py-1 font-mono text-slate-600">Mã: {product.barcode || 'Chưa có'}</span>
-                                        <span className="rounded-md bg-emerald-50 px-2 py-1 font-bold text-emerald-700">US: {Number(product.stock_us) || 0}</span>
-                                        <span className="rounded-md bg-violet-50 px-2 py-1 font-bold text-violet-700">UK: {Number(product.stock_uk) || 0}</span>
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="break-words text-sm font-bold leading-5 text-slate-900" title={product.product_name}>{product.product_name}</div>
+                                      </div>
+                                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <span className="rounded-md bg-slate-200 px-2 py-0.5 font-mono text-slate-600">Mã: {product.barcode || 'Chưa có'}</span>
+                                        <span className="rounded-md bg-cyan-100 px-2 py-0.5 font-bold text-cyan-800">Đơn vị: {product.base_unit || 'chiếc'}</span>
+                                        {product.import_unit && Number(product.conversion_rate) > 1 && (
+                                          <span className="rounded-md bg-amber-100 px-2 py-0.5 font-bold text-amber-900 border border-amber-300">
+                                            📦 1 {product.import_unit} = {product.conversion_rate} {product.base_unit || 'chiếc'}
+                                          </span>
+                                        )}
+                                        <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">US: {Number(product.stock_us) || 0}</span>
+                                        <span className="rounded-md bg-violet-50 px-2 py-0.5 font-bold text-violet-700">UK: {Number(product.stock_uk) || 0}</span>
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-end gap-3 border-t border-slate-200 pt-3">
-                                    <label className="min-w-0 text-[11px] font-bold text-slate-500">
-                                      Cách nhập số lượng khi xuất
+                                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingProductUnits(product)}
+                                      title="Cài đặt đơn vị tính cơ sở và hệ số quy đổi đóng gói"
+                                      className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-300 bg-cyan-50 px-3 py-2 text-xs font-bold text-cyan-800 shadow-sm hover:bg-cyan-100 transition"
+                                    >
+                                      <Settings className="h-3.5 w-3.5 text-cyan-600" />
+                                      <span>Đơn vị & Quy đổi</span>
+                                    </button>
+
+                                    <div className="flex items-center gap-2">
+                                      <label className="sr-only">Kiểu số lượng</label>
                                       <select
                                         value={product.quantity_mode || 'INTEGER'}
                                         disabled={saving}
                                         onChange={event => updateProductQuantityMode(product.id, event.target.value)}
                                         title="Kiểu số lượng khi xuất kho"
-                                        className="mt-1.5 w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
+                                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-cyan-500"
                                       >
                                         <option value="INTEGER">Chỉ nhập số nguyên (1, 2, 3…)</option>
                                         <option value="DECIMAL">Cho nhập thập phân (1.2, 2.3…)</option>
                                       </select>
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() => addProduct(product.id)}
-                                      className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-cyan-700"
-                                    >
-                                      <Plus className="h-3.5 w-3.5" />Thêm
-                                    </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => addProduct(product.id)}
+                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-cyan-600 px-3.5 text-xs font-bold text-white shadow-sm hover:bg-cyan-700"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />Thêm
+                                      </button>
+                                    </div>
                                   </div>
                                 </div>
                               ))}
@@ -660,8 +905,29 @@ export default function WarehouseManagement() {
                       ) : templateItems.length ? templateItems.map((item, index) => (
                         <div key={item.product_id} className="grid gap-3 border-t border-slate-100 px-4 py-3 first:border-t-0 sm:grid-cols-[minmax(220px,1fr)_210px_170px_110px] sm:items-center">
                           <div className="min-w-0">
-                            <div className="truncate text-sm font-bold text-slate-800">{item.product_name}</div>
-                            <div className="mt-0.5 text-xs font-mono text-slate-400">{item.barcode}</div>
+                            <div className="flex items-center gap-2">
+                              <div className="truncate text-sm font-bold text-slate-800">{item.product_name}</div>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const prod = products.find(p => p.id === item.product_id) || item;
+                                  setEditingProductUnits(prod);
+                                }}
+                                title="Cài đặt đơn vị tính và quy đổi đóng gói"
+                                className="rounded p-1 text-slate-400 hover:bg-cyan-50 hover:text-cyan-700 transition"
+                              >
+                                <Settings className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                              <span className="font-mono text-slate-400">{item.barcode}</span>
+                              <span className="rounded bg-cyan-50 px-1.5 py-0.2 text-[11px] font-bold text-cyan-800">ĐVT: {item.base_unit || 'chiếc'}</span>
+                              {item.import_unit && Number(item.conversion_rate) > 1 && (
+                                <span className="rounded bg-amber-50 px-1.5 py-0.2 text-[11px] font-bold text-amber-800 border border-amber-200">
+                                  1 {item.import_unit} = {item.conversion_rate} {item.base_unit || 'chiếc'}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 sm:block">
                             <span className="sm:hidden">Kiểu số lượng:</span>
@@ -677,15 +943,18 @@ export default function WarehouseManagement() {
                           </label>
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 sm:block">
                             <span className="sm:hidden">Số lượng:</span>
-                            <input
-                              type="number"
-                              min={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
-                              step={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
-                              inputMode={item.quantity_mode === 'DECIMAL' ? 'decimal' : 'numeric'}
-                              value={item.default_quantity}
-                              onChange={event => updateItem(item.product_id, { default_quantity: Number(event.target.value) })}
-                              className="w-24 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-bold text-slate-950 outline-none focus:border-cyan-500 sm:w-full"
-                            />
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="number"
+                                min={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
+                                step={item.quantity_mode === 'DECIMAL' ? '0.1' : '1'}
+                                inputMode={item.quantity_mode === 'DECIMAL' ? 'decimal' : 'numeric'}
+                                value={item.default_quantity}
+                                onChange={event => updateItem(item.product_id, { default_quantity: Number(event.target.value) })}
+                                className="w-20 rounded-lg border border-slate-300 bg-white px-3 py-2 text-center text-sm font-bold text-slate-950 outline-none focus:border-cyan-500"
+                              />
+                              <span className="text-xs font-bold text-slate-500 shrink-0">{item.base_unit || 'chiếc'}</span>
+                            </div>
                           </label>
                           <div className="flex justify-end gap-1">
                             <button onClick={() => moveItem(index, -1)} disabled={index === 0} title="Đưa lên" className="rounded-lg border border-slate-200 p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-30"><ChevronUp className="h-4 w-4" /></button>
@@ -718,6 +987,15 @@ export default function WarehouseManagement() {
       </div>
 
       {showCreateModal && <CreateServiceModal saving={saving} onClose={() => setShowCreateModal(false)} onSubmit={createService} />}
+      {editingProductUnits && (
+        <ProductUnitsModal
+          key={editingProductUnits.id}
+          product={products.find(p => p.id === editingProductUnits.id) || editingProductUnits}
+          saving={saving}
+          onClose={() => setEditingProductUnits(null)}
+          onSave={saveProductUnits}
+        />
+      )}
     </div>
   );
 }

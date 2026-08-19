@@ -44,6 +44,9 @@ export function registerWarehouseCatalogRoutes({
                         barcode: product.barcode,
                         product_name: product.product_name,
                         quantity_mode: product.quantity_mode,
+                        base_unit: product.base_unit || 'chiếc',
+                        import_unit: product.import_unit || null,
+                        conversion_rate: product.conversion_rate || 1.0,
                         stock_us: usQty,
                         stock_uk: ukQty,
                         quantity: usQty + ukQty
@@ -62,7 +65,7 @@ export function registerWarehouseCatalogRoutes({
         try {
             if (!await requireWarehouseGroup(req, res)) return;
             const productsRes = await pool.query(
-                'SELECT id, barcode, product_name, quantity_mode FROM tk_products ORDER BY product_name ASC'
+                'SELECT id, barcode, product_name, quantity_mode, base_unit, import_unit, conversion_rate FROM tk_products ORDER BY product_name ASC'
             );
             res.json({ success: true, products: productsRes.rows });
         } catch (e) {
@@ -75,7 +78,8 @@ export function registerWarehouseCatalogRoutes({
         try {
             if (!await requireWarehouseGroup(req, res)) return;
             const query = `
-                SELECT p.id, p.barcode, p.product_name, COALESCE(i.quantity, 0) as quantity, i.updated_at
+                SELECT p.id, p.barcode, p.product_name, p.base_unit, p.import_unit, p.conversion_rate,
+                       COALESCE(i.quantity, 0) as quantity, i.updated_at
                 FROM tk_products p
                 LEFT JOIN tk_inventory i ON p.id = i.product_id
                 ORDER BY p.product_name ASC
@@ -174,13 +178,16 @@ export function registerWarehouseCatalogRoutes({
                         p.barcode,
                         p.product_name,
                         p.quantity_mode,
+                        p.base_unit,
+                        p.import_unit,
+                        p.conversion_rate,
                         COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0) AS stock_us,
                         COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0) AS stock_uk,
                         MAX(i.updated_at) AS updated_at
                  FROM tk_products p
                  LEFT JOIN tk_inventory i ON i.product_id = p.id
                  WHERE p.is_active = TRUE
-                 GROUP BY p.id, p.barcode, p.product_name, p.quantity_mode
+                 GROUP BY p.id, p.barcode, p.product_name, p.quantity_mode, p.base_unit, p.import_unit, p.conversion_rate
                  ORDER BY p.product_name`
             );
             res.json({ success: true, products: result.rows });

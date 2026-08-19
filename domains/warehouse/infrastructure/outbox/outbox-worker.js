@@ -13,7 +13,8 @@ export function buildPendingMessage(order, escapeHtml, transferSuggestions = [],
     for (const service of order.services) {
         message += `<b>• ${escapeHtml(service.service_name_snapshot)}</b>\n`;
         service.items.filter(item => !item.is_removed).forEach(item => {
-            message += `  - ${escapeHtml(item.product_name)}: ${item.actual_quantity}\n`;
+            const unitStr = item.unit || item.base_unit ? ` ${escapeHtml(item.unit || item.base_unit)}` : '';
+            message += `  - ${escapeHtml(item.product_name)}: ${item.actual_quantity}${unitStr}\n`;
         });
     }
     if (transferSuggestions.length) {
@@ -27,7 +28,7 @@ export function buildPendingMessage(order, escapeHtml, transferSuggestions = [],
     return message;
 }
 
-function buildApprovedMessage(order, escapeHtml) {
+export function buildApprovedMessage(order, escapeHtml) {
     let message = `✅ <b>[XUẤT KHO CHO KHÁCH THÀNH CÔNG]</b>\n\n` +
         `🆔 <b>Mã đơn:</b> <code>${escapeHtml(order.order_code)}</code>\n` +
         `🙋 <b>Khách:</b> ${escapeHtml(order.customer_name)}\n` +
@@ -35,17 +36,24 @@ function buildApprovedMessage(order, escapeHtml) {
         `🩺 <b>Bác sĩ:</b> ${escapeHtml(order.doctor_name || 'Chưa nhập')}\n` +
         `🧑‍🔧 <b>Kỹ thuật viên:</b> ${escapeHtml(order.technician_name || 'Chưa nhập')}\n` +
         `🏢 <b>Cơ sở sử dụng:</b> ${escapeHtml(order.branch)}\n` +
-        `👤 <b>Người order/bàn giao:</b> ${escapeHtml(order.creator_name)}\n`;
-    if (order.transfers.length) {
+        `👤 <b>Người order/bàn giao:</b> ${escapeHtml(order.creator_name)}\n\n`;
+    for (const service of order.services || []) {
+        message += `<b>• ${escapeHtml(service.service_name_snapshot)}</b>\n`;
+        (service.items || []).filter(item => !item.is_removed).forEach(item => {
+            const unitStr = item.unit || item.base_unit ? ` ${escapeHtml(item.unit || item.base_unit)}` : '';
+            message += `  - ${escapeHtml(item.product_name)}: ${item.actual_quantity}${unitStr}\n`;
+        });
+    }
+    if (order.transfers?.length) {
         message += '\n🚚 <b>MANG HÀNG QUA CƠ SỞ SỬ DỤNG:</b>\n';
         order.transfers.forEach(transfer => {
             message += `Từ ${transfer.from_branch} → ${transfer.to_branch}\n`;
-            transfer.items.forEach(item => {
+            (transfer.items || []).forEach(item => {
                 message += `  - ${escapeHtml(item.product_name)}: ${item.quantity}\n`;
             });
         });
     }
-    return message;
+    return message.trim();
 }
 
 function isTelegramMessageAlreadyUpdated(error) {
@@ -186,7 +194,7 @@ export function startWarehouseOutboxWorker({
                 `🏢 <b>Cơ sở:</b> ${escapeHtml(payload.branch)}\n` +
                 `📦 <b>Danh sách sản phẩm:</b>\n`;
             payload.resultItems.forEach((item, index) => {
-                message += `${index + 1}. <b>${escapeHtml(item.product_name)}</b>: +${item.quantity} (Tồn: ${item.newStock})\n`;
+                message += `${index + 1}. <b>${escapeHtml(item.product_name)}</b>: ${dongNhapKho(item)}\n`;
             });
             if (!payload.notificationSent) {
                 const media = payload.files.map((file, index) => ({
@@ -429,4 +437,42 @@ export function startWarehouseOutboxWorker({
         stop: () => timer && clearInterval(timer),
         runOnce: tick
     };
+}
+
+/**
+ * Một dòng mặt hàng trong tin "NHẬP KHO THÀNH CÔNG".
+ *
+ * Hàng có quy đổi phải nói đủ ba ý, nếu không người đọc không biết con số là lọ
+ * hay ml — đúng câu hỏi đã phải hỏi khi nhìn dòng cũ "+5 (Tồn: 5)":
+ *
+ *   có quy đổi    : +2 Lọ = +5 ml (Tồn: 5 ml ~ 2 Lọ)
+ *   không quy đổi : +12 chiếc (Tồn: 120 chiếc)
+ *
+ * Đơn vị kho luôn được ghi ra, kể cả khi không quy đổi.
+ */
+export function dongNhapKho(item) {
+    const donViKho = item.base_unit || 'chiếc';
+    const soKho = soGon(item.quantity);
+    const heSo = Number(item.conversion_rate) || 1;
+    const coQuyDoi = Boolean(item.import_unit) && heSo > 1;
+
+    if (!coQuyDoi) {
+        return `+${soKho} ${donViKho} (Tồn: ${soGon(item.newStock)} ${donViKho})`;
+    }
+
+    const daGo = soGon(item.entered_quantity);
+    return `+${daGo} ${item.import_unit} = +${soKho} ${donViKho}`
+        + ` (Tồn: ${soGon(item.newStock)} ${donViKho}${quyRaGoi(item.newStock, heSo, item.import_unit)})`;
+}
+
+/** Bỏ đuôi .0 cho gọn: 5.0 thành 5, giữ 2.5 nguyên. */
+function soGon(value) {
+    const n = Number(value);
+    return Number.isFinite(n) ? String(Number(n.toFixed(1))) : String(value);
+}
+
+/** " ~ 2 Lọ" — chỉ ghi khi đủ ít nhất một gói nguyên, tránh dòng "~ 0 Lọ" vô nghĩa. */
+function quyRaGoi(soKho, heSo, donViNhap) {
+    const goi = Math.floor((Number(soKho) || 0) / heSo);
+    return goi >= 1 ? ` ~ ${goi} ${donViNhap}` : '';
 }

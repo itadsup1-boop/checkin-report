@@ -22,7 +22,11 @@ export async function loadProducts() {
     return (data.products || []).map(row => ({
         id: row.id,
         barcode: String(row.barcode || '').trim(),
-        name: String(row.product_name || '').trim()
+        name: String(row.product_name || '').trim(),
+        quantity_mode: row.quantity_mode || 'INTEGER',
+        base_unit: row.base_unit || 'chiếc',
+        import_unit: row.import_unit || null,
+        conversion_rate: Number(row.conversion_rate) || 1.0
     }));
 }
 

@@ -70,8 +70,24 @@ export function alertUser(message) {
     globalThis.alert?.(message);
 }
 
+/**
+ * Popup xác nhận Có/Không hiện GIỮA màn hình.
+ *
+ * Dùng showConfirm gốc của Telegram — đây chính là popup hệ thống, không phải
+ * hộp thoại web tự vẽ, nên luôn nổi lên trên mọi nội dung và theo đúng giao diện
+ * sáng/tối của Telegram. Chỉ khi mở ngoài Telegram (debug trên desktop) mới lùi
+ * về window.confirm.
+ *
+ * Telegram giới hạn message tối đa 256 ký tự — gọi chỗ dùng phải tự cắt ngắn nếu
+ * liệt kê nhiều dòng.
+ *
+ * @returns {Promise<boolean>} true nếu người dùng bấm Có/OK
+ */
 export function confirmUser(message) {
-    return globalThis.confirm?.(message) ?? false;
+    if (webApp?.showConfirm) {
+        return new Promise(resolve => webApp.showConfirm(message, resolve));
+    }
+    return Promise.resolve(globalThis.confirm?.(message) ?? false);
 }
 
 export function notifySuccess() {

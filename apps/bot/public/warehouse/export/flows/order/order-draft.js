@@ -10,6 +10,7 @@
  */
 
 import { localStock, otherStock } from '../../data/warehouse-repo.js';
+import { branchName, otherBranch } from '../../../../shared-ui/core/branches.js';
 
 export const STEP_TITLES = ['Cơ sở', 'Khách hàng', 'Dịch vụ', 'Sản phẩm', 'Xác nhận'];
 export const TOTAL_STEPS = STEP_TITLES.length;
@@ -104,6 +105,33 @@ export const missingRows = (state, catalog) =>
 
 export const transferRows = (state, catalog) =>
     availability(state, catalog).filter(row => row.missing === 0 && row.transfer > 0);
+
+/**
+ * Nội dung popup xác nhận khi đơn cần lấy bù hàng từ cơ sở kia.
+ *
+ * Trả về null nếu không cần bù — chỗ gọi dùng đó để biết có nên hỏi hay không.
+ * Telegram giới hạn popup 256 ký tự nên chỉ liệt kê vài dòng đầu, phần dư gộp
+ * thành "và N sản phẩm khác" thay vì để popup bị cắt cụt giữa chừng.
+ */
+const SO_DONG_LIET_KE_TOI_DA = 3;
+const XUONG_DONG = String.fromCharCode(10);
+
+export function buildTransferConfirmMessage(state, catalog) {
+    const rows = transferRows(state, catalog);
+    if (rows.length === 0) return null;
+
+    const coSoKia = branchName(otherBranch(state.branch));
+    const dong = rows.slice(0, SO_DONG_LIET_KE_TOI_DA)
+        .map(row => `• ${row.name}: thiếu ${row.transfer}`)
+        .join(XUONG_DONG);
+    const conLai = rows.length > SO_DONG_LIET_KE_TOI_DA
+        ? XUONG_DONG + `… và ${rows.length - SO_DONG_LIET_KE_TOI_DA} sản phẩm khác`
+        : '';
+
+    return `${branchName(state.branch)} đang thiếu so với yêu cầu của bạn:` + XUONG_DONG
+        + dong + conLai + XUONG_DONG + XUONG_DONG
+        + `Bạn có muốn lấy hàng từ ${coSoKia} không?`;
+}
 
 /* ---------- Sửa dòng trong đơn ---------- */
 

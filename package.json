@@ -39,6 +39,7 @@
     "migrate:warehouse-v23": "node packages/database/run_migrations_v23.js",
     "migrate:warehouse-v24": "node packages/database/run_migrations_v24.js",
     "migrate:warehouse-v25": "node packages/database/run_migrations_v25.js",
+    "migrate:warehouse-v26": "node packages/database/run_migrations_v26.js",
     "verify:warehouse-v19": "node packages/database/verify_warehouse_v19.js",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test:warehouse-architecture": "node --experimental-test-isolation=none --test domains/warehouse/tests/architecture.test.js",

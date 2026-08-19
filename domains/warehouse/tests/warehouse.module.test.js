@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { registerWarehouseModule } from '../index.js';
 import { WAREHOUSE_IMAGE_LIMITS } from '../interfaces/miniapp-api/warehouse-image-upload.js';
-import { buildPendingMessage } from '../infrastructure/outbox/outbox-worker.js';
+import { buildPendingMessage, buildApprovedMessage } from '../infrastructure/outbox/outbox-worker.js';
 
 function createRegistrationHarness() {
     const routes = [];
@@ -87,6 +87,49 @@ test('thông báo đơn xuất khách chờ duyệt hiển thị ngày và giờ
     assert.match(message, /Giờ tạo đơn:<\/b> 17:49/);
     assert.match(message, /Bác sĩ:<\/b> Bác sĩ An/);
     assert.match(message, /Kỹ thuật viên:<\/b> Kỹ thuật viên Bình/);
+});
+
+test('thông báo xuất kho thành công hiển thị danh sách dịch vụ và sản phẩm đã xuất', () => {
+    const message = buildApprovedMessage({
+        order_code: 'ORD-20260819-4B04BC5F',
+        creator_name: 'Nhung',
+        customer_name: 'C hạnh',
+        customer_phone: '23564',
+        doctor_name: 'Trung',
+        technician_name: 'Nhung',
+        branch: 'UK',
+        services: [
+            {
+                service_name_snapshot: 'Dịch vụ Triệt lông / Tiêm',
+                items: [
+                    { product_name: 'Botulax 100u', actual_quantity: 1, is_removed: false },
+                    { product_name: 'Kim tiêm 30G', actual_quantity: 2, is_removed: false },
+                    { product_name: 'Sản phẩm đã bỏ', actual_quantity: 1, is_removed: true }
+                ]
+            }
+        ],
+        transfers: [
+            {
+                from_branch: 'US',
+                to_branch: 'UK',
+                items: [{ product_name: 'Botulax 100u', quantity: 1 }]
+            }
+        ]
+    }, String);
+
+    assert.match(message, /\[XUẤT KHO CHO KHÁCH THÀNH CÔNG\]/);
+    assert.match(message, /Mã đơn:<\/b> <code>ORD-20260819-4B04BC5F<\/code>/);
+    assert.match(message, /Khách:<\/b> C hạnh/);
+    assert.match(message, /Bác sĩ:<\/b> Trung/);
+    assert.match(message, /Kỹ thuật viên:<\/b> Nhung/);
+    assert.match(message, /Cơ sở sử dụng:<\/b> UK/);
+    assert.match(message, /Người order\/bàn giao:<\/b> Nhung/);
+    assert.match(message, /• Dịch vụ Triệt lông \/ Tiêm/);
+    assert.match(message, /- Botulax 100u: 1/);
+    assert.match(message, /- Kim tiêm 30G: 2/);
+    assert.doesNotMatch(message, /Sản phẩm đã bỏ/);
+    assert.match(message, /MANG HÀNG QUA CƠ SỞ SỬ DỤNG/);
+    assert.match(message, /Từ US → UK/);
 });
 
 test('module kho đăng ký đủ endpoint cũ và không truy cập database lúc khởi động', () => {

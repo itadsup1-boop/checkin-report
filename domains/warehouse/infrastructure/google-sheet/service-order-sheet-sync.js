@@ -32,19 +32,19 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
         'Thời gian hoàn tác'
     ];
 
-    /** "Kim tiểu đường ×1, Chỉ Derma ×2" — số lẻ giữ nguyên 0.5, số tròn bỏ đuôi .0 */
+    /** "Kim tiểu đường ×1 chiếc, Filler deep ×1.2 ml" — số lẻ giữ nguyên 1.2, số tròn bỏ đuôi .0 */
     const soLuong = value => {
         const n = Number(value);
         return Number.isInteger(n) ? String(n) : String(n);
     };
     const gopMatHang = items => items
-        .map(item => `${item.product_name_snapshot} ×${soLuong(item.actual_quantity)}`)
+        .map(item => `${item.product_name_snapshot} ×${soLuong(item.actual_quantity)}${item.unit_snapshot ? ' ' + item.unit_snapshot : ''}`)
         .join(', ');
 
     /** Chỉ ghi khi thật sự phải lấy hàng từ cơ sở kia, còn lại để trống cho đỡ rối. */
     const gopDieuChuyen = items => items
         .filter(item => Number(item.transfer_allocated_quantity) > 0)
-        .map(item => `${item.product_name_snapshot} ×${soLuong(item.transfer_allocated_quantity)} từ ${item.transfer_from_branch}`)
+        .map(item => `${item.product_name_snapshot} ×${soLuong(item.transfer_allocated_quantity)}${item.unit_snapshot ? ' ' + item.unit_snapshot : ''} từ ${item.transfer_from_branch}`)
         .join(', ');
 
     const gopDichVu = items => [...new Set(items.map(item => item.service_name_snapshot))].join(' · ');
@@ -93,6 +93,7 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
         const [itemsResult, transfersResult, productsResult] = await Promise.all([
             pool.query(
                 `SELECT oi.id, oi.product_id, oi.product_name_snapshot,
+                        oi.unit_snapshot,
                         oi.barcode_snapshot, oi.actual_quantity,
                         oi.local_allocated_quantity, oi.transfer_allocated_quantity,
                         oi.transfer_from_branch, os.service_name_snapshot

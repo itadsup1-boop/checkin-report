@@ -31,7 +31,40 @@ export function createScanSheet({ barcode, onConfirm, onClose, onScanAgain }) {
     const bodySlot = h('div', { class: 'sheet__body' }, loadingScreen('Đang tra mã vạch…'));
     const footSlot = h('div', { class: 'sheet__foot' });
 
-    const state = { quantity: '', productName: '', existing: null };
+    const state = { quantity: '', productName: '', existing: null, donVi: null };
+
+    /**
+     * Nhãn ô số lượng và dòng nhắc quy đổi.
+     *
+     * Admin cấu hình "1 Lọ = 2.5 ml" thì nhân viên CHỈ gõ số lọ; máy chủ tự nhân
+     * hệ số khi lưu. Phải nói rõ đang gõ đơn vị nào, nếu không người ta gõ số ml
+     * và kho lệch đúng bằng hệ số.
+     */
+    function nhanSoLuong() {
+        const dv = state.donVi;
+        return dv ? `Số lượng nhập (${dv.importUnit})` : 'Số lượng nhập';
+    }
+
+    // Giữ một tham chiếu tới dòng nhắc để cập nhật CHỮ khi gõ, thay vì vẽ lại cả
+    // ô nhập — vẽ lại sẽ làm mất con trỏ và bàn phím điện thoại tự đóng.
+    let hintNode = null;
+
+    function chuQuyDoi() {
+        const dv = state.donVi;
+        if (!dv) return '';
+        const so = parseQuantity(state.quantity);
+        if (so > 0) {
+            const thanh = Math.round(so * dv.rate * 10) / 10;
+            return `${so} ${dv.importUnit} = ${thanh} ${dv.baseUnit} sẽ được cộng vào kho`;
+        }
+        return `1 ${dv.importUnit} = ${dv.rate} ${dv.baseUnit}`;
+    }
+
+    function dongQuyDoi() {
+        if (!state.donVi) return null;
+        hintNode = h('div', { class: 'field__hint' }, chuQuyDoi());
+        return hintNode;
+    }
 
     function renderFound(productName) {
         replaceChildren(bodySlot,
@@ -44,9 +77,10 @@ export function createScanSheet({ barcode, onConfirm, onClose, onScanAgain }) {
                 h('div', { class: 'picked__code' }, icon('barcode', { size: 11 }), barcode)
             ),
             field({
-                label: 'Số lượng nhập',
+                label: nhanSoLuong(),
                 input: quantityInput({ value: state.quantity, onInput: onQuantity })
-            })
+            }),
+            dongQuyDoi()
         );
         renderFoot();
     }
@@ -96,6 +130,7 @@ export function createScanSheet({ barcode, onConfirm, onClose, onScanAgain }) {
 
     function onQuantity(value) {
         state.quantity = value;
+        if (hintNode) hintNode.textContent = chuQuyDoi();
         renderFoot();
     }
 
@@ -121,6 +156,11 @@ export function createScanSheet({ barcode, onConfirm, onClose, onScanAgain }) {
         .then(({ exists, product }) => {
             if (exists && product?.product_name) {
                 state.existing = product.product_name;
+                // Chỉ coi là có quy đổi khi Admin đã đặt đơn vị đóng gói VÀ hệ số > 1.
+                const rate = Number(product.conversion_rate) || 1;
+                state.donVi = product.import_unit && rate > 1
+                    ? { importUnit: product.import_unit, baseUnit: product.base_unit || 'chiếc', rate }
+                    : null;
                 renderFound(product.product_name);
             } else {
                 renderNew();

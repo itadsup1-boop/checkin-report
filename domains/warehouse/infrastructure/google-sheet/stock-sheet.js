@@ -21,6 +21,8 @@
  * Tab "1. Xuất kho" và "2. Nhập kho" là sổ lịch sử, KHÔNG thuộc phạm vi file này.
  */
 
+import { formatDualUnitDisplay } from '../../domain/unit-conversion.js';
+
 const STOCK_HEADERS = ['Mã vạch', 'Tên sản phẩm', 'Số lượng tồn kho', 'Cập nhật cuối'];
 
 const SHEET_TITLES = {
@@ -42,6 +44,9 @@ async function loadStockRows(pool) {
         `SELECT p.id,
                 p.barcode,
                 p.product_name,
+                p.base_unit,
+                p.import_unit,
+                p.conversion_rate,
                 COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'US'), 0) AS stock_us,
                 COALESCE(MAX(i.quantity) FILTER (WHERE i.branch = 'UK'), 0) AS stock_uk,
                 BOOL_OR(i.branch = 'US') AS has_us_row,
@@ -52,7 +57,7 @@ async function loadStockRows(pool) {
          FROM tk_products p
          LEFT JOIN tk_inventory i ON i.product_id = p.id
          WHERE p.is_active = TRUE
-         GROUP BY p.id, p.barcode, p.product_name
+         GROUP BY p.id, p.barcode, p.product_name, p.base_unit, p.import_unit, p.conversion_rate
          ORDER BY p.product_name`
     );
     return result.rows;
@@ -150,21 +155,37 @@ export function buildStockSheetRows(stockRows, moment) {
             // Cơ sở chưa bao giờ nhận sản phẩm này -> không ghi, tránh rối mắt.
             if (!hasRow && quantity <= 0) continue;
 
+            const dualStr = formatDualUnitDisplay({
+                baseQuantity: quantity,
+                baseUnit: row.base_unit,
+                importUnit: row.import_unit,
+                conversionRate: row.conversion_rate
+            });
+
             branchRows[branch].push({
                 'Mã vạch': row.barcode,
                 'Tên sản phẩm': row.product_name,
-                'Số lượng tồn kho': quantity,
+                'Số lượng tồn kho': dualStr,
                 'Cập nhật cuối': formatTime(moment, branch === 'US' ? row.updated_us : row.updated_uk)
             });
         }
     }
 
-    const totalRows = stockRows.map(row => ({
-        'Mã vạch': row.barcode,
-        'Tên sản phẩm': row.product_name,
-        'Số lượng tồn kho': Number(row.stock_us) + Number(row.stock_uk),
-        'Cập nhật cuối': formatTime(moment, row.updated_any)
-    }));
+    const totalRows = stockRows.map(row => {
+        const totalQty = Number(row.stock_us) + Number(row.stock_uk);
+        const dualStr = formatDualUnitDisplay({
+            baseQuantity: totalQty,
+            baseUnit: row.base_unit,
+            importUnit: row.import_unit,
+            conversionRate: row.conversion_rate
+        });
+        return {
+            'Mã vạch': row.barcode,
+            'Tên sản phẩm': row.product_name,
+            'Số lượng tồn kho': dualStr,
+            'Cập nhật cuối': formatTime(moment, row.updated_any)
+        };
+    });
 
     return { US: branchRows.US, UK: branchRows.UK, TOTAL: totalRows };
 }

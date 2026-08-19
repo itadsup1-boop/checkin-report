@@ -27,6 +27,9 @@ export async function loadInventory() {
         id: row.product_id,
         barcode: row.barcode || '',
         name: row.product_name || '',
+        baseUnit: row.base_unit || 'chiếc',
+        importUnit: row.import_unit || null,
+        conversionRate: Number(row.conversion_rate) || 1.0,
         stockUS: Number(row.stock_us) || 0,
         stockUK: Number(row.stock_uk) || 0,
         updatedAt: row.updated_at || null

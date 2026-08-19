@@ -4,7 +4,6 @@ import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('./DashboardTab.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
-const botSource = fs.readFileSync(new URL('../../bot/timekeep_bot.js', import.meta.url), 'utf8');
 // Bảng điều khiển đã rời timekeep_bot.js sang domains/timekeep (commit 888f6dc).
 const dashboardUseCase = fs.readFileSync(
   new URL('../../../domains/timekeep/application/build-attendance-dashboard.js', import.meta.url), 'utf8');

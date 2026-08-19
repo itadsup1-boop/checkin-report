@@ -9,7 +9,7 @@
 import { h, replaceChildren } from '../../../shared-ui/core/dom.js';
 import { icon } from '../../../shared-ui/ui/icons.js';
 import { BRANCHES, stockStatus, loadProductHistory, NGUONG_SAP_HET } from '../data/inventory-repo.js';
-import { statusBadge, emptyState } from '../ui/components.js';
+import { statusBadge, emptyState, formatDualStockDisplay } from '../ui/components.js';
 
 /**
  * Nhãn và màu cho từng loại biến động trong sổ ledger.
@@ -39,11 +39,12 @@ function dinhDangThoiGian(value) {
     return `${pad(date.getDate())}/${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
-function theCoSo(branch, quantity) {
+function theCoSo(branch, quantity, item) {
     const status = stockStatus(quantity);
+    const dualText = formatDualStockDisplay(quantity, item?.baseUnit, item?.importUnit, item?.conversionRate);
     return h('div', { class: 'branch-card' },
         h('div', { class: 'branch-card__name' }, icon('mapPin', { size: 11 }), branch.name),
-        h('div', { class: 'branch-card__qty' }, String(quantity)),
+        h('div', { class: 'branch-card__qty' }, dualText),
         statusBadge(status)
     );
 }
@@ -122,15 +123,15 @@ export function createProductDetailSheet({ item, onClose }) {
                 h('div', { style: { marginBottom: '18px' } },
                     h('div', { class: 'block-label' }, icon('layers3', { size: 13 }), 'Tồn kho theo cơ sở'),
                     h('div', { class: 'branch-cards' },
-                        theCoSo(BRANCHES[0], item.stockUS),
-                        theCoSo(BRANCHES[1], item.stockUK)
+                        theCoSo(BRANCHES[0], item.stockUS, item),
+                        theCoSo(BRANCHES[1], item.stockUK, item)
                     )
                 ),
 
                 h('div', { class: 'total-row', style: { marginBottom: '18px' } },
                     h('div', null,
                         h('div', { class: 'total-row__label' }, 'Tổng toàn hệ thống'),
-                        h('div', { class: 'total-row__value' }, String(tong))
+                        h('div', { class: 'total-row__value' }, formatDualStockDisplay(tong, item.baseUnit, item.importUnit, item.conversionRate))
                     ),
                     h('div', { style: { textAlign: 'right' } },
                         h('div', { class: 'total-row__label' }, 'Ngưỡng cảnh báo'),

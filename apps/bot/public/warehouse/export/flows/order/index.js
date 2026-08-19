@@ -16,7 +16,7 @@ import { apiPost, newIdempotencyKey } from '../../../../shared-ui/core/api.js';
 import { createDraftStore } from '../../../../shared-ui/core/draft.js';
 import { openScanner } from '../../../../shared-ui/ui/scanner.js';
 import {
-    alertUser, notifySuccess, notifyError, tapFeedback, closeApp
+    alertUser, confirmUser, notifySuccess, notifyError, tapFeedback, closeApp
 } from '../../../../shared-ui/core/telegram.js';
 import {
     topBar, stepDots, bottomBar, primaryButton, notice, branchPicker, successScreen
@@ -24,7 +24,7 @@ import {
 import { branchName, lookupCustomerByPhone } from '../../data/warehouse-repo.js';
 import {
     STEP_TITLES, TOTAL_STEPS, phoneDigitCount, applyDraft, buildPayload,
-    canAdvance, totalQty, missingRows,
+    canAdvance, totalQty, missingRows, buildTransferConfirmMessage,
     toggleService, setLineQuantity, toggleRemoveLine, addProductToService
 } from './order-draft.js';
 import { renderCustomerStep } from './steps/customer-step.js';
@@ -193,6 +193,21 @@ export function createCustomerOrderFlow({ catalog, onExit }) {
         if (missingRows(state, catalog).length > 0) {
             alertUser('Còn sản phẩm không đủ tồn trên toàn hệ thống. Hãy giảm số lượng hoặc nhập thêm kho.');
             return;
+        }
+
+        /*
+         * Đơn cần lấy bù từ cơ sở kia phải được người tạo đơn XÁC NHẬN rõ ràng
+         * trước khi gửi — không được tự động lấy bù trong im lặng, vì hàng ra
+         * khỏi cơ sở kia là quyết định người nhận đơn ở đó cần biết trước.
+         *
+         * Bấm "Không": dừng lại ngay đây, KHÔNG động vào state.selections — danh
+         * sách sản phẩm vẫn nguyên để người dùng tự quay lại bước Sản phẩm sửa số
+         * lượng hoặc bỏ dòng cần bù, thay vì phải làm lại từ đầu.
+         */
+        const transferMessage = buildTransferConfirmMessage(state, catalog);
+        if (transferMessage) {
+            const dongY = await confirmUser(transferMessage);
+            if (!dongY) return;
         }
 
         state.submitting = true;
