@@ -5,6 +5,11 @@ import fs from 'node:fs';
 const source = fs.readFileSync(new URL('./DashboardTab.jsx', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
 const botSource = fs.readFileSync(new URL('../../bot/timekeep_bot.js', import.meta.url), 'utf8');
+// Bảng điều khiển đã rời timekeep_bot.js sang domains/timekeep (commit 888f6dc).
+const dashboardUseCase = fs.readFileSync(
+  new URL('../../../domains/timekeep/application/build-attendance-dashboard.js', import.meta.url), 'utf8');
+const attendanceRepo = fs.readFileSync(
+  new URL('../../../domains/timekeep/infrastructure/postgres/attendance-repository.js', import.meta.url), 'utf8');
 
 test('Tổng quan dùng bố cục gọn bốn thẻ và hai danh sách', () => {
   for (const label of [
@@ -40,7 +45,9 @@ test('Đơn nghỉ trên Tổng quan có ngày, lý do và chỉ lấy ngày tro
 });
 
 test('API Dashboard hiểu cả Telegram Group ID và lựa chọn tất cả nhóm', () => {
-  assert.match(botSource, /g\.telegram_group_id\) === String\(group_id\)/);
-  assert.match(botSource, /\$1::uuid IS NULL OR tg\.id = \$1/);
-  assert.match(botSource, /\$1::uuid IS NULL OR ci\.group_id = \$1/);
+  // Web Admin có chỗ gửi id nội bộ, có chỗ gửi id Telegram — phải nhận cả hai.
+  assert.match(dashboardUseCase, /String\(g\.telegram_group_id\) === String\(groupIdParam\)/);
+  // Truyền NULL nghĩa là xem tất cả nhóm, không phải không có nhóm nào.
+  assert.match(attendanceRepo, /\$1::uuid IS NULL OR tg\.id = \$1/);
+  assert.match(attendanceRepo, /\$1::uuid IS NULL OR ci\.group_id = \$1/);
 });

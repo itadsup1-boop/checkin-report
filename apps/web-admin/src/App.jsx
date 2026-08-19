@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   CalendarDays,
@@ -27,16 +28,28 @@ import SettingsManagement from './SettingsManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
-const TAB_TITLES = {
-  dashboard: 'Tổng quan',
-  staff: 'Nhân sự',
-  checkins: 'Điểm danh',
-  schedules: 'Lịch làm việc',
-  leave: 'Nghỉ phép & Quỹ phép',
-  warehouse: 'Quản lý kho',
-  settings: 'Cấu hình nhóm',
-  admins: 'Tài khoản quản trị'
-};
+/**
+ * Mỗi mục menu là một đường dẫn thật, để tải lại trang không mất chỗ đang đứng.
+ *
+ * `id` giữ nguyên tên cũ vì DashboardTab gọi onNavigate('checkins'), và
+ * AdminShell.test.js đối chiếu theo nhãn. Đổi `path` thì đổi luôn link cũ của
+ * người dùng đã lưu, nên coi như hợp đồng.
+ */
+const TABS = [
+  { id: 'dashboard', path: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+  { id: 'staff', path: '/nhan-su', label: 'Nhân sự', icon: UserCheck },
+  { id: 'checkins', path: '/diem-danh', label: 'Điểm danh', icon: ClipboardCheck },
+  { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
+  { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
+  { id: 'warehouse', path: '/kho', label: 'Quản lý kho', icon: Package, needsWarehouse: true },
+  { id: 'settings', path: '/cau-hinh', label: 'Cấu hình nhóm', icon: Settings },
+  { id: 'admins', path: '/tai-khoan', label: 'Tài khoản quản trị', icon: Shield, needsSuperAdmin: true }
+];
+
+const PATH_BY_ID = Object.fromEntries(TABS.map(tab => [tab.id, tab.path]));
+
+/** Nhóm đang lọc nằm trên URL (?nhom=…) nên tải lại trang vẫn giữ đúng nhóm. */
+const GROUP_PARAM = 'nhom';
 
 function savedAdmin() {
   try {
@@ -70,10 +83,23 @@ export default function App() {
 
 function AdminShell({ user, onLogout }) {
   const [groups, setGroups] = useState([]);
-  const [activeTab, setActiveTab] = useState('dashboard');
-  const [selectedGroupId, setSelectedGroupId] = useState('ALL');
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const selectedGroupId = searchParams.get(GROUP_PARAM) || 'ALL';
+
+  /** Đổi nhóm là đổi URL. `replace` để nút Quay lại không kẹt ở từng lần đổi nhóm. */
+  const setSelectedGroupId = useCallback(value => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (!value || value === 'ALL') next.delete(GROUP_PARAM);
+      else next.set(GROUP_PARAM, value);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const showToast = useCallback(message => {
     setToast(message);
@@ -97,6 +123,8 @@ function AdminShell({ user, onLogout }) {
     } catch (error) {
       console.error('Không tải được danh sách nhóm:', error);
       showToast('❌ Không tải được danh sách nhóm.');
+    } finally {
+      setGroupsLoaded(true);
     }
   }, [showToast]);
 
@@ -114,10 +142,14 @@ function AdminShell({ user, onLogout }) {
   }, [groups, isSuperAdmin, user?.assigned_groups]);
   const showWarehouse = isSuperAdmin || displayGroups.some(group => group.bot_role === 'warehouse');
 
-  const navigateTo = tab => {
-    setActiveTab(tab);
+  /** Giữ nguyên chữ ký cũ: DashboardTab vẫn gọi onNavigate('checkins'). */
+  const navigateTo = useCallback(tab => {
+    const path = PATH_BY_ID[tab] || PATH_BY_ID.dashboard;
+    // Mang theo nhóm đang lọc để đổi màn hình không mất bộ lọc.
+    const query = searchParams.toString();
+    navigate(query ? `${path}?${query}` : path);
     setMobileSidebarOpen(false);
-  };
+  }, [navigate, searchParams]);
 
   const updateGroupSettings = async (telegramGroupId, settings) => {
     try {
@@ -142,16 +174,60 @@ function AdminShell({ user, onLogout }) {
     }
   };
 
-  const navItems = [
-    { id: 'dashboard', label: 'Tổng quan', icon: LayoutDashboard },
-    { id: 'staff', label: 'Nhân sự', icon: UserCheck },
-    { id: 'checkins', label: 'Điểm danh', icon: ClipboardCheck },
-    { id: 'schedules', label: 'Lịch làm việc', icon: CalendarDays },
-    { id: 'leave', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
-    ...(showWarehouse ? [{ id: 'warehouse', label: 'Quản lý kho', icon: Package }] : []),
-    { id: 'settings', label: 'Cấu hình nhóm', icon: Settings },
-    ...(isSuperAdmin ? [{ id: 'admins', label: 'Tài khoản quản trị', icon: Shield }] : [])
-  ];
+  const navItems = TABS.filter(tab =>
+    (!tab.needsWarehouse || showWarehouse) && (!tab.needsSuperAdmin || isSuperAdmin));
+
+  /**
+   * Chặn vào màn hình không đủ quyền bằng đường dẫn trực tiếp.
+   *
+   * Phải chờ danh sách nhóm tải xong mới xét: lúc đầu `groups` còn rỗng nên
+   * `showWarehouse` là false, xét sớm sẽ đá nhầm người có quyền ra khỏi /kho.
+   */
+  const guard = allowed => {
+    if (!groupsLoaded) return null;
+    return allowed ? null : <Navigate to={PATH_BY_ID.dashboard} replace />;
+  };
+
+  const shell = (
+    <AdminLayout
+      user={user}
+      isSuperAdmin={isSuperAdmin}
+      navItems={navItems}
+      displayGroups={displayGroups}
+      selectedGroupId={selectedGroupId}
+      onSelectGroup={setSelectedGroupId}
+      onNavigate={navigateTo}
+      onLogout={onLogout}
+      mobileSidebarOpen={mobileSidebarOpen}
+      setMobileSidebarOpen={setMobileSidebarOpen}
+      toast={toast}
+    />
+  );
+
+  return (
+    <Routes>
+      <Route element={shell}>
+        <Route index element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
+        <Route path="/dashboard" element={<DashboardTab selectedGroupId={selectedGroupId} onNavigate={navigateTo} />} />
+        <Route path="/nhan-su" element={<StaffManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/diem-danh" element={<CheckinManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/lich-lam-viec" element={<ScheduleManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/nghi-phep" element={<LeaveManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/kho/*" element={guard(showWarehouse) ?? <WarehouseManagement />} />
+        <Route path="/cau-hinh" element={<SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />} />
+        <Route path="/tai-khoan" element={guard(isSuperAdmin) ?? <AdminManagement groups={groups} />} />
+        {/* Đường dẫn lạ hoặc link cũ đều về Tổng quan thay vì trang trắng. */}
+        <Route path="*" element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
+function AdminLayout({
+  user, isSuperAdmin, navItems, displayGroups, selectedGroupId, onSelectGroup,
+  onNavigate, onLogout, mobileSidebarOpen, setMobileSidebarOpen, toast
+}) {
+  const activeTab = useActiveTabId();
 
   return (
     <div className="flex min-h-screen bg-[#0B0F19] font-sans text-slate-200 selection:bg-cyan-500/30">
@@ -167,7 +243,7 @@ function AdminShell({ user, onLogout }) {
         </div>
 
         <nav className="flex-1 space-y-2 overflow-y-auto px-4 py-6">
-          {navItems.map(item => <NavItem key={item.id} {...item} active={activeTab === item.id} onClick={() => navigateTo(item.id)} />)}
+          {navItems.map(item => <NavItem key={item.id} {...item} active={activeTab === item.id} onClick={() => onNavigate(item.id)} />)}
         </nav>
 
         <div className="m-4 p-4">
@@ -183,7 +259,7 @@ function AdminShell({ user, onLogout }) {
             <button type="button" onClick={() => setMobileSidebarOpen(true)} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white md:hidden" aria-label="Mở menu"><Menu className="h-6 w-6" /></button>
             {activeTab !== 'warehouse' && <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-[#111827] px-3 py-2 sm:px-4">
               <Users className="h-4 w-4 shrink-0 text-cyan-400" />
-              <select value={selectedGroupId} onChange={event => setSelectedGroupId(event.target.value)} className="max-w-[145px] cursor-pointer truncate border-none bg-transparent text-xs font-medium text-white outline-none sm:max-w-[280px] sm:text-sm">
+              <select value={selectedGroupId} onChange={event => onSelectGroup(event.target.value)} className="max-w-[145px] cursor-pointer truncate border-none bg-transparent text-xs font-medium text-white outline-none sm:max-w-[280px] sm:text-sm">
                 <option value="ALL" className="bg-[#111827]">Tất cả nhóm ({displayGroups.length})</option>
                 {displayGroups.map(group => <option key={group.telegram_group_id} value={group.telegram_group_id} className="bg-[#111827]">{group.group_name || `Nhóm ${group.telegram_group_id}`}</option>)}
               </select>
@@ -199,21 +275,26 @@ function AdminShell({ user, onLogout }) {
         </header>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <h1 className="sr-only">{TAB_TITLES[activeTab]}</h1>
-          {activeTab === 'dashboard' && <DashboardTab selectedGroupId={selectedGroupId} onNavigate={navigateTo} />}
-          {activeTab === 'staff' && <StaffManagement selectedGroupId={selectedGroupId} />}
-          {activeTab === 'checkins' && <CheckinManagement selectedGroupId={selectedGroupId} />}
-          {activeTab === 'schedules' && <ScheduleManagement selectedGroupId={selectedGroupId} />}
-          {activeTab === 'leave' && <LeaveManagement selectedGroupId={selectedGroupId} />}
-          {activeTab === 'warehouse' && showWarehouse && <WarehouseManagement />}
-          {activeTab === 'settings' && <SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />}
-          {activeTab === 'admins' && isSuperAdmin && <AdminManagement groups={groups} />}
+          <h1 className="sr-only">{TABS.find(tab => tab.id === activeTab)?.label || 'Tổng quan'}</h1>
+          <Outlet />
         </div>
       </main>
 
       {toast && <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-cyan-500/30 bg-[#111827] px-5 py-3 text-sm font-medium text-white shadow-2xl shadow-cyan-500/20">{toast}</div>}
     </div>
   );
+}
+
+/**
+ * Mục menu nào đang sáng, suy từ đường dẫn hiện tại.
+ *
+ * Phải dùng useLocation chứ không phải window.location: đọc thẳng window thì
+ * React không biết đường dẫn đã đổi, ô menu sẽ đứng yên ở mục cũ.
+ */
+function useActiveTabId() {
+  const { pathname } = useLocation();
+  const match = TABS.find(tab => pathname === tab.path || pathname.startsWith(`${tab.path}/`));
+  return match?.id || 'dashboard';
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
