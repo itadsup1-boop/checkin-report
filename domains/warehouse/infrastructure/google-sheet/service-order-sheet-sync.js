@@ -1,26 +1,53 @@
 import { rebuildStockSheets } from './stock-sheet.js';
 
 export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
+    /**
+     * MỘT ĐƠN = MỘT DÒNG.
+     *
+     * Bản cũ ghi mỗi mặt hàng một dòng, nên một đơn 8 món chiếm 8 dòng và lặp lại
+     * tên khách, dịch vụ, ngày giờ 8 lần — 21 đơn phình thành 178 dòng, không đọc nổi.
+     *
+     * Đã bỏ 4 cột: 'Mã dòng' và 'Mã vạch' (chủ hệ thống yêu cầu), 'Mã giao dịch'
+     * (trùng y hệt 'Mã đơn') và 'Ảnh chứng thực' (chưa bao giờ được điền).
+     *
+     * 'Mã đơn' giờ là chìa khoá tìm lại dòng cũ khi cập nhật trạng thái hoàn tác —
+     * trước đây việc đó do 'Mã dòng' đảm nhiệm.
+     */
     const exportHeaders = [
-        'Mã giao dịch',
-        'Mã dòng',
         'Mã đơn',
+        'Ngày giờ',
         'Người thực hiện',
         'Tên khách',
         'Số điện thoại',
+        'Bác sĩ',
+        'Kỹ thuật viên',
         'Dịch vụ',
-        'Tên sản phẩm',
-        'Mã vạch',
-        'Số lượng',
         'Cơ sở sử dụng',
-        'Nguồn hàng',
+        'Mặt hàng',
+        'Số mặt hàng',
+        'Lấy từ cơ sở khác',
         'Người duyệt',
-        'Ngày giờ',
-        'Ảnh chứng thực',
         'Trạng thái đơn',
         'Người hoàn tác',
         'Thời gian hoàn tác'
     ];
+
+    /** "Kim tiểu đường ×1, Chỉ Derma ×2" — số lẻ giữ nguyên 0.5, số tròn bỏ đuôi .0 */
+    const soLuong = value => {
+        const n = Number(value);
+        return Number.isInteger(n) ? String(n) : String(n);
+    };
+    const gopMatHang = items => items
+        .map(item => `${item.product_name_snapshot} ×${soLuong(item.actual_quantity)}`)
+        .join(', ');
+
+    /** Chỉ ghi khi thật sự phải lấy hàng từ cơ sở kia, còn lại để trống cho đỡ rối. */
+    const gopDieuChuyen = items => items
+        .filter(item => Number(item.transfer_allocated_quantity) > 0)
+        .map(item => `${item.product_name_snapshot} ×${soLuong(item.transfer_allocated_quantity)} từ ${item.transfer_from_branch}`)
+        .join(', ');
+
+    const gopDichVu = items => [...new Set(items.map(item => item.service_name_snapshot))].join(' · ');
     const transferHeaders = [
         'Mã điều chuyển',
         'Mã dòng',
@@ -106,53 +133,44 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
 
         const exportSheet = await ensureSheet(doc, '1. Xuất kho', exportHeaders);
         const existingExportRows = await exportSheet.getRows();
-        const existingRowsByLineId = new Map(
+        const rowByOrderCode = new Map(
             existingExportRows
-                .map(row => [row.get('Mã dòng'), row])
-                .filter(([lineId]) => lineId)
+                .map(row => [row.get('Mã đơn'), row])
+                .filter(([code]) => code)
         );
         const createdAt = moment(order.approved_at || order.created_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-        for (const item of itemsResult.rows) {
-            const lineId = `ORDER_ITEM:${item.id}`;
-            const existingRow = existingRowsByLineId.get(lineId);
-            if (existingRow) {
-                existingRow.set('Trạng thái đơn', order.status === 'REVERSED' ? 'Đã hoàn tác' : 'Đã duyệt');
-                existingRow.set('Người hoàn tác', order.reversed_by_admin_id || '');
-                existingRow.set(
-                    'Thời gian hoàn tác',
-                    order.reversed_at ? moment(order.reversed_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss') : ''
-                );
-                await existingRow.save();
-                continue;
-            }
-            const sources = [];
-            if (Number(item.local_allocated_quantity) > 0) {
-                sources.push(`${order.branch}: ${item.local_allocated_quantity}`);
-            }
-            if (Number(item.transfer_allocated_quantity) > 0) {
-                sources.push(`${item.transfer_from_branch} điều chuyển: ${item.transfer_allocated_quantity}`);
-            }
+        const trangThai = order.status === 'REVERSED' ? 'Đã hoàn tác' : 'Đã duyệt';
+        const nguoiHoanTac = order.reversed_by_admin_id || '';
+        const gioHoanTac = order.reversed_at
+            ? moment(order.reversed_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss')
+            : '';
+
+        const items = itemsResult.rows;
+        const existingRow = rowByOrderCode.get(order.order_code);
+        if (existingRow) {
+            // Đơn đã có dòng: chỉ cập nhật trạng thái, không ghi thêm dòng mới.
+            existingRow.set('Trạng thái đơn', trangThai);
+            existingRow.set('Người hoàn tác', nguoiHoanTac);
+            existingRow.set('Thời gian hoàn tác', gioHoanTac);
+            await existingRow.save();
+        } else if (items.length > 0) {
             await exportSheet.addRow({
-                'Mã giao dịch': order.order_code,
-                'Mã dòng': lineId,
                 'Mã đơn': order.order_code,
+                'Ngày giờ': createdAt,
                 'Người thực hiện': order.creator_name,
                 'Tên khách': order.customer_name,
                 'Số điện thoại': order.customer_phone,
-                'Dịch vụ': item.service_name_snapshot,
-                'Tên sản phẩm': item.product_name_snapshot,
-                'Mã vạch': item.barcode_snapshot,
-                'Số lượng': item.actual_quantity,
+                'Bác sĩ': order.doctor_name || '',
+                'Kỹ thuật viên': order.technician_name || '',
+                'Dịch vụ': gopDichVu(items),
                 'Cơ sở sử dụng': order.branch,
-                'Nguồn hàng': sources.join(' + '),
+                'Mặt hàng': gopMatHang(items),
+                'Số mặt hàng': items.length,
+                'Lấy từ cơ sở khác': gopDieuChuyen(items),
                 'Người duyệt': order.approver_name,
-                'Ngày giờ': createdAt,
-                'Ảnh chứng thực': '',
-                'Trạng thái đơn': order.status === 'REVERSED' ? 'Đã hoàn tác' : 'Đã duyệt',
-                'Người hoàn tác': order.reversed_by_admin_id || '',
-                'Thời gian hoàn tác': order.reversed_at
-                    ? moment(order.reversed_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss')
-                    : ''
+                'Trạng thái đơn': trangThai,
+                'Người hoàn tác': nguoiHoanTac,
+                'Thời gian hoàn tác': gioHoanTac
             });
         }
 
