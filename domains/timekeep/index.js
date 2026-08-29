@@ -86,7 +86,8 @@ export function registerTimekeepModule({
     checkinUploadDir,
     extraUnannouncedLatePenaltyEnabled = false,
     cors,
-    corsOptions
+    corsOptions,
+    isCompanyHoliday = async () => null
 }) {
     const employees = createEmployeeRepository({ pool });
     const schedules = createScheduleRepository({ pool });
@@ -185,7 +186,8 @@ export function registerTimekeepModule({
                 cron, runShiftReminders, runLatePenaltyCheck,
                 finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
                 groupAbsenceNotifications, buildAbsenceNotificationText,
-                pool, sendMessageToRoleGroup, bot, syncSheets: syncAllTimekeepSheets, moment
+                pool, sendMessageToRoleGroup, bot, syncSheets: syncAllTimekeepSheets, moment,
+                isCompanyHoliday
             }),
             ...registerSundayReminderCrons({ cron, sendSundayScheduleReminder })
         ]

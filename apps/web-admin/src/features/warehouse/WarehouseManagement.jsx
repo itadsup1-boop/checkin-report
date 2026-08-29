@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleHelp,
+  ClipboardList,
   Package,
   Plus,
   RefreshCw,
@@ -15,6 +16,8 @@ import {
   Trash2,
   X
 } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import ProductManagement from './ProductManagement';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -31,7 +34,7 @@ function suggestServiceCode(name) {
 
 function EmptyState({ icon: Icon, title, description, action }) {
   return (
-    <div className="flex min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+    <div className="flex h-full min-h-[420px] items-center justify-center rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
       <div>
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
           <Icon className="h-7 w-7" />
@@ -307,7 +310,7 @@ function CreateServiceModal({ saving, onClose, onSubmit }) {
   );
 }
 
-export default function WarehouseManagement() {
+function ServiceTemplateManagement() {
   const [services, setServices] = useState([]);
   const [products, setProducts] = useState([]);
   const [selectedServiceId, setSelectedServiceId] = useState(null);
@@ -626,8 +629,8 @@ export default function WarehouseManagement() {
   };
 
   return (
-    <div className="warehouse-catalog -m-4 min-h-[calc(100vh-5rem)] bg-slate-100 p-4 text-slate-900 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8">
-      <div className="mx-auto max-w-[1500px] space-y-5">
+    <div className="warehouse-catalog-container flex flex-1 flex-col">
+      <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col space-y-5">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-xs font-bold uppercase tracking-[0.18em] text-blue-700">Quản lý kho</div>
@@ -681,8 +684,8 @@ export default function WarehouseManagement() {
             action={<button onClick={() => setShowCreateModal(true)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white"><Plus className="h-4 w-4" />Thêm dịch vụ đầu tiên</button>}
           />
         ) : (
-          <div className="grid gap-5 xl:grid-cols-[340px_minmax(0,1fr)]">
-            <aside className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="grid flex-1 gap-5 xl:grid-cols-[340px_minmax(0,1fr)] xl:grid-rows-1">
+            <aside className="overflow-hidden flex flex-col h-full rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 p-4">
                 <div className="flex items-center justify-between">
                   <div><div className="font-bold text-slate-950">Dịch vụ</div><div className="mt-0.5 text-xs text-slate-500">{services.filter(item => item.is_active !== false).length} đang hiển thị cho nhân viên</div></div>
@@ -724,7 +727,7 @@ export default function WarehouseManagement() {
             {!selectedService ? (
               <EmptyState icon={Boxes} title="Chọn một dịch vụ" description="Chọn dịch vụ ở cột bên trái để sửa tên, thêm mặt hàng và đặt số lượng mặc định." />
             ) : (
-              <main className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <main className="flex flex-col h-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <div className="flex flex-col gap-4 border-b border-slate-200 p-5 lg:flex-row lg:items-start lg:justify-between">
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-700">Đang chỉnh sửa</div>
@@ -741,7 +744,7 @@ export default function WarehouseManagement() {
                   </button>
                 </div>
 
-                <div className="space-y-6 p-5">
+                <div className="flex-1 space-y-8 overflow-y-auto p-5">
                   <section>
                     <h3 className="text-sm font-bold text-slate-900">Thông tin dịch vụ</h3>
                     <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_100px_auto] lg:items-end">
@@ -780,122 +783,13 @@ export default function WarehouseManagement() {
                   <section className="border-t border-slate-100 pt-5">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-950">Mặt hàng khi nhân viên chọn dịch vụ</h3>
-                        <p className="mt-1 text-xs text-slate-500">Đặt số lượng mặc định cho một khách hàng. Có thể thay đổi thứ tự hoặc bỏ mặt hàng khỏi mẫu.</p>
-                      </div>
-                      <span className="text-xs font-bold text-blue-700">{templateItems.length} mặt hàng</span>
-                    </div>
-
-                    {products.length ? (
-                      <div className="mt-4 overflow-hidden rounded-xl border border-blue-200 bg-blue-50">
-                        <div className="flex flex-col gap-3 border-b border-blue-200 p-4 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <div className="text-sm font-bold text-slate-900">Danh mục sản phẩm có thể thêm</div>
-                            <div className="mt-1 text-xs text-slate-500">
-                              Có {products.length} sản phẩm trong hệ thống · còn {selectableProducts.length} sản phẩm chưa gắn vào dịch vụ này
-                            </div>
-                          </div>
-                          <div className="relative w-full sm:max-w-sm">
-                            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
-                            <input
-                              value={productSearch}
-                              onChange={event => setProductSearch(event.target.value)}
-                              placeholder="Tìm tên hoặc mã vạch…"
-                              className="w-full rounded-lg border border-slate-300 bg-white py-2.5 pl-9 pr-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500"
-                            />
-                          </div>
-                        </div>
-
-                        <div className="max-h-[28rem] overflow-y-auto bg-white p-3">
-                          {selectableProducts.length ? (
-                            <div className="grid gap-3 xl:grid-cols-2">
-                              {selectableProducts.map(product => (
-                                <div
-                                  key={product.id}
-                                  className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-4 shadow-sm transition hover:border-blue-300 hover:bg-white"
-                                >
-                                  <div className="flex min-w-0 items-start gap-3">
-                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
-                                      <Package className="h-5 w-5" />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-start justify-between gap-2">
-                                        <div className="break-words text-sm font-bold leading-5 text-slate-900" title={product.product_name}>{product.product_name}</div>
-                                      </div>
-                                      <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                                        <span className="rounded-md bg-slate-200 px-2 py-0.5 font-mono text-slate-600">Mã: {product.barcode || 'Chưa có'}</span>
-                                        <span className="rounded-md bg-blue-100 px-2 py-0.5 font-bold text-blue-800">Đơn vị: {product.base_unit || 'chiếc'}</span>
-                                        {product.import_unit && Number(product.conversion_rate) > 1 && (
-                                          <span className="rounded-md bg-amber-100 px-2 py-0.5 font-bold text-amber-900 border border-amber-300">
-                                            📦 1 {product.import_unit} = {product.conversion_rate} {product.base_unit || 'chiếc'}
-                                          </span>
-                                        )}
-                                        <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">US: {Number(product.stock_us) || 0}</span>
-                                        <span className="rounded-md bg-violet-50 px-2 py-0.5 font-bold text-violet-700">UK: {Number(product.stock_uk) || 0}</span>
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 pt-3">
-                                    <button
-                                      type="button"
-                                      onClick={() => setEditingProductUnits(product)}
-                                      title="Cài đặt đơn vị tính cơ sở và hệ số quy đổi đóng gói"
-                                      className="inline-flex items-center gap-1.5 rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800 shadow-sm hover:bg-blue-100 transition"
-                                    >
-                                      <Settings className="h-3.5 w-3.5 text-blue-600" />
-                                      <span>Đơn vị & Quy đổi</span>
-                                    </button>
-
-                                    <div className="flex items-center gap-2">
-                                      <label className="sr-only">Kiểu số lượng</label>
-                                      <select
-                                        value={product.quantity_mode || 'INTEGER'}
-                                        disabled={saving}
-                                        onChange={event => updateProductQuantityMode(product.id, event.target.value)}
-                                        title="Kiểu số lượng khi xuất kho"
-                                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-2 text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
-                                      >
-                                        <option value="INTEGER">Chỉ nhập số nguyên (1, 2, 3…)</option>
-                                        <option value="DECIMAL">Cho nhập thập phân (1.2, 2.3…)</option>
-                                      </select>
-                                      <button
-                                        type="button"
-                                        onClick={() => addProduct(product.id)}
-                                        className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
-                                      >
-                                        <Plus className="h-3.5 w-3.5" />Thêm
-                                      </button>
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="p-8 text-center">
-                              <Package className="mx-auto h-7 w-7 text-slate-300" />
-                              <div className="mt-3 text-sm font-bold text-slate-700">
-                                {productSearch.trim() ? 'Không tìm thấy sản phẩm phù hợp' : 'Tất cả sản phẩm đã được thêm'}
-                              </div>
-                              <div className="mt-1 text-xs text-slate-500">
-                                {productSearch.trim() ? 'Hãy thử tìm bằng tên hoặc mã vạch khác.' : 'Bạn có thể chỉnh số lượng hoặc bỏ sản phẩm ở danh sách phía dưới.'}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><span className="font-bold">Chưa có mặt hàng.</span> Mặt hàng được tạo khi nhân viên nhập kho lần đầu trên Telegram.</div>
-                    )}
-
-                    <div className="mt-6 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
-                      <div>
-                        <div className="text-sm font-bold text-slate-900">Sản phẩm đã chọn cho dịch vụ “{selectedService.service_name}”</div>
-                        <div className="mt-1 text-xs text-slate-500">Nhập số lượng mặc định dùng cho một khách hàng, sau đó bấm “Lưu mẫu dịch vụ”.</div>
+                        <h3 className="text-lg font-bold text-slate-950">Mặt hàng của dịch vụ “{selectedService.service_name}”</h3>
+                        <p className="mt-1 text-xs text-slate-500">Kéo thả để thay đổi thứ tự. Nhập số lượng dùng cho một lần làm dịch vụ.</p>
                       </div>
                       <div className="text-xs font-bold text-blue-700">Đã chọn {templateItems.length}/{products.length}</div>
                     </div>
 
-                    <div className="mt-3 overflow-x-auto rounded-xl border border-slate-200">
+                    <div className="mt-4 overflow-x-auto rounded-xl border border-slate-200">
                       <div className="sm:min-w-[760px]">
                         <div className="hidden grid-cols-[minmax(220px,1fr)_210px_170px_110px] gap-3 bg-slate-50 px-4 py-3 text-xs font-bold uppercase tracking-wider text-slate-500 sm:grid">
                         <div>Mặt hàng</div><div>Kiểu số lượng</div><div>Số lượng mặc định</div><div className="text-right">Thao tác</div>
@@ -963,10 +857,83 @@ export default function WarehouseManagement() {
                           </div>
                         </div>
                       )) : (
-                        <div className="p-10 text-center"><Package className="mx-auto h-7 w-7 text-slate-300" /><div className="mt-3 text-sm font-bold text-slate-700">Dịch vụ chưa có mặt hàng</div><div className="mt-1 text-xs text-slate-500">Chọn mặt hàng ở ô phía trên để thêm vào mẫu.</div></div>
+                        <div className="p-10 text-center"><Package className="mx-auto h-7 w-7 text-slate-300" /><div className="mt-3 text-sm font-bold text-slate-700">Dịch vụ chưa có mặt hàng</div><div className="mt-1 text-xs text-slate-500">Chọn mặt hàng ở bảng phía dưới để thêm vào mẫu.</div></div>
                       )}
                       </div>
                     </div>
+
+                    <div className="mt-8 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                      <div>
+                        <h4 className="text-base font-bold text-slate-900">Danh mục sản phẩm có thể thêm</h4>
+                        <div className="mt-1 text-xs text-slate-500">
+                          Có {products.length} sản phẩm trong hệ thống · còn {selectableProducts.length} sản phẩm chưa gắn vào dịch vụ này
+                        </div>
+                      </div>
+                    </div>
+
+                    {products.length ? (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-blue-200 bg-blue-50">
+                        <div className="flex flex-col gap-3 border-b border-blue-200 p-3 sm:flex-row sm:items-center sm:justify-end">
+                          <div className="relative w-full sm:max-w-sm">
+                            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-slate-400" />
+                            <input
+                              value={productSearch}
+                              onChange={event => setProductSearch(event.target.value)}
+                              placeholder="Tìm tên hoặc mã vạch…"
+                              className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm text-slate-950 outline-none placeholder:text-slate-400 focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="max-h-[400px] overflow-y-auto bg-white p-3">
+                          {selectableProducts.length ? (
+                            <div className="grid gap-3 xl:grid-cols-2">
+                              {selectableProducts.map(product => (
+                                <div
+                                  key={product.id}
+                                  className="min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3 shadow-sm transition flex flex-col justify-between"
+                                >
+                                  <div className="flex min-w-0 items-start gap-3">
+                                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700">
+                                      <Package className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="break-words text-sm font-bold leading-5 text-slate-900" title={product.product_name}>{product.product_name}</div>
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+                                        <span className="rounded-md bg-slate-200 px-2 py-0.5 font-mono text-slate-600">Mã: {product.barcode || 'Chưa có'}</span>
+                                        <span className="rounded-md bg-blue-100 px-2 py-0.5 font-bold text-blue-800">Đơn vị: {product.base_unit || 'chiếc'}</span>
+                                        <span className="rounded-md bg-emerald-50 px-2 py-0.5 font-bold text-emerald-700">US: {Number(product.stock_us) || 0}</span>
+                                        <span className="rounded-md bg-violet-50 px-2 py-0.5 font-bold text-violet-700">UK: {Number(product.stock_uk) || 0}</span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="mt-3 flex justify-end">
+                                      <button
+                                        type="button"
+                                        onClick={() => addProduct(product.id)}
+                                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-blue-600 px-4 text-xs font-bold text-white shadow-sm hover:bg-blue-700"
+                                      >
+                                        <Plus className="h-3.5 w-3.5" />Thêm vào mẫu
+                                      </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="p-8 text-center">
+                              <Package className="mx-auto h-7 w-7 text-slate-300" />
+                              <div className="mt-3 text-sm font-bold text-slate-700">
+                                {productSearch.trim() ? 'Không tìm thấy sản phẩm phù hợp' : 'Tất cả sản phẩm đã được thêm'}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><span className="font-bold">Chưa có mặt hàng.</span> Mặt hàng được tạo khi nhân viên nhập kho lần đầu trên Telegram.</div>
+                    )}
                   </section>
                 </div>
 
@@ -996,6 +963,42 @@ export default function WarehouseManagement() {
           onSave={saveProductUnits}
         />
       )}
+    </div>
+  );
+}
+
+export default function WarehouseManagement({ groups }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isProductManagement = location.pathname === '/kho/san-pham';
+  const menuItems = [
+    { path: '/kho/san-pham', label: 'Quản lý sản phẩm', icon: Boxes, active: isProductManagement },
+    { path: '/kho', label: 'Mẫu theo dịch vụ', icon: ClipboardList, active: !isProductManagement }
+  ];
+
+  return (
+    <div className="-m-4 flex flex-1 flex-col bg-slate-100 p-4 text-slate-900 sm:-m-6 sm:p-6 lg:-m-8 lg:p-8">
+      <div className="mx-auto mb-5 flex w-full max-w-[1500px] flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        {menuItems.map(item => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.path}
+              type="button"
+              onClick={() => navigate(item.path)}
+              className={`inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition ${item.active ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100 hover:text-blue-700'}`}
+            >
+              <Icon className="h-4 w-4" />{item.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mx-auto flex w-full max-w-[1500px] flex-1 flex-col">
+        {isProductManagement
+          ? <ProductManagement groups={groups} />
+          : <ServiceTemplateManagement />}
+      </div>
     </div>
   );
 }

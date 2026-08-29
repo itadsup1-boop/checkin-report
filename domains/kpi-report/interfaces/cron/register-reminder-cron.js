@@ -16,16 +16,20 @@ async function findMissing(reminderRepository, groupId, todayStr) {
     return findMissingReporters(employees, { reportedIds, offDutyIds, onLeaveIds });
 }
 
-export function registerReminderCron({ cron, reminderRepository, sheetSync, sendMessageToRoleGroup, bot }) {
+export function registerReminderCron({ cron, reminderRepository, sheetSync, sendMessageToRoleGroup, bot, isCompanyHoliday }) {
     return cron.schedule('* * * * *', async () => {
         try {
             const now = new Date();
             const currentTimeString = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
+            const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
+            const holiday = await isCompanyHoliday(todayStr);
+            if (holiday) {
+                console.log(`[Company Holiday] Bỏ qua nhắc và phạt KPI ngày ${todayStr}: ${holiday.name}`);
+                return;
+            }
             const groups = await reminderRepository.findActiveReportGroups();
 
             for (const group of groups) {
-                const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
-
                 // 1. Nhắc nhở nộp báo cáo
                 const remindTime = group.remind_time_1 || '17:00:00';
                 if (remindTime === currentTimeString) {

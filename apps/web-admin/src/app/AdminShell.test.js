@@ -3,15 +3,15 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
-const staffSource = fs.readFileSync(new URL('./StaffManagement.jsx', import.meta.url), 'utf8');
-const checkinSource = fs.readFileSync(new URL('./CheckinManagement.jsx', import.meta.url), 'utf8');
+const staffSource = fs.readFileSync(new URL('../features/staff/StaffManagement.jsx', import.meta.url), 'utf8');
+const checkinSource = fs.readFileSync(new URL('../features/attendance/CheckinManagement.jsx', import.meta.url), 'utf8');
 const exportRouteSource = fs.readFileSync(
-  new URL('../../../domains/timekeep/interfaces/admin-api/export-excel-routes.js', import.meta.url), 'utf8');
+  new URL('../../../../domains/timekeep/interfaces/admin-api/export-excel-routes.js', import.meta.url), 'utf8');
 const exportUseCaseSource = fs.readFileSync(
-  new URL('../../../domains/timekeep/application/export-attendance-excel.js', import.meta.url), 'utf8');
+  new URL('../../../../domains/timekeep/application/export-attendance-excel.js', import.meta.url), 'utf8');
 
 test('Menu chỉ còn các nghiệp vụ không trùng lặp', () => {
-  for (const label of ['Tổng quan', 'Nhân sự', 'Điểm danh', 'Lịch làm việc', 'Nghỉ phép & Quỹ phép', 'Cấu hình nhóm']) {
+  for (const label of ['Tổng quan', 'Nhân sự', 'Check in', 'Lịch làm việc', 'Nghỉ phép & Quỹ phép', 'Ngày nghỉ công ty', 'Cấu hình nhóm']) {
     assert.match(appSource, new RegExp(`label: '${label}'`));
   }
   assert.doesNotMatch(appSource, /PermissionManagement|Phân quyền thành viên|activeTab === 'overview'/);

@@ -1798,7 +1798,7 @@ Các hạng mục trong kế hoạch đã được hiện thực hóa tại:
 - `apps/bot/public/warehouse_order.html`: Mini App đơn khách nhiều dịch vụ.
 - `apps/bot/public/warehouse_import.html`: chỉ nhận ảnh, tối đa 6 ảnh và nén trên điện thoại.
 - `apps/api/src/modules/warehouse-admin`: API quản trị kho có xác thực/phạm vi group.
-- `apps/web-admin/src/WarehouseManagement.jsx`: giao diện mẫu, sản phẩm, quyền, đơn, sổ kho, đồng bộ nền và rollout.
+- `apps/web-admin/src/features/warehouse/WarehouseManagement.jsx`: giao diện mẫu, sản phẩm, quyền, đơn, sổ kho, đồng bộ nền và rollout.
 
 Database là nguồn dữ liệu chính. Google Sheet, Google Drive và Telegram chạy sau commit qua outbox; Admin xem lỗi và yêu cầu thử lại trên tab `Đồng bộ nền`.
 

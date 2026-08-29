@@ -3,6 +3,7 @@ import axios from 'axios';
 import { UserPlus, Shield, Trash2, Edit, X, CheckSquare, Square } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
+const WAREHOUSE_ACCOUNTANT_ROLE = 'WAREHOUSE_ACCOUNTANT';
 
 export default function AdminManagement({ groups = [] }) {
   const [admins, setAdmins] = useState([]);
@@ -18,6 +19,9 @@ export default function AdminManagement({ groups = [] }) {
     role: 'ADMIN',
     assigned_groups: []
   });
+  const assignableGroups = formData.role === WAREHOUSE_ACCOUNTANT_ROLE
+    ? groups.filter(group => group.bot_role === 'warehouse')
+    : groups;
 
   const fetchAdmins = useCallback(async () => {
     setLoading(true);
@@ -77,7 +81,7 @@ export default function AdminManagement({ groups = [] }) {
   };
 
   const handleSelectAllGroups = () => {
-    const allGroupIds = groups.map(g => g.telegram_group_id);
+    const allGroupIds = assignableGroups.map(g => g.telegram_group_id);
     if (formData.assigned_groups.length === allGroupIds.length) {
       setFormData(prev => ({ ...prev, assigned_groups: [] }));
     } else {
@@ -87,6 +91,10 @@ export default function AdminManagement({ groups = [] }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (formData.role === WAREHOUSE_ACCOUNTANT_ROLE && !formData.assigned_groups.length) {
+      alert('Kế toán kho phải được gán ít nhất một nhóm Quản lý kho.');
+      return;
+    }
     try {
       if (editingAdmin) {
         await axios.put(`${API_URL}/admin/accounts/${editingAdmin.id}`, formData);

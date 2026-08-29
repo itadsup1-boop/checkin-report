@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
-const source = fs.readFileSync(new URL('./timekeep_bot.js', import.meta.url), 'utf8');
+const source = fs.readFileSync(new URL('./commands/register-start-commands.js', import.meta.url), 'utf8');
 const handlerStart = source.indexOf('async function startHandler(ctx)');
 const handlerEnd = source.indexOf('\nbot.start(startHandler)', handlerStart);
 const startHandlerSource = source.slice(handlerStart, handlerEnd);

@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('./DashboardTab.jsx', import.meta.url), 'utf8');
-const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
+const appSource = fs.readFileSync(new URL('../../app/App.jsx', import.meta.url), 'utf8');
 // Bảng điều khiển đã rời timekeep_bot.js sang domains/timekeep (commit 888f6dc).
 const dashboardUseCase = fs.readFileSync(
-  new URL('../../../domains/timekeep/application/build-attendance-dashboard.js', import.meta.url), 'utf8');
+  new URL('../../../../../domains/timekeep/application/build-attendance-dashboard.js', import.meta.url), 'utf8');
 const attendanceRepo = fs.readFileSync(
-  new URL('../../../domains/timekeep/infrastructure/postgres/attendance-repository.js', import.meta.url), 'utf8');
+  new URL('../../../../../domains/timekeep/infrastructure/postgres/attendance-repository.js', import.meta.url), 'utf8');
 
 test('Tổng quan dùng bố cục gọn bốn thẻ và hai danh sách', () => {
   for (const label of [

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
-const mainSource = fs.readFileSync(new URL('./main.jsx', import.meta.url), 'utf8');
-const apiSource = fs.readFileSync(new URL('../../api/index.js', import.meta.url), 'utf8');
-const dashboardSource = fs.readFileSync(new URL('./DashboardTab.jsx', import.meta.url), 'utf8');
+const mainSource = fs.readFileSync(new URL('../main.jsx', import.meta.url), 'utf8');
+const apiSource = fs.readFileSync(new URL('../../../api/index.js', import.meta.url), 'utf8');
+const proxyRoutesSource = fs.readFileSync(new URL('../../../api/routes/proxy-routes.js', import.meta.url), 'utf8');
+const dashboardSource = fs.readFileSync(new URL('../features/dashboard/DashboardTab.jsx', import.meta.url), 'utf8');
 
 /** Đường dẫn của từng mục menu. Đổi là đứt link cũ người dùng đã lưu. */
 const ROUTES = [
@@ -65,21 +66,22 @@ test('BrowserRouter dùng đường dẫn thật, không phải dấu thăng', (
 
 test('máy chủ trả index.html cho đường dẫn sâu, nếu không reload sẽ 404', () => {
     // Không có chốt này thì mở thẳng /kho là lỗi 404 chứ không vào được app.
-    assert.match(apiSource, /res\.sendFile\(path\.join\(webAdminPath, 'index\.html'\)\)/);
+    assert.match(apiSource, /registerProxyRoutes\(/);
+    assert.match(proxyRoutesSource, /res\.sendFile\(path\.join\(webAdminPath, 'index\.html'\)\)/);
 });
 
 test('màn hình không đủ quyền chỉ bị chặn SAU khi tải xong danh sách nhóm', () => {
     // Xét sớm thì `groups` còn rỗng, người có quyền kho bị báo sai là chưa được cấp quyền.
     assert.match(appSource, /if \(!groupsLoaded\) return null/);
     assert.match(appSource, /!groupsLoaded/);
-    assert.match(appSource, /showWarehouse[\s\S]*<WarehouseManagement \/>/);
+    assert.match(appSource, /showWarehouse[\s\S]*<WarehouseManagement groups=/);
     assert.match(appSource, /<WarehouseAccessNotice \/>/);
     assert.match(appSource, /guard\(isSuperAdmin\)/);
 });
 
 test('đường dẫn lạ về Tổng quan, không để trang trắng', () => {
     assert.match(appSource, /path="\*"/);
-    assert.match(appSource, /<Navigate to=\{PATH_BY_ID\.dashboard\} replace \/>/);
+    assert.match(appSource, /<Navigate to=\{homePath\} replace \/>/);
 });
 
 test('giữ nguyên chữ ký onNavigate cũ mà Tổng quan đang gọi', () => {

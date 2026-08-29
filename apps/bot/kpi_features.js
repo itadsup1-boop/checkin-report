@@ -61,7 +61,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 let customerSheetQueue = Promise.resolve();
 
-export function setupKpiBot(bot, botApp) {
+export function setupKpiBot(bot, botApp, { isCompanyHoliday } = {}) {
     const kpiComposer = new Composer();
 
     function checkAdmin(ctx) {
@@ -505,7 +505,7 @@ export function setupKpiBot(bot, botApp) {
 
     // Trang ĐĂNG KÝ LỊCH TUẦN của role chấm công (gọi /api/timekeep/schedule/*).
     // Nằm nhầm chỗ từ trước, KHÔNG thuộc lịch khách tour. Giữ nguyên đường dẫn vì
-    // apps/bot/index.js còn trỏ tới; sẽ chuyển sang domains/timekeep/ khi tách role đó.
+    // Giữ lớp tương thích này cho các handler KPI cũ; entry point legacy đã được loại bỏ.
     botApp.get('/schedule', (req, res) => {
         res.sendFile(path.join(__dirname, 'public', 'schedule.html'));
     });
@@ -560,7 +560,8 @@ export function setupKpiBot(bot, botApp) {
         computeHashFromBase64,
         findDuplicateImages,
         saveHashesToDB,
-        crypto
+        crypto,
+        isCompanyHoliday
     });
 
     // --- HELPER FUNCTIONS FOR BÁO BÙ ---

@@ -48,6 +48,7 @@ const DAY_NAMES = ['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ
 export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const [schedules, setSchedules] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
+  const [companyHolidays, setCompanyHolidays] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refDate, setRefDate] = useState(new Date());
   const [toast, setToast] = useState(null);
@@ -94,13 +95,21 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
     }
   }, [fromDate, selectedGroupId, toDate]);
 
+  const fetchCompanyHolidays = useCallback(async () => {
+    try {
+      const res = await axios.get(`${API_URL}/admin/company-holidays`, { params: { year: Number(fromDate.slice(0, 4)) } });
+      setCompanyHolidays((res.data || []).filter(item => item.status !== 'CANCELLED'));
+    } catch (err) { console.error('Lỗi tải ngày nghỉ công ty:', err); }
+  }, [fromDate]);
+
   useEffect(() => {
     const requestId = window.setTimeout(() => {
       fetchSchedules();
       fetchUsers();
+      fetchCompanyHolidays();
     }, 0);
     return () => window.clearTimeout(requestId);
-  }, [fetchSchedules, fetchUsers]);
+  }, [fetchCompanyHolidays, fetchSchedules, fetchUsers]);
 
   const changeWeek = (delta) => {
     const d = new Date(refDate);
@@ -165,6 +174,7 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const uniqueUsers = matrixEntries.filter(([, user]) => Object.keys(user.dates).length > 0).length;
   const totalUsers = matrixEntries.length;
   const totalGroups = new Set(matrixEntries.map(([, user]) => user.group_name).filter(Boolean)).size;
+  const holidayForDate = date => companyHolidays.find(item => date >= String(item.start_date).slice(0, 10) && date <= String(item.end_date).slice(0, 10));
 
   // Edit handlers
   const startEdit = (schedule) => {
@@ -333,19 +343,20 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
                   <th className="py-4 px-4 font-medium w-44">Nhân viên</th>
                   {weekDates.map((date, i) => {
                     const isToday = date === todayStr;
+                    const companyHoliday = holidayForDate(date);
                     return (
-                      <th key={date} className={`py-4 px-3 font-medium text-center ${isToday ? 'bg-blue-500/5' : ''}`}>
+                      <th key={date} className={`py-4 px-3 font-medium text-center ${companyHoliday ? 'bg-violet-50' : (isToday ? 'bg-blue-500/5' : '')}`}>
                         <div className={`${isToday ? 'text-blue-400' : ''}`}>{DAY_NAMES[i]}</div>
                         <div className={`text-[10px] mt-0.5 ${isToday ? 'text-blue-400/70' : 'text-slate-500'}`}>
                           {new Date(date + 'T00:00:00').toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })}
                         </div>
-                        <button
+                        {companyHoliday ? <span className="mt-1 block text-[10px] font-bold normal-case text-violet-600" title={companyHoliday.name}>Nghỉ CT</span> : <button
                           onClick={() => openAddForDate(date)}
                           className="mt-1 p-0.5 text-slate-600 hover:text-blue-400 transition-colors"
                           title="Thêm lịch cho ngày này"
                         >
                           <Plus className="w-3.5 h-3.5 mx-auto" />
-                        </button>
+                        </button>}
                       </th>
                     );
                   })}
@@ -368,11 +379,12 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
                     {weekDates.map(date => {
                       const schedule = userData.dates[date];
                       const isToday = date === todayStr;
+                      const companyHoliday = holidayForDate(date);
                       const isEditing = schedule && editingId === schedule.id;
 
                       return (
-                        <td key={date} className={`py-2 px-2 text-center align-middle ${isToday ? 'bg-blue-500/5' : ''}`}>
-                          {schedule ? (
+                        <td key={date} className={`py-2 px-2 text-center align-middle ${companyHoliday ? 'bg-violet-50/70' : (isToday ? 'bg-blue-500/5' : '')}`}>
+                          {companyHoliday ? <span className="inline-block rounded-lg border border-violet-200 bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-700" title={companyHoliday.name}>Nghỉ công ty</span> : schedule ? (
                             isEditing ? (
                               /* Edit mode */
                               <div className="flex flex-col items-center gap-1">

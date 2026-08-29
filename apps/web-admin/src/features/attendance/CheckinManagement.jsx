@@ -238,7 +238,7 @@ export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
       </div>
 
       {/* Table */}
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+      <div className="flex min-h-[560px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm lg:min-h-[720px]">
         <div className="border-b border-slate-100 p-5">
           <h2 className="flex items-center gap-2 text-lg font-bold text-slate-900">
             <ClipboardCheck className="h-5 w-5 text-blue-600" />
@@ -246,9 +246,9 @@ export default function CheckinManagement({ selectedGroupId = 'ALL' }) {
           </h2>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <table className="w-full border-collapse text-left">
-            <thead>
+            <thead className="sticky top-0 z-10">
               <tr className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                 <th className="px-5 py-3 font-semibold">#</th>
                 <th className="px-5 py-3 font-semibold">Nhân viên</th>

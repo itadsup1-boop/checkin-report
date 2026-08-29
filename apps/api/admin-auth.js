@@ -5,6 +5,7 @@ import {
     verifyAdminPassword
 } from '../../packages/shared/admin-auth-crypto.js';
 import { createAdminAuthRepository } from '../../packages/database/admin-auth-repository.js';
+import { WAREHOUSE_ACCOUNTANT_ROLE } from './admin-account-policy.js';
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
@@ -127,6 +128,7 @@ export function createAdminAuth({ pool }) {
                 fullName: session.full_name,
                 role: session.role,
                 isSuperAdmin: session.role === 'SUPER_ADMIN',
+                isWarehouseAccountant: session.role === WAREHOUSE_ACCOUNTANT_ROLE,
                 allowedGroupIds: allowedGroupIds.map(String),
                 tokenHash: hashAdminSessionToken(token)
             };
@@ -142,6 +144,32 @@ export function createAdminAuth({ pool }) {
         if (!req.admin?.isSuperAdmin) {
             return res.status(403).json({ success: false, message: 'Chỉ Super Admin được thực hiện thao tác này.' });
         }
+        return next();
+    }
+
+    function denyWarehouseAccount(res) {
+        return res.status(403).json({
+            success: false,
+            message: 'Tài khoản Kế toán kho chỉ được sử dụng chức năng Quản lý kho.'
+        });
+    }
+
+    function restrictWarehouseAccountToWarehouse(req, res, next) {
+        if (req.admin?.role !== WAREHOUSE_ACCOUNTANT_ROLE) return next();
+        const pathname = String(req.originalUrl || req.url || '').split('?')[0];
+        const allowed = pathname === '/api/admin/session'
+            || pathname === '/api/admin/logout'
+            || pathname.startsWith('/api/admin/warehouse/');
+        return allowed ? next() : denyWarehouseAccount(res);
+    }
+
+    function restrictWarehouseAccountGroupAccess(req, res, next) {
+        if (req.admin?.role !== WAREHOUSE_ACCOUNTANT_ROLE || req.method === 'GET') return next();
+        return denyWarehouseAccount(res);
+    }
+
+    function requireGeneralAdmin(req, res, next) {
+        if (req.admin?.role === WAREHOUSE_ACCOUNTANT_ROLE) return denyWarehouseAccount(res);
         return next();
     }
 
@@ -175,6 +203,9 @@ export function createAdminAuth({ pool }) {
         registerLoginRoute,
         authenticateAdmin,
         requireSuperAdmin,
+        requireGeneralAdmin,
+        restrictWarehouseAccountToWarehouse,
+        restrictWarehouseAccountGroupAccess,
         registerSessionRoutes,
         getAdminAuthContext
     };

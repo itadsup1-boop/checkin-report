@@ -20,6 +20,9 @@ export const SCHEDULE_TOGGLE_ROLES = ['Quản lý', 'Quản lý kho'];
  * không chặn được ai đó tự gửi request tay).
  */
 export const SELF_REGISTER_ROLES = [
+    'Quản lý',
+    'Quản lý kho',
+    'Kế toán',
     'Telesale',
     'Sales',
     'Kỹ thuật viên',

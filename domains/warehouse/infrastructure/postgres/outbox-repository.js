@@ -39,5 +39,15 @@ export function createOutboxRepository(pool) {
         );
     }
 
-    return { enqueue, enqueueStockTransfer };
+    async function enqueueAdminImport(db, receiptId, payload = {}) {
+        await db.query(
+            `INSERT INTO tk_warehouse_outbox
+                (aggregate_type, aggregate_id, event_type, payload)
+             VALUES ('WAREHOUSE_ADMIN_IMPORT', $1, 'ADMIN_IMPORT_COMPLETED', $2::jsonb)
+             ON CONFLICT (aggregate_type, aggregate_id, event_type) DO NOTHING`,
+            [receiptId, JSON.stringify(payload)]
+        );
+    }
+
+    return { enqueue, enqueueStockTransfer, enqueueAdminImport };
 }

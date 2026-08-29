@@ -24,6 +24,7 @@ import { createOutboxRepository } from '../infrastructure/postgres/outbox-reposi
 import { createOrderRepository } from '../infrastructure/postgres/order-repository.js';
 import { createCatalogRepository } from '../infrastructure/postgres/catalog-repository.js';
 import { createPricingRepository } from '../infrastructure/postgres/pricing-repository.js';
+import { createReceiptRepository } from '../infrastructure/postgres/receipt-repository.js';
 
 import { createTransactionRunner } from './_shared/with-transaction.js';
 import { createActorContextResolver } from './_shared/actor-context.js';
@@ -36,6 +37,7 @@ import { createRejectOrderUseCase } from './reject-order.js';
 import { createRollbackOrderUseCase } from './rollback-order.js';
 import { createSuggestCustomerUseCase } from './suggest-customer.js';
 import { createCreateStockTransferUseCase } from './create-stock-transfer.js';
+import { createStockReceiptUseCase } from './create-stock-receipt.js';
 
 export function createWarehouseOrderService({ pool, adminIds = [] }) {
     // Tầng hạ tầng: nơi duy nhất được viết SQL.
@@ -47,6 +49,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
     const orderRepo = createOrderRepository(pool);
     const catalogRepo = createCatalogRepository(pool);
     const pricingRepo = createPricingRepository(pool);
+    const receiptRepo = createReceiptRepository();
 
     // Phần dùng chung giữa các use case.
     const withTransaction = createTransactionRunner(pool);
@@ -73,6 +76,11 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
     const { reverseOrder } = createRollbackOrderUseCase(chung);
     const { suggestCustomer } = createSuggestCustomerUseCase({ pool, catalogRepo });
     const { createStockTransfer } = createCreateStockTransferUseCase({ ...chung, catalogRepo });
+    const { importProductsAsAdmin } = createStockReceiptUseCase({
+        ...chung,
+        catalogRepo,
+        receiptRepo
+    });
 
     return {
         repository,
@@ -84,6 +92,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
         reverseOrder,
         suggestCustomer,
         createStockTransfer,
+        importProductsAsAdmin,
         authorizeActor: actorContext.authorizeActor
     };
 }

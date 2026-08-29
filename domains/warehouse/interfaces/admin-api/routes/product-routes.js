@@ -10,7 +10,10 @@ import { WarehouseError } from '../../../domain/constants.js';
 import { QUANTITY_MODES } from '../../../domain/quantity-rules.js';
 import { validateConversionConfig } from '../../../domain/unit-conversion.js';
 
-export function registerProductRoutes({ app, pool, getContext, requireWarehouseCatalogAccess }) {
+export function registerProductRoutes({
+    app, pool, warehouseOrderService, getContext,
+    requireWarehouseGroup, requireWarehouseCatalogAccess
+}) {
     app.get('/api/admin/warehouse/products', async (req, res) => {
         try {
             const context = await getContext(req);
@@ -36,11 +39,20 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
         try {
             const context = await getContext(req);
             await requireWarehouseCatalogAccess(context);
+            const forbiddenStockFields = ['quantity', 'stock_us', 'stock_uk', 'inventory']
+                .filter(field => Object.hasOwn(req.body, field));
+            if (forbiddenStockFields.length) {
+                throw new WarehouseError(
+                    'Không được sửa trực tiếp số lượng tồn. Hãy tạo phiếu nhập kho để tăng tồn.',
+                    { code: 'DIRECT_STOCK_UPDATE_FORBIDDEN' }
+                );
+            }
+            const hasName = req.body.product_name !== undefined;
             const hasVisibility = typeof req.body.is_active === 'boolean';
             const hasQuantityMode = req.body.quantity_mode !== undefined;
             const hasUnits = req.body.base_unit !== undefined || req.body.import_unit !== undefined || req.body.conversion_rate !== undefined;
 
-            if (!hasVisibility && !hasQuantityMode && !hasUnits) {
+            if (!hasName && !hasVisibility && !hasQuantityMode && !hasUnits) {
                 throw new WarehouseError('Không có thay đổi sản phẩm hợp lệ.');
             }
             if (hasQuantityMode && !Object.values(QUANTITY_MODES).includes(req.body.quantity_mode)) {
@@ -54,6 +66,13 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
             );
             const before = beforeResult.rows[0];
             if (!before) throw new WarehouseError('Không tìm thấy sản phẩm.', { status: 404 });
+
+            const productName = hasName
+                ? String(req.body.product_name || '').trim().replace(/\s+/g, ' ')
+                : before.product_name;
+            if (hasName && (productName.length < 2 || productName.length > 200)) {
+                throw new WarehouseError('Tên sản phẩm phải có từ 2 đến 200 ký tự.');
+            }
 
             if (hasQuantityMode && req.body.quantity_mode === QUANTITY_MODES.INTEGER) {
                 const fractionalTemplate = await client.query(
@@ -96,7 +115,8 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
                      quantity_mode = $3,
                      base_unit = $4,
                      import_unit = $5,
-                     conversion_rate = $6
+                     conversion_rate = $6,
+                     product_name = $7
                  WHERE id = $1
                  RETURNING *`,
                 [
@@ -105,7 +125,8 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
                     hasQuantityMode ? req.body.quantity_mode : before.quantity_mode,
                     normalizedUnits.base_unit,
                     normalizedUnits.import_unit,
-                    normalizedUnits.conversion_rate
+                    normalizedUnits.conversion_rate,
+                    productName
                 ]
             );
 
@@ -147,7 +168,9 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
                     (action, before_data, after_data, actor_admin_id)
                  VALUES ($1, $2::jsonb, $3::jsonb, $4)`,
                 [
-                    hasUnits ? 'UPDATE_PRODUCT_UNITS' : (hasQuantityMode ? 'UPDATE_PRODUCT_QUANTITY_MODE' : 'UPDATE_PRODUCT_VISIBILITY'),
+                    hasName
+                        ? 'UPDATE_PRODUCT_NAME'
+                        : (hasUnits ? 'UPDATE_PRODUCT_UNITS' : (hasQuantityMode ? 'UPDATE_PRODUCT_QUANTITY_MODE' : 'UPDATE_PRODUCT_VISIBILITY')),
                     JSON.stringify(before),
                     JSON.stringify(result.rows[0]),
                     context.adminId
@@ -163,6 +186,23 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
         }
     });
 
+    app.post('/api/admin/warehouse/imports', async (req, res) => {
+        try {
+            const context = await getContext(req);
+            await requireWarehouseCatalogAccess(context);
+            const group = await requireWarehouseGroup(context, req.body.group_id);
+            const receipt = await warehouseOrderService.importProductsAsAdmin({
+                adminId: context.adminId,
+                adminName: context.adminName,
+                group,
+                input: req.body
+            });
+            res.status(201).json({ success: true, receipt });
+        } catch (error) {
+            sendError(res, error);
+        }
+    });
+
     app.get('/api/admin/warehouse/products/audit', async (req, res) => {
         try {
             const context = await getContext(req);
@@ -170,7 +210,7 @@ export function registerProductRoutes({ app, pool, getContext, requireWarehouseC
             const result = await pool.query(
                 `SELECT *
                  FROM tk_warehouse_template_audit
-                 WHERE action IN ('UPDATE_PRODUCT_VISIBILITY', 'UPDATE_PRODUCT_QUANTITY_MODE', 'UPDATE_PRODUCT_UNITS')
+                 WHERE action IN ('UPDATE_PRODUCT_NAME', 'UPDATE_PRODUCT_VISIBILITY', 'UPDATE_PRODUCT_QUANTITY_MODE', 'UPDATE_PRODUCT_UNITS')
                  ORDER BY created_at DESC
                  LIMIT 200`
             );

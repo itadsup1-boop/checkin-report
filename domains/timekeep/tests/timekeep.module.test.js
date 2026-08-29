@@ -129,9 +129,14 @@ test('module phải đăng ký SAU middleware xác thực /api/timekeep', () => 
     // đăng ký SAU nó. Dời lời gọi module lên trên là POST /api/timekeep/register
     // mất lớp xác thực Telegram — ai cũng đăng ký hộ người khác được.
     const source = readBot();
-    const authAt = source.indexOf("botApp.use('/api/timekeep', authenticateTelegramMiniApp)");
+    const httpBootstrap = fs.readFileSync(
+        new URL('../../../apps/bot/bootstrap/configure-bot-http.js', import.meta.url),
+        'utf8'
+    );
+    const authAt = source.indexOf('configureBotHttp({');
     const moduleAt = source.indexOf('registerTimekeepModule({');
-    assert.ok(authAt > 0, 'không tìm thấy middleware xác thực');
+    assert.match(httpBootstrap, /botApp\.use\('\/api\/timekeep', authenticateTelegramMiniApp\)/);
+    assert.ok(authAt > 0, 'không tìm thấy bootstrap middleware xác thực');
     assert.ok(moduleAt > 0, 'không tìm thấy lời gọi module');
     assert.ok(authAt < moduleAt, 'registerTimekeepModule phải đứng SAU middleware xác thực');
 });

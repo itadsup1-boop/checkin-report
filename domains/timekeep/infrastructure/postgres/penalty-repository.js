@@ -44,6 +44,10 @@ export function createPenaltyRepository() {
                AND COALESCE(e.is_exempt_checkin, FALSE) = FALSE
                AND e.full_name NOT LIKE '/%'
                AND e.full_name <> 'tester'
+               AND NOT EXISTS (
+                   SELECT 1 FROM company_holidays h
+                   WHERE h.status = 'SCHEDULED' AND s.date BETWEEN h.start_date AND h.end_date
+               )
                AND ($5::uuid IS NULL OR s.group_id = $5::uuid)
                AND ($6::uuid IS NULL OR s.user_id = $6::uuid)
                AND (

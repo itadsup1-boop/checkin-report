@@ -3,11 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const source = fs.readFileSync(new URL('./WarehouseManagement.jsx', import.meta.url), 'utf8');
-const appSource = fs.readFileSync(new URL('./App.jsx', import.meta.url), 'utf8');
+const productSource = fs.readFileSync(new URL('./ProductManagement.jsx', import.meta.url), 'utf8');
+const appSource = fs.readFileSync(new URL('../../app/App.jsx', import.meta.url), 'utf8');
 
 test('Web Admin kho chỉ quản lý mẫu sản phẩm theo dịch vụ', () => {
   assert.match(source, /warehouse-catalog/);
-  assert.match(fs.readFileSync(new URL('./index.css', import.meta.url), 'utf8'), /warehouse-catalog/);
+  assert.match(fs.readFileSync(new URL('../../styles/index.css', import.meta.url), 'utf8'), /warehouse-catalog/);
   assert.match(source, /Mẫu sản phẩm theo dịch vụ/);
   assert.match(source, /Dịch vụ/);
   assert.match(source, /Mặt hàng khi nhân viên chọn dịch vụ/);
@@ -32,7 +33,32 @@ test('Danh mục mẫu không gửi group_id và không yêu cầu chọn nhóm'
   assert.match(source, /request\('\/admin\/warehouse\/services'\)/);
   assert.match(source, /request\('\/admin\/warehouse\/products'\)/);
   assert.match(appSource, /activeTab !== 'warehouse'/);
-  assert.match(appSource, /<WarehouseManagement \/>/);
+  assert.match(appSource, /<WarehouseManagement groups=/);
+});
+
+test('Kho có menu con Quản lý sản phẩm với đường dẫn riêng', () => {
+  assert.match(source, /Quản lý sản phẩm/);
+  assert.match(source, /\/kho\/san-pham/);
+  assert.match(source, /label: 'Quản lý sản phẩm'[\s\S]*label: 'Mẫu theo dịch vụ'/);
+  assert.match(source, /useLocation/);
+  assert.match(source, /<ProductManagement groups=\{groups\}/);
+});
+
+test('Quản lý sản phẩm chỉ cho đổi tên, tồn US và UK là dữ liệu chỉ đọc', () => {
+  assert.match(productSource, /data: \{ product_name: productName, base_unit: baseUnit \}/);
+  assert.match(productSource, /Tồn US/);
+  assert.match(productSource, /Tồn UK/);
+  assert.match(productSource, /tồn kho là dữ liệu chỉ đọc/);
+  assert.doesNotMatch(productSource, /data: \{[^}]*stock_us/);
+  assert.doesNotMatch(productSource, /data: \{[^}]*stock_uk/);
+});
+
+test('Web Admin tạo phiếu nhập kho theo nhóm, cơ sở và danh sách sản phẩm', () => {
+  assert.match(productSource, /Tạo phiếu nhập kho/);
+  assert.match(productSource, /request\('\/admin\/warehouse\/imports'/);
+  assert.match(productSource, /group_id: groupId/);
+  assert.match(productSource, /branch, note, items/);
+  assert.match(productSource, /Xác nhận nhập kho/);
 });
 
 test('Admin có thể thêm sửa xóa dịch vụ và mặt hàng trong mẫu', () => {

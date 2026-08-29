@@ -26,9 +26,13 @@ export function createWarehouseSheetSync({ pool, moment, getDocById }) {
 
             // 2. Lấy thông tin giao dịch hiện tại
             const txRes = await pool.query(`
-                SELECT t.*, e.full_name as emp_name, g.telegram_group_id
+                SELECT t.*,
+                       COALESCE(e.full_name, l.metadata->>'actor_name', 'Web Admin') AS emp_name,
+                       l.metadata AS ledger_metadata,
+                       g.telegram_group_id
                 FROM tk_warehouse_transactions t
-                JOIN employees e ON t.user_id = e.id
+                LEFT JOIN employees e ON t.user_id = e.id
+                LEFT JOIN tk_warehouse_ledger l ON l.legacy_transaction_id = t.id
                 JOIN telegram_groups g ON t.group_id = g.id
                 WHERE t.id = $1
             `, [transactionId]);
@@ -65,7 +69,7 @@ export function createWarehouseSheetSync({ pool, moment, getDocById }) {
             }
 
             const timeStr = moment(tx.created_at).utcOffset(7).format('DD/MM/YYYY HH:mm:ss');
-            let approverName = '';
+            let approverName = tx.user_id ? '' : (tx.emp_name || 'Web Admin');
             if (tx.approved_by) {
                 const appRes = await pool.query('SELECT full_name FROM employees WHERE id = $1', [tx.approved_by]);
                 if (appRes.rows.length > 0) {

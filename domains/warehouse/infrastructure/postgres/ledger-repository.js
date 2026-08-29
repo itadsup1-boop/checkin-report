@@ -179,10 +179,38 @@ export function createLedgerRepository(pool) {
         );
     }
 
+    /** Phiếu nhập kho do tài khoản Web Admin tạo; tồn và ledger luôn ghi cùng transaction. */
+    async function recordAdminImport(db, {
+        receiptId, transactionId, groupId, productId, branch, quantity,
+        balanceBefore, balanceAfter, adminId, metadata
+    }) {
+        await db.query(
+            `INSERT INTO tk_warehouse_ledger
+                (event_key, event_type, legacy_transaction_id, group_id, product_id,
+                 branch, quantity_delta, balance_before, balance_after,
+                 actor_employee_id, actor_telegram_id, metadata)
+             VALUES ($1, 'PRODUCT_IMPORT', $2, $3, $4, $5, $6, $7, $8,
+                     NULL, $9, $10::jsonb)`,
+            [
+                `${receiptId}:${productId}:admin-import`,
+                transactionId,
+                groupId,
+                productId,
+                branch,
+                quantity,
+                balanceBefore,
+                balanceAfter,
+                `admin:${adminId}`,
+                JSON.stringify({ ...metadata, receipt_id: receiptId, actor_admin_id: String(adminId) })
+            ]
+        );
+    }
+
     return {
         recordLocalExport,
         recordTransferExport,
         recordStockTransfer,
+        recordAdminImport,
         listPhysicalMovements,
         recordReversal
     };

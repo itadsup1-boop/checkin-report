@@ -70,7 +70,8 @@ export function registerKpiReportModule({
     computeHashFromBase64,
     findDuplicateImages,
     saveHashesToDB,
-    crypto
+    crypto,
+    isCompanyHoliday = async () => null
 }) {
     const reportRepository = createReportRepository({ pool });
     const reminderRepository = createReminderRepository({ pool });
@@ -101,10 +102,10 @@ export function registerKpiReportModule({
 
     const scheduledJobs = cron
         ? [
-            registerReminderCron({ cron, reminderRepository, sheetSync, sendMessageToRoleGroup, bot }),
+            registerReminderCron({ cron, reminderRepository, sheetSync, sendMessageToRoleGroup, bot, isCompanyHoliday }),
             registerDeadlineCron({
                 cron, reportRepository, groupConfigRepository, finalizeReport,
-                getEmployeeMembership, pool, sendMessageToRoleGroup, bot
+                getEmployeeMembership, pool, sendMessageToRoleGroup, bot, isCompanyHoliday
             })
         ]
         : [];

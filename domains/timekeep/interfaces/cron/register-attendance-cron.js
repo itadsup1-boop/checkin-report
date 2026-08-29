@@ -6,7 +6,7 @@ export function registerAttendanceCron({
     cron, runShiftReminders, runLatePenaltyCheck,
     finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
     groupAbsenceNotifications, buildAbsenceNotificationText,
-    pool, sendMessageToRoleGroup, bot, syncSheets, moment
+    pool, sendMessageToRoleGroup, bot, syncSheets, moment, isCompanyHoliday
 }) {
     return cron.schedule('*/1 * * * *', async () => {
         try {
@@ -16,6 +16,12 @@ export function registerAttendanceCron({
             const currentTimeStr = nowVN.format('HH:mm');
             const currentMonth = nowVN.month() + 1;
             const currentYear = nowVN.year();
+
+            const holiday = await isCompanyHoliday(todayStr);
+            if (holiday) {
+                console.log(`[Company Holiday] Bỏ qua nhắc và phạt chấm công ngày ${todayStr}: ${holiday.name}`);
+                return;
+            }
 
             const remindersDirty = await runShiftReminders({ todayStr, currentTimeStr });
             attendanceSheetDirty = attendanceSheetDirty || remindersDirty;

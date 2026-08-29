@@ -9,11 +9,13 @@ import { getEffectiveKpiTarget } from '../../domain/kpi-target.js';
 
 export function registerDeadlineCron({
     cron, reportRepository, groupConfigRepository, finalizeReport,
-    getEmployeeMembership, pool, sendMessageToRoleGroup, bot
+    getEmployeeMembership, pool, sendMessageToRoleGroup, bot, isCompanyHoliday
 }) {
     return cron.schedule('* * * * *', async () => {
         try {
             const now = new Date();
+            const todayStr = new Date(Date.now() + 7 * 3600 * 1000).toISOString().split('T')[0];
+            if (await isCompanyHoliday(todayStr)) return;
 
             await reportRepository.deletePendingReportsForDeactivatedEmployees();
             const pending = await reportRepository.findActivePendingForDeadlineScan();

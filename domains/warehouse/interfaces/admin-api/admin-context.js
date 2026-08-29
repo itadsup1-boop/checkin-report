@@ -40,6 +40,7 @@ export function createAdminContext({ pool }) {
         }
         return {
             adminId: String(req.admin.id),
+            adminName: req.admin.fullName || req.admin.username || 'Admin',
             role: req.admin.role,
             isSuperAdmin: req.admin.isSuperAdmin,
             allowedGroupIds: (req.admin.allowedGroupIds || []).map(String)

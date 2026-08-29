@@ -45,6 +45,7 @@ export {
     quantityModeLabel,
     roundQuantity
 } from './domain/quantity-rules.js';
+export { validateStockReceiptInput } from './domain/stock-receipt-rules.js';
 export { createWarehouseOrderService } from './application/warehouse-order-service.js';
 export { createWarehouseQueryRepository } from './infrastructure/postgres/warehouse-query-repository.js';
 

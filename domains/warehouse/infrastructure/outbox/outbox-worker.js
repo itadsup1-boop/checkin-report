@@ -68,6 +68,19 @@ export function buildStockTransferMessage(payload, escapeHtml) {
     return message.trim();
 }
 
+export function buildAdminImportMessage(payload, escapeHtml) {
+    let message = `📥 <b>[NHẬP KHO TỪ WEB ADMIN]</b>\n\n` +
+        `👤 <b>Người thực hiện:</b> ${escapeHtml(payload.actor_name || 'Admin')}\n` +
+        `🏢 <b>Cơ sở:</b> ${escapeHtml(payload.branch)}\n` +
+        `🆔 <b>Mã phiếu:</b> <code>${escapeHtml(String(payload.receipt_id).slice(0, 8).toUpperCase())}</code>\n\n` +
+        `📦 <b>Danh sách sản phẩm:</b>\n`;
+    (payload.items || []).forEach((item, index) => {
+        message += `${index + 1}. <b>${escapeHtml(item.product_name)}</b>: ` +
+            `${item.entered_quantity} ${escapeHtml(item.entered_unit || item.base_unit || 'đơn vị')}\n`;
+    });
+    return message.trim();
+}
+
 function isTelegramMessageAlreadyUpdated(error) {
     return /message is not modified/i.test(String(error?.description || error?.message || error));
 }
@@ -255,6 +268,23 @@ export function startWarehouseOutboxWorker({
                 'warehouse_stock_transfer_completed'
             );
             if (!sent) throw new Error('Không gửi được thông báo chuyển kho');
+            return;
+        }
+
+        if (event.event_type === 'ADMIN_IMPORT_COMPLETED') {
+            const payload = event.payload;
+            for (const item of payload.transactionItems || []) {
+                await syncWarehouseSheets(item.productId, item.transactionId);
+            }
+            const sent = await sendMessageToRoleGroup(
+                bot,
+                payload.telegram_group_id,
+                'warehouse',
+                buildAdminImportMessage(payload, escapeHtml),
+                { parse_mode: 'HTML' },
+                'warehouse_admin_import_completed'
+            );
+            if (!sent) throw new Error('Không gửi được thông báo nhập kho từ Web Admin');
             return;
         }
 

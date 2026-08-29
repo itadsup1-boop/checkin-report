@@ -10,7 +10,7 @@ A Telegram-based KPI/timekeeping/warehouse management system for a clinic ("Clin
 - **timekeep-bot** — Telegraf bot (`apps/bot/timekeep_bot.js`), handles check-ins, daily KPI reports, penalties, scheduling, and the warehouse Telegram/Mini App flows.
 - **cloudflare-tunnel** — exposes the bot's local port publicly so Telegram Mini Apps (served from `apps/bot/public/`) can be opened from the Telegram client.
 
-`apps/bot/index.js` is **legacy/unused** — do not edit it or treat it as the bot entry point. The real entry point is `apps/bot/timekeep_bot.js`. `khoi_dong_he_thong_kpi.ps1` and `start.bat` are deprecated startup scripts, superseded by `scripts/windows/start.ps1`.
+`apps/bot/timekeep_bot.js` is the only bot entry point; the former legacy `apps/bot/index.js` has been removed. `khoi_dong_he_thong_kpi.ps1` and `start.bat` are deprecated startup scripts, superseded by `scripts/windows/start.ps1`.
 
 ## Commands
 

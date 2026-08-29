@@ -56,7 +56,7 @@ module.exports = {
     {
       name: 'cloudflare-tunnel',
       script: 'cloudflared.exe',
-      args: 'tunnel --url http://localhost:3001',
+      args: 'tunnel --protocol http2 --url http://localhost:3001',
       cwd: PROJECT_ROOT,
       watch: false,
       autorestart: true,

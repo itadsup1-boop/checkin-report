@@ -26,6 +26,7 @@ import DashboardTab from '../features/dashboard/DashboardTab.jsx';
 import AdminManagement from '../features/admin/AdminManagement.jsx';
 import WarehouseManagement from '../features/warehouse/WarehouseManagement.jsx';
 import SettingsManagement from '../features/settings/SettingsManagement.jsx';
+import CompanyHolidayManagement from '../features/holidays/CompanyHolidayManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -42,6 +43,7 @@ const TABS = [
   { id: 'checkins', path: '/diem-danh', label: 'Check in', icon: ClipboardCheck },
   { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
   { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
+  { id: 'holidays', path: '/ngay-nghi-cong-ty', label: 'Ngày nghỉ công ty', icon: CalendarDays },
   { id: 'warehouse', path: '/kho', label: 'Quản lý kho', icon: Package },
   { id: 'settings', path: '/cau-hinh', label: 'Cấu hình nhóm', icon: Settings },
   { id: 'admins', path: '/tai-khoan', label: 'Tài khoản quản trị', icon: Shield, needsSuperAdmin: true }
@@ -49,7 +51,6 @@ const TABS = [
 
 const PATH_BY_ID = Object.fromEntries(TABS.map(tab => [tab.id, tab.path]));
 
-/** Nhóm đang lọc nằm trên URL (?nhom=…) nên tải lại trang vẫn giữ đúng nhóm. */
 const GROUP_PARAM = 'nhom';
 
 function savedAdmin() {
@@ -94,7 +95,7 @@ export default function App() {
         await axios.post(`${API_URL}/admin/logout`, {}, { headers: { Authorization: `Bearer ${token}` } });
       }
     } catch {
-      // Phiên đã hết hạn cũng được coi là đăng xuất thành công ở trình duyệt.
+      // The local session is cleared below even when the remote logout request fails.
     } finally {
       clearSession();
     }
@@ -268,6 +269,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
         <Route path="/diem-danh" element={guard(canAccessGeneralAdmin) ?? <CheckinManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/lich-lam-viec" element={guard(canAccessGeneralAdmin) ?? <ScheduleManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/nghi-phep" element={guard(canAccessGeneralAdmin) ?? <LeaveManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/ngay-nghi-cong-ty" element={guard(canAccessGeneralAdmin) ?? <CompanyHolidayManagement isSuperAdmin={isSuperAdmin} />} />
         <Route
           path="/kho/*"
           element={!groupsLoaded

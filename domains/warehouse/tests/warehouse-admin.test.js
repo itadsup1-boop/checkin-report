@@ -46,6 +46,7 @@ test('Warehouse Admin đăng ký đầy đủ API và từ chối request thiế
             'POST /api/admin/warehouse/groups/:groupId/orders/:orderId/reject',
             'POST /api/admin/warehouse/groups/:groupId/orders/:orderId/reverse',
             'POST /api/admin/warehouse/groups/:groupId/outbox/:eventId/retry',
+            'POST /api/admin/warehouse/imports',
             'POST /api/admin/warehouse/services',
             'PUT /api/admin/warehouse/groups/:groupId/feature-flag',
             'PUT /api/admin/warehouse/groups/:groupId/permissions/:employeeId',
