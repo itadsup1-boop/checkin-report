@@ -112,7 +112,7 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   // so users don't appear in multiple rows, and all their schedules show up.
   const buildUserMatrix = () => {
     const userMap = {};
-    allUsers.forEach(user => {
+    allUsers.filter(u => u.is_active !== false).forEach(user => {
       const rowKey = user.id;
       if (!userMap[rowKey]) {
         userMap[rowKey] = {
@@ -322,7 +322,7 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
             Chưa có dữ liệu lịch trong tuần này.
           </div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
