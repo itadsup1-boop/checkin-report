@@ -13,6 +13,18 @@ export function calculateBaseQuantity(importQuantity, conversionRate = 1) {
 }
 
 /**
+ * Quy đổi NGƯỢC: giá nhân viên nhập theo đơn vị đóng gói (ví dụ 1 Lọ) về giá
+ * theo đơn vị cơ sở lưu/xuất kho (ví dụ 1 ml) — vì đơn xuất luôn tính tiền
+ * theo actual_quantity ở đơn vị cơ sở, không phải đơn vị đóng gói.
+ * Ví dụ: 1 Lọ = 2.5 ml, giá 1 Lọ = 50.000đ => giá cơ sở = 50.000 / 2.5 = 20.000đ/ml.
+ */
+export function calculateBasePrice(packUnitPrice, conversionRate = 1) {
+    const price = Number(packUnitPrice) || 0;
+    const rate = Number(conversionRate) > 0 ? Number(conversionRate) : 1;
+    return Math.round((price / rate) * 100) / 100;
+}
+
+/**
  * Định dạng chuỗi hiển thị số lượng kèm đơn vị.
  * Ví dụ: formatUnitLabel(1.2, 'ml') => '1.2 ml'
  */

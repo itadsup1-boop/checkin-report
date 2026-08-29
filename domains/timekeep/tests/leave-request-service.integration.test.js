@@ -4,7 +4,7 @@ import pool from '../../../packages/database/index.js';
 import {
     createAutoAcceptedLeaveRequest,
     rejectAutoAcceptedLeaveRequest
-} from '../leave-request-service.js';
+} from '../application/leave-request-service.js';
 
 if (!String(process.env.DATABASE_URL || '').endsWith('/telegram_kpi_test')) {
     throw new Error('Integration test chỉ được chạy trên database telegram_kpi_test.');

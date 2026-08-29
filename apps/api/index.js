@@ -6,14 +6,19 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
-import { applyApprovedLeavePenalties } from '../../domains/timekeep/attendance-penalties.js';
-import { rejectAutoAcceptedLeaveRequest } from '../../domains/timekeep/leave-request-service.js';
+import { applyApprovedLeavePenalties } from '../../domains/timekeep/application/attendance-penalties.js';
+import { rejectAutoAcceptedLeaveRequest } from '../../domains/timekeep/application/leave-request-service.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import {
     KPI_GROUP_ROLES,
-    pauseEmployeeMembershipsInAllGroups
+    pauseEmployeeMembershipsInAllGroups,
+    registerEmployeeInKpiGroup
 } from '../../packages/shared/kpiMembership.js';
 import { registerWarehouseAdminRoutes } from '../../domains/warehouse/index.js';
+import { registerTimekeepRegistrationReview } from '../../domains/timekeep/index.js';
+import { createAdminAuth } from './admin-auth.js';
+import { hashAdminPassword, validateAdminPassword } from '../../packages/shared/admin-auth-crypto.js';
+import { webAdminSecurityHeaders } from '../../packages/shared/web-admin-security-headers.js';
 
 const PAUSABLE_GROUP_ROLES = [...KPI_GROUP_ROLES, 'timekeep'];
 
@@ -35,94 +40,38 @@ app.use(loggerMiddleware);
 app.use(cors());
 app.use(express.json({ limit: '200mb' }));
 app.use(express.urlencoded({ limit: '200mb', extended: true }));
+app.use(webAdminSecurityHeaders);
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'API is running' });
 });
 
+const adminAuth = createAdminAuth({ pool });
+adminAuth.registerLoginRoute(app);
+app.use('/api/admin', adminAuth.authenticateAdmin);
+adminAuth.registerSessionRoutes(app);
+
+// Các API cũ không có tiền tố /admin nhưng chỉ được Web Admin sử dụng.
+app.use('/api/groups', adminAuth.authenticateAdmin);
+app.use('/api/employees', adminAuth.authenticateAdmin, adminAuth.requireSuperAdmin);
+app.use('/api/tk_group_settings', adminAuth.authenticateAdmin);
+app.use('/api/export', adminAuth.authenticateAdmin);
+
 // =====================================
 // NEW WEB ADMIN API & AUTH
 // =====================================
 
-// Helper lấy danh sách group_id được gán cho Admin từ DB
-async function getAssignedGroupIds(adminId, role) {
-    if (role === 'SUPER_ADMIN') {
-        const res = await pool.query(`SELECT telegram_group_id FROM telegram_groups WHERE is_deleted = false OR is_deleted IS NULL`);
-        return res.rows.map(r => r.telegram_group_id);
-    }
-    const res = await pool.query(`SELECT telegram_group_id FROM admin_group_mappings WHERE admin_id = $1`, [adminId]);
-    return res.rows.map(r => r.telegram_group_id);
-}
-
-// Middleware kiểm tra phân quyền dữ liệu từ Request Headers
-async function getAdminAuthContext(req) {
-    const adminId = req.headers['x-admin-id'];
-    const adminRole = req.headers['x-admin-role'];
-
-    if (!adminId || adminRole === 'SUPER_ADMIN') {
-        return { isSuperAdmin: true, allowedGroupIds: [] };
-    }
-
-    const allowedGroupIds = await getAssignedGroupIds(adminId, adminRole);
-    return { isSuperAdmin: false, allowedGroupIds };
-}
-
 registerWarehouseAdminRoutes({ app, pool });
-
-app.post('/api/admin/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        
-        // Check in admin_accounts table
-        const adminRes = await pool.query(
-            `SELECT * FROM admin_accounts WHERE username = $1 AND is_active = true`,
-            [username]
-        );
-
-        if (adminRes.rows.length === 0) {
-            // Fallback for default super admin if DB table is empty or first login
-            if (username === 'admin' && password === 'admin123') {
-                const assigned_groups = await getAssignedGroupIds(null, 'SUPER_ADMIN');
-                return res.json({
-                    success: true,
-                    token: 'admin-token-123',
-                    user: {
-                        id: 'super-admin-id',
-                        username: 'admin',
-                        full_name: 'Super Administrator',
-                        role: 'SUPER_ADMIN',
-                        assigned_groups
-                    }
-                });
-            }
-            return res.status(401).json({ success: false, message: 'Sai tên đăng nhập hoặc tài khoản bị khóa' });
-        }
-
-        const admin = adminRes.rows[0];
-        if (admin.password_hash !== password) {
-            return res.status(401).json({ success: false, message: 'Mật khẩu không chính xác' });
-        }
-
-        const assigned_groups = await getAssignedGroupIds(admin.id, admin.role);
-
-        res.json({
-            success: true,
-            token: `token-${admin.id}`,
-            user: {
-                id: admin.id,
-                username: admin.username,
-                full_name: admin.full_name || admin.username,
-                role: admin.role,
-                assigned_groups
-            }
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
+registerTimekeepRegistrationReview({
+    app,
+    pool,
+    getAdminAuthContext: adminAuth.getAdminAuthContext,
+    kpiGroupRoles: KPI_GROUP_ROLES,
+    registerEmployeeInKpiGroup
 });
 
 // APIs Quản lý Tài khoản Admin (Dành cho Super Admin)
-app.get('/api/admin/accounts', async (req, res) => {
+app.get('/api/admin/accounts', adminAuth.requireSuperAdmin, async (req, res) => {
     try {
         const adminsRes = await pool.query(`
             SELECT a.id, a.username, a.full_name, a.role, a.is_active, a.created_at,
@@ -138,11 +87,21 @@ app.get('/api/admin/accounts', async (req, res) => {
     }
 });
 
-app.post('/api/admin/accounts', async (req, res) => {
+app.post('/api/admin/accounts', adminAuth.requireSuperAdmin, async (req, res) => {
     try {
         const { username, password, full_name, role, assigned_groups } = req.body;
         if (!username || !password) {
             return res.status(400).json({ success: false, message: 'Tên đăng nhập và mật khẩu là bắt buộc' });
+        }
+        if (!/^[a-zA-Z0-9._-]{3,50}$/.test(username)) {
+            return res.status(400).json({ success: false, message: 'Tên đăng nhập chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới.' });
+        }
+        if (!['ADMIN', 'SUPER_ADMIN'].includes(role || 'ADMIN')) {
+            return res.status(400).json({ success: false, message: 'Vai trò Admin không hợp lệ.' });
+        }
+        const passwordCheck = validateAdminPassword(password, username);
+        if (!passwordCheck.ok) {
+            return res.status(400).json({ success: false, message: passwordCheck.message });
         }
 
         const existing = await pool.query('SELECT id FROM admin_accounts WHERE username = $1', [username]);
@@ -152,8 +111,9 @@ app.post('/api/admin/accounts', async (req, res) => {
 
         const newAdmin = await pool.query(
             `INSERT INTO admin_accounts (username, password_hash, full_name, role)
-             VALUES ($1, $2, $3, $4) RETURNING *`,
-            [username, password, full_name || username, role || 'ADMIN']
+             VALUES ($1, $2, $3, $4)
+             RETURNING id, username, full_name, role, is_active, created_at`,
+            [username, await hashAdminPassword(password), full_name || username, role || 'ADMIN']
         );
 
         const adminId = newAdmin.rows[0].id;
@@ -172,15 +132,39 @@ app.post('/api/admin/accounts', async (req, res) => {
     }
 });
 
-app.put('/api/admin/accounts/:id', async (req, res) => {
+app.put('/api/admin/accounts/:id', adminAuth.requireSuperAdmin, async (req, res) => {
     try {
         const { id } = req.params;
         const { password, full_name, role, is_active, assigned_groups } = req.body;
 
+        if (!['ADMIN', 'SUPER_ADMIN'].includes(role)) {
+            return res.status(400).json({ success: false, message: 'Vai trò Admin không hợp lệ.' });
+        }
+        const currentResult = await pool.query('SELECT id, username, role, is_active FROM admin_accounts WHERE id = $1', [id]);
+        const current = currentResult.rows[0];
+        if (!current) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản Admin.' });
+        if (current.role === 'SUPER_ADMIN' && (role !== 'SUPER_ADMIN' || is_active === false)) {
+            const count = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM admin_accounts
+                 WHERE role = 'SUPER_ADMIN' AND is_active = TRUE AND id <> $1`,
+                [id]
+            );
+            if (count.rows[0].total === 0) {
+                return res.status(400).json({ success: false, message: 'Không thể vô hiệu hóa Super Admin cuối cùng.' });
+            }
+        }
+
         if (password && password.trim() !== '') {
+            const passwordCheck = validateAdminPassword(password, current.username);
+            if (!passwordCheck.ok) {
+                return res.status(400).json({ success: false, message: passwordCheck.message });
+            }
             await pool.query(
-                `UPDATE admin_accounts SET password_hash = $1, full_name = $2, role = $3, is_active = $4 WHERE id = $5`,
-                [password, full_name, role, is_active ?? true, id]
+                `UPDATE admin_accounts
+                 SET password_hash = $1, password_changed_at = NOW(),
+                     full_name = $2, role = $3, is_active = $4
+                 WHERE id = $5`,
+                [await hashAdminPassword(password), full_name, role, is_active ?? true, id]
             );
         } else {
             await pool.query(
@@ -200,18 +184,31 @@ app.put('/api/admin/accounts/:id', async (req, res) => {
             }
         }
 
+        await adminAuth.repository.revokeAdminSessions(id);
+
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 });
 
-app.delete('/api/admin/accounts/:id', async (req, res) => {
+app.delete('/api/admin/accounts/:id', adminAuth.requireSuperAdmin, async (req, res) => {
     try {
         const { id } = req.params;
-        const adminCheck = await pool.query('SELECT username FROM admin_accounts WHERE id = $1', [id]);
-        if (adminCheck.rows.length > 0 && adminCheck.rows[0].username === 'admin') {
-            return res.status(400).json({ success: false, message: 'Không thể xóa tài khoản Super Admin mặc định' });
+        if (String(id) === String(req.admin.id)) {
+            return res.status(400).json({ success: false, message: 'Không thể tự xóa tài khoản đang đăng nhập.' });
+        }
+        const adminCheck = await pool.query('SELECT username, role, is_active FROM admin_accounts WHERE id = $1', [id]);
+        if (!adminCheck.rows[0]) return res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản Admin.' });
+        if (adminCheck.rows[0].role === 'SUPER_ADMIN' && adminCheck.rows[0].is_active) {
+            const count = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM admin_accounts
+                 WHERE role = 'SUPER_ADMIN' AND is_active = TRUE AND id <> $1`,
+                [id]
+            );
+            if (count.rows[0].total === 0) {
+                return res.status(400).json({ success: false, message: 'Không thể xóa Super Admin cuối cùng.' });
+            }
         }
         await pool.query('DELETE FROM admin_accounts WHERE id = $1', [id]);
         res.json({ success: true });
@@ -363,7 +360,7 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
                     targetGroupId,
                     newNeedReport,
                     membership?.current_kpi_target ?? currentEmp.current_kpi_target ?? 0,
-                    `admin:${req.headers['x-admin-id'] || 'super'}`
+                    `admin:${req.admin.id}`
                 ]
             );
         }
@@ -374,7 +371,7 @@ app.put('/api/admin/tk-users/:id', async (req, res) => {
             await pauseEmployeeMembershipsInAllGroups(
                 pool,
                 currentEmp,
-                `admin:${req.headers['x-admin-id'] || 'super'}`
+                `admin:${req.admin.id}`
             );
         } else if (isKpiGroup && !newNeedReport && currentEmp.telegram_id) {
             await pool.query(
@@ -437,7 +434,7 @@ app.put('/api/admin/tk-users/:id/group-membership', async (req, res) => {
             return res.status(404).json({ error: 'Nhân viên chưa đăng ký trong nhóm này' });
         }
 
-        const actor = `admin:${req.headers['x-admin-id'] || 'super'}`;
+        const actor = `admin:${req.admin.id}`;
         await client.query(
             `INSERT INTO employee_group_memberships
                 (employee_id, telegram_group_id, status, need_report,
@@ -960,7 +957,7 @@ app.put('/api/employees/:id/kpi', async (req, res) => {
                  SET current_kpi_target = $1, updated_at = NOW(), updated_by = $3
                  WHERE employee_id = $2 AND telegram_group_id = $4
                  RETURNING (SELECT telegram_id FROM employees WHERE id = $2) AS telegram_id`,
-                [target, id, `admin:${req.headers['x-admin-id'] || 'super'}`, telegram_group_id]
+                [target, id, `admin:${req.admin.id}`, telegram_group_id]
             );
         } else {
             updated = await pool.query('UPDATE employees SET current_kpi_target = $1 WHERE id = $2 RETURNING telegram_id', [target, id]);
@@ -990,7 +987,7 @@ app.put('/api/employees/:id/report-status', async (req, res) => {
                  SET need_report = $1, updated_at = NOW(), updated_by = $3
                  WHERE employee_id = $2 AND telegram_group_id = $4
                  RETURNING (SELECT telegram_id FROM employees WHERE id = $2) AS telegram_id`,
-                [!!need_report, id, `admin:${req.headers['x-admin-id'] || 'super'}`, telegram_group_id]
+                [!!need_report, id, `admin:${req.admin.id}`, telegram_group_id]
             );
         } else {
             updated = await pool.query('UPDATE employees SET need_report = $1 WHERE id = $2 RETURNING telegram_id', [!!need_report, id]);
@@ -1027,11 +1024,16 @@ function extractSheetId(input) {
     return input.trim();
 }
 
+function canManageAdminGroup(req, telegramGroupId) {
+    return req.admin.isSuperAdmin || req.admin.allowedGroupIds.includes(String(telegramGroupId));
+}
+
 app.get('/api/groups', async (req, res) => {
     try {
-        const result = await pool.query(`
+        const params = [];
+        let query = `
             SELECT tkg.telegram_group_id, tkg.group_name, tkg.bot_role, tkg.schedule_registration_open,
-                   tkg.kpi_sheet_id, tkg.customer_sheet_id,
+                   tkg.kpi_sheet_id, tkg.customer_sheet_id, tkg.pricing_sheet_id,
                    tkg.customer_drive_folder_id, tkg.warehouse_drive_folder_id,
                    COALESCE(tkg.warehouse_service_order_enabled, FALSE) AS warehouse_service_order_enabled,
                    gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
@@ -1039,9 +1041,14 @@ app.get('/api/groups', async (req, res) => {
                    gs.shift_1_time, gs.shift_2_time
             FROM telegram_groups tkg
             LEFT JOIN group_settings gs ON tkg.telegram_group_id = gs.telegram_group_id
-            WHERE tkg.is_deleted = false OR tkg.is_deleted IS NULL
-            ORDER BY tkg.created_at DESC
-        `);
+            WHERE (tkg.is_deleted = false OR tkg.is_deleted IS NULL)
+        `;
+        if (!req.admin.isSuperAdmin) {
+            params.push(req.admin.allowedGroupIds);
+            query += ' AND tkg.telegram_group_id = ANY($1::varchar[])';
+        }
+        query += ' ORDER BY tkg.created_at DESC';
+        const result = await pool.query(query, params);
         res.json(result.rows);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -1050,6 +1057,9 @@ app.get('/api/groups', async (req, res) => {
 
 app.delete('/api/groups/:telegram_group_id', async (req, res) => {
     try {
+        if (!canManageAdminGroup(req, req.params.telegram_group_id)) {
+            return res.status(403).json({ error: 'Bạn không có quyền xóa nhóm này.' });
+        }
         await pool.query('UPDATE telegram_groups SET is_deleted = true WHERE telegram_group_id = $1', [req.params.telegram_group_id]);
         res.json({ success: true });
     } catch (error) {
@@ -1060,6 +1070,9 @@ app.delete('/api/groups/:telegram_group_id', async (req, res) => {
 app.put('/api/groups/:telegram_group_id/settings', async (req, res) => {
     try {
         const { telegram_group_id } = req.params;
+        if (!canManageAdminGroup(req, telegram_group_id)) {
+            return res.status(403).json({ error: 'Bạn không có quyền sửa cấu hình nhóm này.' });
+        }
         const {
             penalty_under_15,
             penalty_under_90,

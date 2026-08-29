@@ -31,6 +31,7 @@ export function createSaveGroupSettings({ repository }) {
             scheduleRegistrationOpen: body.schedule_registration_open,
             kpiSheetId: extractSheetId(body.kpi_sheet_id),
             customerSheetId: extractSheetId(body.customer_sheet_id),
+            pricingSheetId: extractSheetId(body.pricing_sheet_id),
             customerDriveFolderId: body.customer_drive_folder_id,
 
             penaltyUnder15: body.penalty_under_15,

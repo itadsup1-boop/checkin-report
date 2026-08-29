@@ -4,7 +4,7 @@ import {
     buildAbsenceNotificationText,
     groupAbsenceNotifications,
     TIMEKEEP_PENALTIES
-} from '../attendance-penalties.js';
+} from '../application/attendance-penalties.js';
 
 test('groups absence notifications by Telegram group', () => {
     const groups = groupAbsenceNotifications([

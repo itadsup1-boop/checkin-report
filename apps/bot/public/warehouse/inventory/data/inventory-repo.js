@@ -86,6 +86,11 @@ export function summarize(items, branchFilter) {
         else if (status.key === 'low') lowStock += 1;
     }
 
+    // Cộng dồn nhiều số thập phân bằng phép + của JS sinh sai số nhị phân
+    // (vd 3447.6000000000004) — làm tròn 1 chữ số thập phân, khớp quy ước
+    // số lượng kho (packages/warehouse domain: MAX_QUANTITY_DECIMALS = 1).
+    totalQuantity = Math.round(totalQuantity * 10) / 10;
+
     return {
         totalQuantity,
         productCount: items.length,

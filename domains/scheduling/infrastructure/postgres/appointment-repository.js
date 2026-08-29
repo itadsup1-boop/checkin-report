@@ -83,6 +83,24 @@ export function createAppointmentRepository({ pool }) {
         return result.rows[0] || null;
     }
 
+    /**
+     * Lịch ACTIVE cùng SĐT trong cùng ngày — dùng riêng cho lịch "đi luôn", nhánh
+     * vốn bỏ qua `findOverlap` (khách đã ở đó rồi) nên cần chặn kiểu trùng khác:
+     * cùng một khách đã có lịch chưa xử lý, tránh tạo thêm bản ghi thứ hai cho
+     * cùng một lượt khách đến.
+     */
+    async function findActiveByPhoneToday(phone, groupId, appointmentTime) {
+        const result = await pool.query(
+            `SELECT id, employee_name, customer_name, appointment_time
+             FROM customer_appointments
+             WHERE status = 'ACTIVE' AND group_id = $2 AND phone = $1
+               AND DATE(appointment_time) = DATE($3::timestamp)
+             LIMIT 1`,
+            [phone, groupId, appointmentTime]
+        );
+        return result.rows[0] || null;
+    }
+
     async function findEmployee(telegramId, groupId) {
         let result = await pool.query(
             'SELECT full_name, employee_code FROM employees WHERE telegram_id = $1 AND telegram_group_id = $2 LIMIT 1',
@@ -102,96 +120,6 @@ export function createAppointmentRepository({ pool }) {
         const result = await pool.query(
             'SELECT bot_role FROM telegram_groups WHERE telegram_group_id = $1', [groupId]);
         return result.rows.length > 0 ? result.rows[0].bot_role : null;
-    }
-
-    /* ---------- Nhóm nhận thông báo ---------- */
-
-    /**
-     * Mô hình opt-out: mọi nhóm report/report_tour đều nhận, TRỪ nhóm đã tắt.
-     * Nhóm chưa có dòng nào trong `schedule_notification_groups` vẫn nhận —
-     * đó là lý do phải LEFT JOIN + COALESCE.
-     */
-    async function findNotifyGroups() {
-        const result = await pool.query(`
-            SELECT g.telegram_group_id AS group_id, g.bot_role
-            FROM telegram_groups g
-            LEFT JOIN schedule_notification_groups s ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role IN ('report', 'report_tour')
-              AND g.is_active = true
-              AND COALESCE(g.is_deleted, false) = false
-              AND COALESCE(s.is_disabled, false) = false`);
-        return result.rows;
-    }
-
-    /** Bản không opt-out, dùng cho báo động lịch đi luôn. */
-    async function findUrgentTargetGroups() {
-        const result = await pool.query(`
-            SELECT s.group_id, g.bot_role
-            FROM schedule_notification_groups s
-            JOIN telegram_groups g ON s.group_id = g.telegram_group_id
-            WHERE g.bot_role IN ('report', 'report_tour')
-              AND g.is_active = true
-              AND COALESCE(g.is_deleted, false) = false`);
-        return result.rows;
-    }
-
-    async function findTourGroups() {
-        const result = await pool.query(`
-            SELECT g.telegram_group_id AS group_id
-            FROM telegram_groups g
-            WHERE g.bot_role = 'report_tour'
-              AND g.is_active = true
-              AND COALESCE(g.is_deleted, false) = false`);
-        return result.rows;
-    }
-
-    /* ---------- Đọc theo lịch chạy nền ---------- */
-
-    async function findTomorrowOf(groupId) {
-        const result = await pool.query(
-            `SELECT *
-             FROM customer_appointments
-             WHERE DATE(appointment_time) = CURRENT_DATE + INTERVAL '1 day'
-               AND status = 'ACTIVE' AND group_id = $1
-             ORDER BY appointment_time ASC`,
-            [groupId]
-        );
-        return result.rows;
-    }
-
-    async function findTodayOf(groupId) {
-        const result = await pool.query(
-            `SELECT *
-             FROM customer_appointments
-             WHERE DATE(appointment_time) = CURRENT_DATE AND group_id = $1
-             ORDER BY appointment_time ASC`,
-            [groupId]
-        );
-        return result.rows;
-    }
-
-    /** Lịch của hôm qua: tính theo NGÀY TẠO hoặc NGÀY HẸN, vì hai mốc có thể lệch nhau. */
-    async function findYesterdayOf(groupId) {
-        const result = await pool.query(
-            `SELECT * FROM customer_appointments
-             WHERE (DATE(created_at AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day'
-                 OR DATE(appointment_time AT TIME ZONE 'Asia/Ho_Chi_Minh') = CURRENT_DATE - INTERVAL '1 day')
-               AND group_id = $1
-             ORDER BY appointment_time ASC`,
-            [groupId]
-        );
-        return result.rows;
-    }
-
-    /** Lịch tới giờ mà chưa nhắc, cửa sổ ±1 phút quanh thời điểm quét. */
-    async function findDueForReminder() {
-        const result = await pool.query(
-            `SELECT *
-             FROM customer_appointments
-             WHERE (is_reminded = FALSE OR is_reminded IS NULL) AND status = 'ACTIVE'
-               AND appointment_time BETWEEN (NOW() - INTERVAL '1 minute') AND (NOW() + INTERVAL '1 minute')`
-        );
-        return result.rows;
     }
 
     /* ---------- Ghi ---------- */
@@ -274,23 +202,10 @@ export function createAppointmentRepository({ pool }) {
         return result.rows[0] || null;
     }
 
-    async function markReminded(id) {
-        await pool.query('UPDATE customer_appointments SET is_reminded = TRUE WHERE id = $1', [id]);
-    }
-
-    /** Chuẩn hoá "500,000đ" thành "500000" sau khi tổng hợp công tour. */
-    async function normalizeRevenue(id, revenue) {
-        await pool.query('UPDATE customer_appointments SET revenue = $1 WHERE id = $2',
-            [String(revenue), id]).catch(() => { });
-    }
-
     return {
         SCHEDULE_NOTIFY_ROLES,
-        findByDate, searchByPhone, findById, findGroupIdOf, findOwnerOf, findOverlap,
+        findByDate, searchByPhone, findById, findGroupIdOf, findOwnerOf, findOverlap, findActiveByPhoneToday,
         findEmployee, findGroupRole,
-        findNotifyGroups, findUrgentTargetGroups, findTourGroups,
-        findTomorrowOf, findTodayOf, findYesterdayOf, findDueForReminder,
-        insert, updateDetails, reschedule, cancel, markArrived, cancelWithReason,
-        markReminded, normalizeRevenue
+        insert, updateDetails, reschedule, cancel, markArrived, cancelWithReason
     };
 }

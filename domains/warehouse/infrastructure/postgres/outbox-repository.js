@@ -25,5 +25,19 @@ export function createOutboxRepository(pool) {
         );
     }
 
-    return { enqueue };
+    /**
+     * Xếp việc thông báo chuyển kho — aggregate riêng (WAREHOUSE_STOCK_TRANSFER)
+     * vì `enqueue()` ở trên khoá cứng 'WAREHOUSE_ORDER', không dùng chung được.
+     */
+    async function enqueueStockTransfer(db, transferId, eventType, payload = {}) {
+        await db.query(
+            `INSERT INTO tk_warehouse_outbox
+                (aggregate_type, aggregate_id, event_type, payload)
+             VALUES ('WAREHOUSE_STOCK_TRANSFER', $1, $2, $3::jsonb)
+             ON CONFLICT (aggregate_type, aggregate_id, event_type) DO NOTHING`,
+            [transferId, eventType, JSON.stringify(payload)]
+        );
+    }
+
+    return { enqueue, enqueueStockTransfer };
 }

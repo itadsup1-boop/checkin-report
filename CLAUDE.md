@@ -86,15 +86,15 @@ Rules enforced by the ADR (violating these breaks the intended module boundary):
 - All warehouse Mini App APIs must keep the Mini App auth middleware.
 - New-design approval flows must be permission-based (per-group `warehouse permission`, granted via Web Admin), never based on a user's self-selected role/title.
 
-Other bot roles (KPI reports, check-in, customer scheduling, penalties) still live directly in `apps/bot/timekeep_bot.js` and its sibling files (`kpi_features.js`, `reportWizard.js`, `setupWizard.js`, `role_guard.js`, `sheetManager.js`, `syncTimekeepSheets.js`, `googleDrive.js`, `image_hasher.js`) — these have not yet been extracted into modules.
+Four domains are extracted so far: `domains/warehouse`, `domains/customer`, `domains/scheduling`, `domains/kpi-report` (daily KPI reports — see below). `domains/timekeep` (check-in/leave/penalties) is partially extracted; see its README's "Còn nợ" section for what's intentionally still in `timekeep_bot.js`. Everything not yet covered by a domain still lives directly in `apps/bot/timekeep_bot.js` and its sibling files (`reportWizard.js`, `setupWizard.js`, `role_guard.js`, `sheetManager.js`, `syncTimekeepSheets.js`, `googleDrive.js`, `image_hasher.js`).
 
-### Data flow for a daily KPI report
+### Data flow for a daily KPI report (see `domains/kpi-report/README.md`)
 
-1. Employee posts a report (trigger phrase configurable per group, default `#baocao`, or heuristically detected natural language) in a Telegram group → parsed by `parseReport()`/`parseCurrency()` in `timekeep_bot.js`.
+1. Employee posts a report (trigger phrase configurable per group, default `#baocao`, or heuristically detected natural language) in a Telegram group → parsed by `parseReport()`/`parseCurrency()` in `domains/kpi-report/domain/report-parsing.js`.
 2. If photo proof is required, the report is staged in `pending_reports` (Postgres) with a deadline; incoming photos/videos increment `received_photos` via an atomic `UPDATE ... RETURNING` (avoids race conditions from rapid multi-photo sends). Direct photo submissions are also perceptual-hashed (`image_hasher.js`) and cross-checked against `saveHashesToDB`/`findDuplicateImages` to catch employees reusing old proof photos.
 3. Once photo count meets the requirement, the report is finalized into `daily_reports`, and penalty logic runs against `group_settings` (`penalty_missing_kpi`, `penalty_missing_report`) — penalties are capped at one charge per employee per day regardless of how many rules were broken that day.
 4. A `node-cron` job (minute-granularity) separately checks all `report`-role groups against their configured `remind_time_1`/deadline and pings/penalizes anyone with no `daily_reports` row for the day.
-5. Every DB write to reports/penalties is mirrored into Google Sheets (`google-spreadsheet`) through a serialized `Promise`-chain queue (`sheetQueue`) per bot process, so concurrent writes don't race on `doc.loadInfo()`/row lookups.
+5. Every DB write to reports/penalties is mirrored into Google Sheets (`google-spreadsheet`) through a serialized `Promise`-chain queue (`domains/kpi-report/infrastructure/google-sheet/kpi-report-sheet-sync.js`), so concurrent writes don't race on `doc.loadInfo()`/row lookups.
 
 Business rules for check-in/lateness/leave penalties are documented in Vietnamese in `rule.md` — consult it before changing penalty amounts or thresholds in code.
 

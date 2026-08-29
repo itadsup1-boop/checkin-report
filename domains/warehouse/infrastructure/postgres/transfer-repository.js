@@ -35,6 +35,22 @@ export function createTransferRepository(pool) {
         );
     }
 
+    /**
+     * Phiếu chuyển kho ĐỘC LẬP — không gắn với đơn xuất nào (order_id NULL).
+     * Khác `create()` ở trên vốn luôn đi kèm một đơn đang chờ lấy bù.
+     */
+    async function createStockTransfer(db, { transferCode, telegramGroupId, fromBranch, toBranch, actor }) {
+        const result = await db.query(
+            `INSERT INTO tk_warehouse_transfers
+                (transfer_code, order_id, telegram_group_id, from_branch, to_branch,
+                 transfer_type, status, confirmed_by, confirmed_by_telegram_id, confirmed_at)
+             VALUES ($1, NULL, $2, $3, $4, 'RESTOCK', 'NOTIFIED', $5, $6, NOW())
+             RETURNING *`,
+            [transferCode, telegramGroupId, fromBranch, toBranch, actor.employeeId, actor.telegramId]
+        );
+        return result.rows[0];
+    }
+
     /** Đánh dấu mọi phiếu điều chuyển của đơn là đã hoàn tác. */
     async function markReversedByOrder(db, orderId) {
         await db.query(
@@ -45,5 +61,5 @@ export function createTransferRepository(pool) {
         );
     }
 
-    return { create, addItem, markReversedByOrder };
+    return { create, createStockTransfer, addItem, markReversedByOrder };
 }

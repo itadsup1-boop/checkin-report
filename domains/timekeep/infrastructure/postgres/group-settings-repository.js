@@ -14,14 +14,15 @@ export function createGroupSettingsRepository({ pool }) {
         await pool.query(
             `INSERT INTO telegram_groups
                 (telegram_group_id, group_name, bot_role, schedule_registration_open,
-                 kpi_sheet_id, customer_sheet_id, customer_drive_folder_id)
-             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7)
+                 kpi_sheet_id, customer_sheet_id, customer_drive_folder_id, pricing_sheet_id)
+             VALUES ($1, $2, $3, COALESCE($4, true), $5, $6, $7, $8)
              ON CONFLICT (telegram_group_id) DO UPDATE SET
                 bot_role = EXCLUDED.bot_role,
                 schedule_registration_open = COALESCE($4, telegram_groups.schedule_registration_open),
                 kpi_sheet_id = COALESCE(EXCLUDED.kpi_sheet_id, telegram_groups.kpi_sheet_id),
                 customer_sheet_id = COALESCE(EXCLUDED.customer_sheet_id, telegram_groups.customer_sheet_id),
-                customer_drive_folder_id = COALESCE(EXCLUDED.customer_drive_folder_id, telegram_groups.customer_drive_folder_id)`,
+                customer_drive_folder_id = COALESCE(EXCLUDED.customer_drive_folder_id, telegram_groups.customer_drive_folder_id),
+                pricing_sheet_id = COALESCE(EXCLUDED.pricing_sheet_id, telegram_groups.pricing_sheet_id)`,
             [
                 telegramGroupId,
                 `Group ${telegramGroupId}`,
@@ -29,7 +30,8 @@ export function createGroupSettingsRepository({ pool }) {
                 values.scheduleRegistrationOpen,
                 values.kpiSheetId,
                 values.customerSheetId,
-                values.customerDriveFolderId || null
+                values.customerDriveFolderId || null,
+                values.pricingSheetId || null
             ]
         );
     }

@@ -70,6 +70,18 @@ export function createBookAppointmentService({ repository, notifier, getGroupRol
                     error: `Khung giờ này đã có nhân viên ${overlap.employee_name} đặt lịch cho khách ${overlap.customer_name} lúc ${timeOf(overlap.appointment_time)}. Vui lòng chọn giờ cách ít nhất 1 tiếng!`
                 };
             }
+        } else if (form.phone) {
+            // Bỏ qua kiểm trùng khung giờ không có nghĩa là bỏ qua trùng khách: nhân
+            // viên đặt lịch bình thường rồi lỡ đặt thêm "đi luôn" cho cùng khách sẽ
+            // tạo 2 bản ghi cho cùng 1 lượt khách — chặn ngay từ đây thay vì để lại
+            // một lịch ACTIVE mồ côi cứ bị nhắc "chưa hoàn tất" mãi.
+            const duplicate = await repository.findActiveByPhoneToday(form.phone, groupId, form.appointment_time);
+            if (duplicate) {
+                return {
+                    ok: false,
+                    error: `Khách này đã có lịch #${duplicate.id} lúc ${timeOf(duplicate.appointment_time)} do ${duplicate.employee_name} đặt. Vui lòng vào lịch đó để xác nhận khách đến, đừng tạo lịch mới!`
+                };
+            }
         }
 
         const employee = await repository.findEmployee(tgUser.id.toString(), groupId);

@@ -10,6 +10,24 @@ export const isValidShift = shiftType => SHIFT_TYPES.includes(shiftType);
 /** Chỉ Quản lý (hoặc Admin hệ thống) được mở/đóng đăng ký lịch tuần. */
 export const SCHEDULE_TOGGLE_ROLES = ['Quản lý', 'Quản lý kho'];
 
+/**
+ * Chức vụ được phép TỰ chọn khi đăng ký tài khoản qua Mini App — khớp đúng
+ * danh sách hiển thị trong register.html. "Admin" và "Kế toán" CỐ Ý không có
+ * mặt ở đây: hai nhãn này mở khóa quyền thật (vd MANAGE_PRICING qua
+ * hasPricingAccess) nên chỉ được gán tay trong Web Admin, không bao giờ qua
+ * đường tự đăng ký — nếu không sẽ bị vượt phân quyền chỉ bằng một request
+ * giả mạo trực tiếp tới API (dropdown trên form chỉ chặn được ở giao diện,
+ * không chặn được ai đó tự gửi request tay).
+ */
+export const SELF_REGISTER_ROLES = [
+    'Telesale',
+    'Sales',
+    'Kỹ thuật viên',
+    'Chăm sóc khách hàng',
+    'Marketing',
+    'Bộ phận khác'
+];
+
 export class TimekeepError extends Error {
     constructor(message, status = 400) {
         super(message);
@@ -30,6 +48,9 @@ export function buildEmployeeCode(telegramId, now = Date.now()) {
 export function checkRegistrationInput({ telegramId, fullName, role, telegramGroupId }) {
     if (!telegramId || !fullName || !role) {
         return { ok: false, message: 'Thiếu thông tin đăng ký bắt buộc!' };
+    }
+    if (!SELF_REGISTER_ROLES.includes(role)) {
+        return { ok: false, message: 'Chức vụ không hợp lệ. Vui lòng chọn lại từ danh sách.' };
     }
     if (!telegramGroupId) {
         return {

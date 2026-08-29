@@ -12,6 +12,7 @@ import { loadingScreen, errorScreen, topBar } from './ui/components.js';
 import { createEntryScreen } from './flows/entry-screen.js';
 import { createQuickExportFlow } from './flows/quick-export.js';
 import { createCustomerOrderFlow } from './flows/order/index.js';
+import { createStockTransferFlow } from './flows/stock-transfer.js';
 
 const mount = el('app');
 let catalog = null;
@@ -32,7 +33,11 @@ function showEntry() {
         ),
         createEntryScreen({
             catalog,
-            onPick: flow => (flow === 'customer' ? showCustomerFlow() : showQuickFlow())
+            onPick: flow => {
+                if (flow === 'customer') return showCustomerFlow();
+                if (flow === 'transfer') return showStockTransferFlow();
+                return showQuickFlow();
+            }
         })
     );
 }
@@ -43,6 +48,10 @@ function showQuickFlow() {
 
 function showCustomerFlow() {
     show(createCustomerOrderFlow({ catalog, onExit: showEntry }));
+}
+
+function showStockTransferFlow() {
+    show(createStockTransferFlow({ catalog, onExit: showEntry }));
 }
 
 async function start() {

@@ -12,11 +12,11 @@
  *   luồng xuất lẻ dùng được kể cả khi cờ đang tắt.
  */
 
-import { apiGet } from '../../../shared-ui/core/api.js';
+import { apiGet, apiPost } from '../../../shared-ui/core/api.js';
 
 // Danh sách cơ sở dùng chung cho mọi Mini App kho, khai báo một chỗ duy nhất.
 // Re-export để các flow trong app này không phải biết đường dẫn shared.
-export { BRANCHES, branchName } from '../../../shared-ui/core/branches.js';
+export { BRANCHES, branchName, otherBranch } from '../../../shared-ui/core/branches.js';
 
 function toStockMap(rows) {
     const map = new Map();
@@ -104,4 +104,14 @@ export function otherStock(stock, productId, branch) {
 
 export function lookupCustomerByPhone(phone) {
     return apiGet('/api/warehouse/customers/suggestion', { phone });
+}
+
+/** Gửi phiếu chuyển kho: items = [{ product_id, quantity }]. */
+export function submitStockTransfer({ fromBranch, toBranch, items, idempotencyKey }) {
+    return apiPost('/api/warehouse/stock-transfers', {
+        from_branch: fromBranch,
+        to_branch: toBranch,
+        items,
+        idempotency_key: idempotencyKey
+    });
 }

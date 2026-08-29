@@ -1,362 +1,363 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="vi">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Tải Up Video Check-in</title>
-    <!-- Google Font: Outfit -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        :root {
-            --bg-gradient: #0f172a;
-            --card-bg: #1e293b;
-            --card-border: rgba(255, 255, 255, 0.08);
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --primary-glow: rgba(99, 102, 241, 0.35);
-            --success: #10b981;
-            --warning: #f59e0b;
-            --danger: #ef4444;
-        }
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <title>Check-in Video Chấm Công</title>
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+    <!--
+      Token màu dùng chung với ba Mini App quản lý kho (nhập/xuất/tồn) — xem
+      apps/bot/public/shared-ui/theme-tokens.css. Trang này KHÔNG khai lại màu
+      sắc riêng, chỉ khai layout, để mọi Mini App trong hệ thống luôn cùng một
+      bộ nhận diện.
+    -->
+    <link rel="stylesheet" href="/mini-app/shared-ui/theme-tokens.css">
+
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+    <style>
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body { height: 100%; }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg-gradient);
-            color: var(--text-primary);
+            margin: 0;
+            background: var(--bg);
+            color: var(--ink);
+            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+            font-size: 15px;
+            line-height: 1.45;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        button, input { font: inherit; color: inherit; }
+        button { cursor: pointer; border: 0; background: none; }
+
+        .app {
+            max-width: 420px;
+            margin: 0 auto;
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
-            justify-content: center;
-            align-items: center;
-            padding: 16px;
-            overflow-x: hidden;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 480px;
-            z-index: 10;
-            position: relative;
-        }
-
-        .card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
-            padding: 24px 20px;
-            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 20px;
-        }
-
-        .header h1 {
-            font-size: 22px;
-            font-weight: 700;
-            margin-bottom: 4px;
-            background: linear-gradient(to right, #818cf8, #c084fc);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .header p {
-            font-size: 13px;
-            color: var(--text-secondary);
-        }
-
-        .user-info-bar {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 14px;
-            padding: 10px 14px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            font-size: 13px;
-        }
-
-        .user-name {
-            font-weight: 600;
-            color: #e2e8f0;
-        }
-
-        .user-role {
-            font-size: 12px;
-            color: var(--primary);
-            font-weight: 500;
-        }
-
-        .upload-zone {
-            border: 2px dashed rgba(99, 102, 241, 0.4);
-            background: rgba(99, 102, 241, 0.05);
-            border-radius: 20px;
-            padding: 28px 16px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.25s ease;
-            position: relative;
-            margin-bottom: 20px;
-        }
-
-        .upload-zone:hover, .upload-zone.dragover {
-            border-color: var(--primary);
-            background: rgba(99, 102, 241, 0.12);
-            transform: translateY(-2px);
-        }
-
-        .upload-icon {
-            font-size: 42px;
-            margin-bottom: 12px;
-            display: block;
-        }
-
-        .upload-title {
-            font-size: 15px;
-            font-weight: 600;
-            color: #f1f5f9;
-            margin-bottom: 6px;
-        }
-
-        .upload-desc {
-            font-size: 12px;
-            color: var(--text-secondary);
-            line-height: 1.4;
-        }
-
-        .file-info {
-            display: none;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 16px;
-            padding: 12px 14px;
-            margin-top: 12px;
-            text-align: left;
-        }
-
-        .file-info-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 13px;
-            font-weight: 600;
-            color: #e2e8f0;
-            margin-bottom: 4px;
-        }
-
-        .file-size {
-            font-size: 12px;
-            color: var(--primary);
-            font-weight: 500;
-        }
-
-        video {
-            width: 100%;
-            border-radius: 14px;
-            margin-top: 10px;
-            background: #000;
-            max-height: 240px;
-            object-fit: contain;
-            display: none;
-        }
-
-        .btn-primary {
-            width: 100%;
-            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
-            color: white;
-            border: none;
-            border-radius: 16px;
-            padding: 14px;
-            font-size: 15px;
-            font-weight: 700;
-            font-family: 'Outfit', sans-serif;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            box-shadow: 0 8px 25px -5px var(--primary-glow);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn-primary:disabled {
-            background: #334155;
-            color: #64748b;
-            box-shadow: none;
-            cursor: not-allowed;
-        }
-
-        .btn-primary:not(:disabled):active {
-            transform: scale(0.98);
-        }
-
-        .alert-box {
-            display: none;
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #fca5a5;
-            padding: 12px 14px;
-            border-radius: 14px;
-            font-size: 13px;
-            margin-top: 16px;
-            text-align: center;
-        }
-
-        /* Loading Screen Overlay */
-        .overlay {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(15, 23, 42, 0.92);
-            backdrop-filter: blur(8px);
-            display: none;
             flex-direction: column;
-            justify-content: center;
+        }
+
+        /* ---------- Thanh trên: hồ sơ + giờ hệ thống ---------- */
+
+        .topbar {
+            position: sticky; top: 0; z-index: 20;
+            background: var(--card-blur);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--line-soft);
+            padding: 12px 16px;
+            display: flex;
             align-items: center;
-            z-index: 100;
-            padding: 20px;
+            gap: 10px;
+        }
+
+        .avatar {
+            width: 38px; height: 38px; flex-shrink: 0;
+            border-radius: var(--r-full);
+            background: linear-gradient(135deg, var(--brand), var(--brand-dark));
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 800; font-size: 15px;
+        }
+
+        .topbar__name { font-size: 13.5px; font-weight: 800; }
+        .topbar__role { font-size: 11px; color: var(--faint); font-weight: 600; margin-top: 1px; }
+        .topbar__clock { margin-left: auto; text-align: right; }
+        .topbar__time { font-size: 15px; font-weight: 800; color: var(--brand-dark); font-variant-numeric: tabular-nums; }
+        .topbar__date { font-size: 9.5px; color: var(--faint); font-weight: 600; }
+
+        /* ---------- Thân ---------- */
+
+        .body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px 100px; }
+
+        .section-label { font-size: 11px; color: var(--faint); margin: 0 0 8px 2px; font-weight: 700; }
+
+        /* ---------- Vùng chọn video ---------- */
+
+        .dropzone {
+            border: 2px dashed var(--line);
+            border-radius: var(--r-lg);
+            background: var(--card);
+            padding: 30px 16px;
             text-align: center;
+            transition: border-color .15s ease, background .15s ease;
         }
 
-        .spinner {
-            width: 48px;
-            height: 48px;
-            border: 4px solid rgba(99, 102, 241, 0.2);
-            border-top-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s infinite linear;
-            margin-bottom: 20px;
+        .dropzone--drag { border-color: var(--brand); background: var(--brand-soft); }
+
+        .dropzone__icon { font-size: 34px; margin-bottom: 10px; }
+        .dropzone__title { font-size: 13.5px; font-weight: 800; margin-bottom: 4px; }
+        .dropzone__desc { font-size: 11px; color: var(--muted); line-height: 1.5; max-width: 260px; margin: 0 auto; }
+
+        /* ---------- Xem trước video đã chọn ---------- */
+
+        .preview { display: none; }
+        .preview--show { display: block; }
+
+        .preview__player {
+            border-radius: var(--r-lg);
+            overflow: hidden;
+            background: var(--camera-bg);
+            box-shadow: var(--shadow-card);
         }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
+        .preview__player video { width: 100%; display: block; max-height: 260px; background: var(--camera-bg); }
+
+        .file-meta {
+            margin-top: 10px;
+            background: var(--card);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--r-md);
+            padding: 10px 12px;
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: var(--shadow-card);
         }
 
-        .overlay-title {
-            font-size: 18px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            color: #f8fafc;
+        .file-meta__icon {
+            width: 34px; height: 34px; flex-shrink: 0;
+            border-radius: var(--r-sm);
+            background: var(--brand-soft); color: var(--brand);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 16px;
         }
 
-        .overlay-desc {
+        .file-meta__name { font-size: 12.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .file-meta__size { font-size: 11px; color: var(--faint); font-weight: 600; }
+
+        /* ---------- Nút bấm dùng chung ---------- */
+
+        .btn {
+            width: 100%;
+            height: 44px;
+            border-radius: var(--r-md);
             font-size: 13px;
-            color: var(--text-secondary);
-            max-width: 280px;
+            font-weight: 800;
+            display: flex; align-items: center; justify-content: center; gap: 6px;
+        }
+
+        .btn--ghost {
+            margin-top: 10px;
+            background: var(--surface);
+            border: 1px solid var(--line-soft);
+            color: var(--ink);
+        }
+
+        .btn--brand {
+            background: var(--brand);
+            color: #fff;
+            box-shadow: var(--shadow-brand);
+        }
+
+        .btn--brand:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; }
+
+        .shake { animation: shakeAnim .4s ease; }
+        @keyframes shakeAnim {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-5px); }
+            40% { transform: translateX(5px); }
+            60% { transform: translateX(-3px); }
+            80% { transform: translateX(3px); }
+        }
+
+        /* ---------- Cảnh báo ---------- */
+
+        .banner {
+            display: none;
+            margin-top: 12px;
+            align-items: flex-start; gap: 8px;
+            border-radius: var(--r-lg);
+            padding: 11px 12px;
+            font-size: 12px;
             line-height: 1.5;
         }
 
-        /* Success Screen */
-        .success-icon {
-            width: 72px;
-            height: 72px;
-            background: rgba(16, 185, 129, 0.15);
-            border: 2px solid var(--success);
-            border-radius: 50%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 36px;
-            margin-bottom: 16px;
-            animation: popIn 0.4s ease-out;
+        .banner--show { display: flex; }
+
+        .banner--bad { background: var(--bad-soft); border: 1px solid var(--bad-line); color: var(--bad-dark); }
+        .banner--warn { background: var(--warn-soft); border: 1px solid var(--warn-line); color: var(--warn-dark); }
+
+        /* ---------- Thanh dưới cố định ---------- */
+
+        .footbar {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            display: flex; justify-content: center;
+            padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+            border-top: 1px solid var(--line-soft);
+            background: var(--card-blur);
+            backdrop-filter: blur(10px);
+        }
+
+        .footbar > .btn { max-width: 420px; }
+
+        /* ---------- Lớp phủ xử lý ---------- */
+
+        .overlay {
+            position: fixed; inset: 0; z-index: 100;
+            background: var(--scrim);
+            display: none;
+            align-items: center; justify-content: center;
+            padding: 20px;
+        }
+
+        .overlay--show { display: flex; }
+
+        .overlay__card {
+            width: 100%; max-width: 320px;
+            background: var(--card);
+            border-radius: var(--r-lg);
+            padding: 26px 22px;
+            text-align: center;
+            box-shadow: var(--shadow-float);
+        }
+
+        .spinner {
+            width: 46px; height: 46px;
+            border: 4px solid var(--brand-soft);
+            border-top-color: var(--brand);
+            border-radius: var(--r-full);
+            margin: 0 auto 16px;
+            animation: spin .8s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .overlay__title { font-size: 13.5px; font-weight: 800; margin-bottom: 6px; }
+        .overlay__sub { font-size: 11.5px; color: var(--muted); margin-bottom: 14px; }
+
+        .progress-track { height: 7px; background: var(--line-soft); border-radius: var(--r-full); overflow: hidden; }
+        .progress-fill { height: 100%; width: 0%; background: var(--brand); border-radius: var(--r-full); transition: width .15s ease; }
+        .progress-pct { margin-top: 8px; font-size: 11px; color: var(--muted); font-weight: 700; }
+
+        /* ---------- Màn hình thành công ---------- */
+
+        .success { position: fixed; inset: 0; z-index: 100; background: var(--bg); display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px; text-align: center; }
+        .success--show { display: flex; }
+
+        .success__icon {
+            width: 76px; height: 76px;
+            border-radius: var(--r-full);
+            background: var(--ok-soft); color: var(--ok);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 40px; margin-bottom: 18px;
+            animation: popIn .4s cubic-bezier(.34,1.56,.64,1);
         }
 
         @keyframes popIn {
-            0% { transform: scale(0.5); opacity: 0; }
-            80% { transform: scale(1.1); }
-            100% { transform: scale(1); opacity: 1; }
+            0% { transform: scale(0); opacity: 0; }
+            70% { transform: scale(1.15); opacity: 1; }
+            100% { transform: scale(1); }
         }
 
-        .btn-success {
-            background: linear-gradient(135deg, #10b981, #059669);
-            color: white;
-            border: none;
-            border-radius: 16px;
-            padding: 12px 24px;
-            font-size: 14px;
-            font-weight: 600;
-            font-family: 'Outfit', sans-serif;
-            margin-top: 20px;
-            cursor: pointer;
+        .success__title { font-size: 17px; font-weight: 800; margin-bottom: 6px; }
+        .success__desc { font-size: 12.5px; color: var(--muted); margin-bottom: 18px; }
+
+        .success__timebox {
+            background: var(--card);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--r-lg);
+            padding: 14px 20px;
+            margin-bottom: 24px;
+            width: 100%; max-width: 280px;
+            box-shadow: var(--shadow-card);
         }
+
+        .success__timebox-label { font-size: 11px; color: var(--faint); font-weight: 700; margin-bottom: 4px; }
+        .success__timebox-value { font-size: 18px; font-weight: 800; }
+
+        .btn--alt { background: var(--alt); color: #fff; max-width: 280px; box-shadow: var(--shadow-alt); }
+
+        .hidden { display: none !important; }
     </style>
-    <!-- Telegram WebApp SDK -->
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
 <body>
-    <div class="container">
-        <div class="card">
-            <div class="header">
-                <h1>Tải Up Video Check-in</h1>
-                <p>Chọn file Video điểm danh từ thiết bị của bạn</p>
+    <div class="app">
+
+        <!-- Hồ sơ nhân viên + giờ hệ thống -->
+        <div class="topbar">
+            <div class="avatar" id="avatarInit">?</div>
+            <div>
+                <div class="topbar__name"><span id="userName">Đang tải thông tin...</span> <span id="tgName" style="color:var(--faint); font-weight:600;"></span></div>
+                <div class="topbar__role" id="userRole">---</div>
+            </div>
+            <div class="topbar__clock">
+                <div class="topbar__time" id="liveClock">--:--:--</div>
+                <div class="topbar__date" id="liveDate">--/--/----</div>
+            </div>
+        </div>
+
+        <!-- Thân -->
+        <div class="body">
+            <div class="section-label">📹 CHECK-IN BẰNG VIDEO</div>
+
+            <!-- Vùng chọn video -->
+            <div class="dropzone" id="uploadZone">
+                <div class="dropzone__icon">🎬</div>
+                <div class="dropzone__title">Chọn video check-in từ thiết bị</div>
+                <div class="dropzone__desc">Hỗ trợ MP4, MOV, WEBM... Dung lượng tối đa 200MB.<br>Video nên quay rõ mặt tại chi nhánh.</div>
+                <input type="file" id="videoFileInput" accept="video/*" class="hidden">
             </div>
 
-            <div class="user-info-bar">
-                <div>
-                    <span id="userName" class="user-name">Đang tải thông tin...</span>
-                    <span id="tgName" style="color:#64748b; font-size:11px; margin-left:4px;"></span>
+            <!-- Xem trước -->
+            <div class="preview" id="previewBox">
+                <div class="preview__player">
+                    <video id="videoPreview" controls playsinline></video>
                 </div>
-                <div id="userRole" class="user-role">---</div>
-            </div>
-
-            <!-- Upload Drop Zone -->
-            <div class="upload-zone" id="uploadZone" onclick="document.getElementById('videoFileInput').click()">
-                <span class="upload-icon">📹</span>
-                <div class="upload-title">Chọn file Video từ thiết bị</div>
-                <div class="upload-desc">Chạm vào đây để chọn Video điểm danh<br>(Hỗ trợ MP4, MOV, WEBM...)</div>
-                <input type="file" id="videoFileInput" accept="video/*" style="display: none;" onchange="onFileSelected(event)">
-            </div>
-
-            <!-- Selected File Info & Preview -->
-            <div class="file-info" id="fileInfo">
-                <div class="file-info-header">
-                    <span id="fileName" style="word-break: break-all;">video_checkin.mp4</span>
-                    <span id="fileSize" class="file-size">0 MB</span>
+                <div class="file-meta">
+                    <div class="file-meta__icon">🎞️</div>
+                    <div style="flex:1; min-width:0;">
+                        <div class="file-meta__name" id="fileName">-</div>
+                        <div class="file-meta__size" id="fileSize">-</div>
+                    </div>
                 </div>
-                <video id="videoPreview" controls playsinline></video>
+                <button class="btn btn--ghost" id="changeFileBtn">🔄 Chọn video khác</button>
             </div>
 
-            <button id="btnUpload" class="btn-primary" disabled onclick="uploadVideo()">
-                <span>📤</span> GỬI VIDEO CHECK-IN
-            </button>
+            <!-- Cảnh báo lỗi -->
+            <div class="banner banner--bad" id="errorBox">
+                <span>⛔</span>
+                <span id="errorText"></span>
+            </div>
 
-            <div id="alertBox" class="alert-box"></div>
+            <div class="banner banner--warn banner--show">
+                <span>💡</span>
+                <span>Video check-in sẽ được lưu trữ bảo mật và chỉ dùng để xác thực chấm công. Vui lòng đảm bảo khuôn mặt rõ nét trong video.</span>
+            </div>
+        </div>
+
+        <!-- Thanh dưới -->
+        <div class="footbar">
+            <button class="btn btn--brand" id="btnUpload" disabled>📤 Gửi Video Chấm Công</button>
         </div>
     </div>
 
-    <!-- Loading Overlay -->
-    <div id="loadingOverlay" class="overlay">
-        <div class="spinner"></div>
-        <div class="overlay-title" id="loadingTitle">Đang tải Video điểm danh...</div>
-        <div style="width: 260px; background: rgba(255,255,255,0.1); height: 10px; border-radius: 5px; overflow: hidden; margin: 12px 0;">
-            <div id="uploadProgressBar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366f1, #10b981); transition: width 0.15s ease;"></div>
+    <!-- Lớp phủ xử lý -->
+    <div class="overlay" id="loadingOverlay">
+        <div class="overlay__card">
+            <div class="spinner"></div>
+            <div class="overlay__title" id="loadingTitle">Đang tải video lên máy chủ...</div>
+            <div class="overlay__sub">Vui lòng không tắt ứng dụng</div>
+            <div class="progress-track">
+                <div class="progress-fill" id="uploadProgressBar"></div>
+            </div>
+            <div class="progress-pct" id="uploadPercentText">0%</div>
         </div>
-        <div id="uploadPercentText" style="font-size: 14px; font-weight: 700; color: #818cf8; margin-bottom: 8px;">0%</div>
-        <div class="overlay-desc">Vui lòng giữ màn hình mở trong khi đang tải dữ liệu!</div>
     </div>
 
-    <!-- Success Screen Overlay -->
-    <div id="successScreen" class="overlay">
-        <div class="success-icon">✅</div>
-        <div class="overlay-title" style="color: #10b981;">ĐIỂM DANH THÀNH CÔNG!</div>
-        <div class="overlay-desc">Video điểm danh của bạn đã được ghi nhận vào hệ thống thành công.</div>
-        <button class="btn-success" onclick="closeWebApp()">HOÀN TẤT & ĐÓNG</button>
+    <!-- Màn hình thành công -->
+    <div class="success" id="successScreen">
+        <div class="success__icon">✓</div>
+        <div class="success__title">Điểm danh thành công!</div>
+        <div class="success__desc">Video điểm danh của bạn đã được ghi nhận vào hệ thống.</div>
+        <div class="success__timebox">
+            <div class="success__timebox-label">GHI NHẬN LÚC</div>
+            <div class="success__timebox-value" id="successTime">--:--:-- · --/--/----</div>
+        </div>
+        <button class="btn btn--alt" onclick="closeWebApp()">Đóng cửa sổ</button>
     </div>
 
     <script>
@@ -406,6 +407,8 @@
             }
 
             loadUserProfile();
+            updateClock();
+            setInterval(updateClock, 1000);
         });
 
         function loadUserProfile() {
@@ -418,7 +421,8 @@
                 .then(res => {
                     if (res.success && res.user) {
                         document.getElementById('userName').textContent = res.user.full_name;
-                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role || 'Nhân viên'}`;
+                        document.getElementById('userRole').textContent = res.user.role || 'Nhân viên';
+                        document.getElementById('avatarInit').textContent = (res.user.full_name || '?').charAt(0).toUpperCase();
                     } else {
                         showAlert('Vui lòng đăng ký tài khoản chấm công trước!');
                     }
@@ -428,43 +432,101 @@
                 });
         }
 
+        // Giờ thiết bị thật — không phải giá trị cố định
+        function updateClock() {
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            document.getElementById('liveClock').textContent =
+                `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+            document.getElementById('liveDate').textContent =
+                `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
+        }
+
+        const uploadZone = document.getElementById('uploadZone');
+        const videoFileInput = document.getElementById('videoFileInput');
+
+        uploadZone.addEventListener('click', () => videoFileInput.click());
+        videoFileInput.addEventListener('change', onFileSelected);
+
+        ['dragenter', 'dragover'].forEach(evt => {
+            uploadZone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                uploadZone.classList.add('dropzone--drag');
+            });
+        });
+
+        ['dragleave', 'drop'].forEach(evt => {
+            uploadZone.addEventListener(evt, (e) => {
+                e.preventDefault();
+                uploadZone.classList.remove('dropzone--drag');
+            });
+        });
+
+        uploadZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            const file = e.dataTransfer.files && e.dataTransfer.files[0];
+            if (file) {
+                videoFileInput.files = e.dataTransfer.files;
+                onFileSelected({ target: { files: e.dataTransfer.files } });
+            }
+        });
+
+        document.getElementById('changeFileBtn').addEventListener('click', () => {
+            resetFileSelection();
+        });
+
+        function resetFileSelection() {
+            selectedFile = null;
+            videoFileInput.value = '';
+            document.getElementById('videoPreview').src = '';
+            document.getElementById('previewBox').classList.remove('preview--show');
+            uploadZone.style.display = 'block';
+            document.getElementById('btnUpload').disabled = true;
+            hideError();
+        }
+
         function onFileSelected(event) {
             const files = event.target.files;
             if (!files || files.length === 0) return;
 
             selectedFile = files[0];
+            hideError();
 
             // Display file info
             document.getElementById('fileName').textContent = selectedFile.name;
             const sizeInMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
             document.getElementById('fileSize').textContent = `${sizeInMB} MB`;
-            document.getElementById('fileInfo').style.display = 'block';
 
             // Show Video Preview
             const videoPreview = document.getElementById('videoPreview');
             const videoURL = URL.createObjectURL(selectedFile);
             videoPreview.src = videoURL;
-            videoPreview.style.display = 'block';
+
+            uploadZone.style.display = 'none';
+            document.getElementById('previewBox').classList.add('preview--show');
 
             // Enable Upload Button
             document.getElementById('btnUpload').disabled = false;
-            document.getElementById('alertBox').style.display = 'none';
         }
+
+        document.getElementById('btnUpload').addEventListener('click', uploadVideo);
 
         function uploadVideo() {
             if (!selectedFile) return;
 
             // Warn if file > 200MB
             if (selectedFile.size > 200 * 1024 * 1024) {
-                showAlert('Dung lượng video vượt quá 200MB. Vui lòng chọn video nhỏ hơn!');
+                showError('Dung lượng video vượt quá 200MB. Vui lòng chọn video nhỏ hơn!');
                 return;
             }
 
             const progressBar = document.getElementById('uploadProgressBar');
             const percentText = document.getElementById('uploadPercentText');
+            const loadingTitle = document.getElementById('loadingTitle');
             progressBar.style.width = '0%';
             percentText.textContent = '0%';
-            document.getElementById('loadingOverlay').style.display = 'flex';
+            loadingTitle.textContent = 'Đang tải video lên máy chủ...';
+            document.getElementById('loadingOverlay').classList.add('overlay--show');
 
             const formData = new FormData();
             formData.append('video_file', selectedFile);
@@ -481,49 +543,69 @@
                 xhr.setRequestHeader('x-telegram-init-data', initData);
             }
 
+            // Tiến độ tải lên thật từ trình duyệt — không phải timer giả lập
             xhr.upload.onprogress = function (e) {
                 if (e.lengthComputable) {
                     const percent = Math.round((e.loaded / e.total) * 100);
                     progressBar.style.width = percent + '%';
                     percentText.textContent = percent + '%';
+                    if (percent >= 100) {
+                        loadingTitle.textContent = 'Đang xử lý và lưu trữ hồ sơ chấm công...';
+                    }
                 }
             };
 
             xhr.onload = function () {
-                document.getElementById('loadingOverlay').style.display = 'none';
+                document.getElementById('loadingOverlay').classList.remove('overlay--show');
                 if (xhr.status >= 200 && xhr.status < 300) {
                     try {
                         const data = JSON.parse(xhr.responseText);
                         if (data.success) {
-                            document.getElementById('successScreen').style.display = 'flex';
+                            document.getElementById('successTime').textContent = getCurrentTimeString();
+                            document.getElementById('successScreen').classList.add('success--show');
                         } else {
-                            showAlert(data.message || 'Lỗi khi tải video lên!');
+                            showError(data.message || 'Lỗi khi tải video lên!');
                         }
                     } catch (err) {
-                        showAlert('Lỗi phản hồi từ máy chủ!');
+                        showError('Lỗi phản hồi từ máy chủ!');
                     }
                 } else {
                     try {
                         const data = JSON.parse(xhr.responseText);
-                        showAlert(data.message || `Lỗi tải lên (${xhr.status})`);
+                        showError(data.message || `Lỗi tải lên (${xhr.status})`);
                     } catch (e) {
-                        showAlert(`Lỗi kết nối máy chủ (${xhr.status})!`);
+                        showError(`Lỗi kết nối máy chủ (${xhr.status})!`);
                     }
                 }
             };
 
             xhr.onerror = function () {
-                document.getElementById('loadingOverlay').style.display = 'none';
-                showAlert('Lỗi kết nối máy chủ!');
+                document.getElementById('loadingOverlay').classList.remove('overlay--show');
+                showError('Lỗi kết nối máy chủ!');
             };
 
             xhr.send(formData);
         }
 
+        function getCurrentTimeString() {
+            const now = new Date();
+            const pad = n => String(n).padStart(2, '0');
+            return `${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())} · ${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${now.getFullYear()}`;
+        }
+
+        function showError(msg) {
+            const errorBox = document.getElementById('errorBox');
+            document.getElementById('errorText').textContent = msg;
+            errorBox.classList.add('banner--show');
+        }
+
+        function hideError() {
+            document.getElementById('errorBox').classList.remove('banner--show');
+        }
+
+        // Giữ tương thích với các đoạn code cũ có thể gọi showAlert().
         function showAlert(msg) {
-            const alertBox = document.getElementById('alertBox');
-            alertBox.textContent = msg;
-            alertBox.style.display = 'block';
+            showError(msg);
         }
 
         function closeWebApp() {

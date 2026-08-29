@@ -86,6 +86,8 @@
                 targetPage = 'warehouse_export.html';
             } else if (startParam.startsWith('whinventory')) {
                 targetPage = 'warehouse_inventory.html';
+            } else if (startParam.startsWith('whpricing')) {
+                targetPage = 'warehouse_pricing.html';
             } else {
                 document.getElementById('statusText').innerText = "Lỗi: Payload không hợp lệ hoặc không xác định.";
                 return;

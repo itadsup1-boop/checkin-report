@@ -4,287 +4,421 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Đăng Ký Ca Làm Việc</title>
-    <!-- Google Font: Outfit (Very modern and premium) -->
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title>Đăng Ký Lịch Tuần</title>
     <style>
         :root {
-            --bg-gradient: #0f172a;
-            --card-bg: #1e293b;
-            --card-border: rgba(255, 255, 255, 0.08);
-            --text-primary: #f8fafc;
-            --text-secondary: #94a3b8;
-            --primary: #6366f1;
-            --primary-hover: #4f46e5;
-            --primary-glow: rgba(99, 102, 241, 0.35);
-            --success: #10b981;
-            --danger: #f43f5e;
-            --warning: #f59e0b;
-            --input-bg: rgba(15, 23, 42, 0.6);
-            --input-border: rgba(255, 255, 255, 0.05);
-            --input-focus: #818cf8;
+            --bg: #f4f7fb;
+            --card: #ffffff;
+            --ink: #14213d;
+            --muted: #64748b;
+            --faint: #94a3b8;
+            --line-soft: #edf2f7;
+            --surface: #f8fafc;
+            --brand: #0891b2;
+            --brand-soft: #ecfeff;
+            --alt: #0f172a;
+            --r-md: 14px;
+            --r-lg: 20px;
+            --r-full: 999px;
+
+            --sang: #f59e0b;
+            --sang-soft: #fffbeb;
+            --chieu: #3b82f6;
+            --chieu-soft: #eff6ff;
+            --off: #ef4444;
+            --off-soft: #fef2f2;
+            --green: #10b981;
+            --green-soft: #ecfdf5;
+            --danger-soft: #fef2f2;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-        }
+        * { box-sizing: border-box; }
 
         body {
-            font-family: 'Outfit', sans-serif;
-            background: var(--bg-gradient);
-            color: var(--text-primary);
-            min-height: 100vh;
+            margin: 0;
+            padding: 0;
+            background: var(--bg);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            color: var(--ink);
             display: flex;
             justify-content: center;
-            padding: 16px;
-            overflow-x: hidden;
+            min-height: 100vh;
         }
 
-        .container {
+        .app-shell {
             width: 100%;
             max-width: 480px;
-            z-index: 10;
-            position: relative;
+            background: var(--bg);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
-        .card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: 24px;
-            padding: 24px 20px;
-            box-shadow: 0 20px 45px -15px rgba(0, 0, 0, 0.6);
-        }
-
+        /* Header */
         .header {
             text-align: center;
-            margin-bottom: 24px;
+            padding: 20px 16px 4px;
         }
 
         .logo-container {
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 56px;
-            height: 56px;
-            background: rgba(99, 102, 241, 0.1);
-            border: 1px solid rgba(99, 102, 241, 0.2);
-            border-radius: 16px;
-            margin-bottom: 12px;
-            color: var(--primary);
-            box-shadow: 0 8px 24px -4px var(--primary-glow);
+            width: 48px;
+            height: 48px;
+            background: var(--brand-soft);
+            border: 1px solid rgba(8, 145, 178, 0.2);
+            border-radius: 14px;
+            margin-bottom: 10px;
+            color: var(--brand);
         }
 
         .header h1 {
-            font-size: 22px;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            margin-bottom: 4px;
-            background: linear-gradient(to right, #ffffff, #c7d2fe);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-size: 19px;
+            font-weight: 800;
+            letter-spacing: -0.3px;
+            margin: 0 0 2px;
+            color: var(--ink);
         }
 
         .header p {
+            font-size: 12.5px;
+            color: var(--muted);
+            margin: 0;
+        }
+
+        /* Alerts */
+        .alert {
+            display: none;
+            margin: 12px 16px 0;
+            padding: 12px 14px;
+            border-radius: var(--r-md);
             font-size: 13px;
-            color: var(--text-secondary);
+            font-weight: 600;
+            align-items: center;
+            gap: 8px;
         }
 
-        /* Profile & Admin selectors */
-        .profile-section {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
+        .alert-error {
+            background: var(--danger-soft);
+            border: 1.5px solid #fecaca;
+            color: #b91c1c;
+        }
+
+        .alert-success {
+            background: var(--green-soft);
+            border: 1.5px solid #a7f3d0;
+            color: #047857;
+        }
+
+        /* User info card */
+        .user-card {
+            margin: 12px 16px 0;
+            background: var(--card);
+            border-radius: var(--r-lg);
             padding: 16px;
-            margin-bottom: 20px;
-        }
-
-        .profile-info {
             display: flex;
             align-items: center;
-            justify-content: space-between;
+            gap: 12px;
+            box-shadow: 0 6px 18px #0f172a12;
         }
 
-        .profile-info span {
-            color: #93c5fd;
+        .avatar {
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--brand), #0e7490);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+            font-weight: 800;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+
+        .user-info-name {
+            font-size: 15.5px;
+            font-weight: 800;
+        }
+
+        .user-info-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 3px;
+            flex-wrap: wrap;
+        }
+
+        .role-badge {
+            font-size: 11px;
+            font-weight: 800;
+            padding: 2px 9px;
+            border-radius: var(--r-full);
+            background: var(--brand-soft);
+            color: var(--brand);
+        }
+
+        .username-text {
+            font-size: 12.5px;
+            color: var(--muted);
             font-weight: 600;
         }
 
-        .admin-select-wrapper {
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
+        /* Admin panel (employee picker) */
+        .admin-panel {
+            margin: 12px 16px 0;
+            background: #fff7ed;
+            border: 1.5px solid #fed7aa;
+            border-radius: var(--r-lg);
+            padding: 14px 16px;
         }
 
-        .admin-select-wrapper label {
-            display: block;
+        .admin-panel-title {
+            font-size: 12.5px;
+            font-weight: 800;
+            color: #c2410c;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 10px;
+        }
+
+        .admin-field-label {
             font-size: 12px;
-            font-weight: 500;
-            color: var(--warning);
-            margin-bottom: 6px;
-            text-transform: uppercase;
+            font-weight: 700;
+            color: var(--muted);
+            margin-bottom: 5px;
+            display: block;
         }
 
         .select-control {
             width: 100%;
-            background: #0f172a !important;
-            border: 1px solid rgba(245, 158, 11, 0.3) !important;
-            border-radius: 10px;
-            padding: 10px;
-            color: var(--text-primary) !important;
-            font-family: inherit;
+            padding: 10px 12px;
+            border: 1.5px solid var(--line-soft);
+            border-radius: var(--r-md);
+            font-size: 14px;
+            font-weight: 700;
+            background: #fff;
+            color: var(--ink);
             outline: none;
             appearance: none;
             -webkit-appearance: none;
-            -moz-appearance: none;
-            background-image: url("data:image/svg+xml;utf8,<svg fill='white' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>") !important;
-            background-repeat: no-repeat !important;
-            background-position: right 12px center !important;
-            padding-right: 40px !important;
+            background-image: url("data:image/svg+xml;utf8,<svg fill='%2364748b' height='24' viewBox='0 0 24 24' width='24' xmlns='http://www.w3.org/2000/svg'><path d='M7 10l5 5 5-5z'/><path d='M0 0h24v24H0z' fill='none'/></svg>");
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            padding-right: 36px;
         }
 
-        .select-control option {
-            background-color: #0f172a !important;
-            color: var(--text-primary) !important;
+        /* Manager toggle (open/close registration) */
+        .manager-toggle-wrap {
+            margin: 12px 16px 0;
         }
 
-        /* Tabs system */
-        .tabs-header {
+        .lock-toggle-btn {
+            width: 100%;
+            padding: 12px;
+            border-radius: var(--r-md);
+            border: none;
+            font-size: 13.5px;
+            font-weight: 800;
+            cursor: pointer;
             display: flex;
-            background: rgba(15, 23, 42, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            font-family: inherit;
+        }
+
+        .lock-toggle-btn.state-open {
+            background: var(--sang);
+            color: #0f172a;
+        }
+
+        .lock-toggle-btn.state-closed {
+            background: var(--green);
+            color: #fff;
+        }
+
+        .lock-toggle-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        /* Week tabs */
+        .tab-wrap {
+            margin: 14px 16px 0;
+            display: flex;
+            background: var(--surface);
+            border: 1px solid var(--line-soft);
+            border-radius: var(--r-full);
             padding: 4px;
-            margin-bottom: 20px;
+            gap: 4px;
         }
 
         .tab-btn {
             flex: 1;
-            background: none;
+            padding: 9px 0;
             border: none;
-            color: var(--text-secondary);
-            padding: 10px;
-            font-size: 14px;
-            font-weight: 600;
-            border-radius: 8px;
+            background: none;
+            border-radius: var(--r-full);
+            font-size: 13.5px;
+            font-weight: 800;
+            color: var(--muted);
             cursor: pointer;
-            transition: all 0.3s ease;
             font-family: inherit;
         }
 
         .tab-btn.active {
-            background: var(--primary);
-            color: white;
-            box-shadow: 0 4px 10px var(--primary-glow);
+            background: var(--card);
+            color: var(--brand);
+            box-shadow: 0 3px 8px #0f172a15;
         }
 
-        /* Lock alert banner */
+        /* Status strip (registration state + progress) */
+        .status-strip {
+            margin: 10px 16px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--card);
+            border-radius: var(--r-md);
+            padding: 9px 14px;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .status-strip .lbl-open { color: var(--green); }
+        .status-strip .lbl-lock { color: var(--off); }
+
+        .progress-wrap {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex: 1;
+            margin-left: 14px;
+        }
+
+        .progress-bar-track {
+            flex: 1;
+            height: 6px;
+            background: var(--line-soft);
+            border-radius: var(--r-full);
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--brand);
+            border-radius: var(--r-full);
+            transition: width 0.25s ease;
+        }
+
+        #progressText {
+            color: var(--brand);
+            white-space: nowrap;
+        }
+
+        /* Lock banner (per-week locked notice) */
         .lock-banner {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.2);
-            color: #fde047;
-            padding: 12px;
-            border-radius: 12px;
+            margin: 10px 16px 0;
+            background: #fffbeb;
+            border: 1.5px solid #fde68a;
+            color: #92400e;
+            padding: 12px 14px;
+            border-radius: var(--r-md);
             font-size: 13px;
-            font-weight: 500;
-            margin-bottom: 20px;
+            font-weight: 600;
             display: none;
             align-items: center;
             gap: 8px;
         }
 
-        /* Days list container */
+        /* Days list */
         .days-list {
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            margin-bottom: 24px;
-        }
-
-        .day-row {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid rgba(255, 255, 255, 0.04);
-            border-radius: 14px;
-            padding: 14px 16px;
+            padding: 12px 16px 4px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            transition: border-color 0.3s ease;
         }
 
-        .day-row:hover {
-            border-color: rgba(255, 255, 255, 0.08);
+        .day-row {
+            border: 1.5px solid var(--line-soft);
+            border-radius: var(--r-md);
+            padding: 13px;
+            background: var(--card);
         }
 
         .day-info {
             display: flex;
             justify-content: space-between;
-            align-items: center;
+            align-items: flex-start;
+            margin-bottom: 10px;
+            gap: 8px;
         }
 
         .day-name {
-            font-weight: 600;
-            font-size: 15px;
+            font-weight: 800;
+            font-size: 14.5px;
         }
 
         .day-date {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--muted);
+            font-weight: 600;
+            margin-left: 6px;
         }
 
-        /* Selector options group */
-        .options-group {
+        .overlap-warning {
+            display: none;
+            font-size: 11.5px;
+            color: #b91c1c;
+            background: var(--off-soft);
+            border: 1px solid #fecaca;
+            padding: 4px 8px;
+            border-radius: var(--r-full);
+            align-items: center;
+            gap: 4px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .admin-edit-badge {
+            font-size: 11px;
+            color: var(--sang);
+            margin-top: 4px;
+            font-weight: 700;
             display: flex;
-            gap: 8px;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .past-day-note {
+            font-size: 11px;
+            color: var(--faint);
+            margin-top: 4px;
+            font-weight: 600;
+        }
+
+        /* Shift option chips */
+        .options-group {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 7px;
         }
 
         .option-btn {
-            flex: 1;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid var(--input-border);
-            border-radius: 8px;
-            padding: 8px;
-            color: var(--text-secondary);
+            border: 1.5px solid var(--line-soft);
+            background: var(--surface);
+            border-radius: 10px;
+            padding: 10px 4px;
+            color: var(--muted);
             font-size: 12px;
-            font-weight: 600;
+            font-weight: 700;
             cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.15s ease;
             font-family: inherit;
             text-align: center;
-        }
-
-        .option-btn:hover:not(:disabled) {
-            border-color: rgba(255, 255, 255, 0.15);
-            color: var(--text-primary);
-        }
-
-        .option-btn.selected[data-val="CA_SANG"] {
-            background: rgba(99, 102, 241, 0.2);
-            border-color: var(--primary);
-            color: #818cf8;
-            box-shadow: 0 0 10px rgba(99, 102, 241, 0.15);
-        }
-
-        .option-btn.selected[data-val="CA_CHIEU"] {
-            background: rgba(16, 185, 129, 0.2);
-            border-color: var(--success);
-            color: #34d399;
-            box-shadow: 0 0 10px rgba(16, 185, 129, 0.15);
-        }
-
-        .option-btn.selected[data-val="FULL_DAY"] {
-            background: rgba(245, 158, 11, 0.2);
-            border-color: var(--warning);
-            color: #fbbf24;
-            box-shadow: 0 0 10px rgba(245, 158, 11, 0.15);
-        }
-
-        .option-btn.selected[data-val="OFF"] {
-            background: rgba(244, 63, 94, 0.2);
-            border-color: var(--danger);
-            color: #fb7185;
-            box-shadow: 0 0 10px rgba(244, 63, 94, 0.15);
         }
 
         .option-btn:disabled {
@@ -292,42 +426,45 @@
             cursor: not-allowed;
         }
 
-        /* Warnings for overlapping schedule */
-        .overlap-warning {
-            display: none;
-            font-size: 12px;
-            color: #fda4af;
-            background: rgba(244, 63, 94, 0.08);
-            border: 1px solid rgba(244, 63, 94, 0.15);
-            padding: 6px 10px;
-            border-radius: 8px;
-            margin-top: 4px;
-            align-items: center;
-            gap: 6px;
+        .option-btn.selected[data-val="CA_SANG"] {
+            background: var(--sang-soft);
+            border-color: var(--sang);
+            color: #b45309;
+        }
+
+        .option-btn.selected[data-val="CA_CHIEU"] {
+            background: var(--chieu-soft);
+            border-color: var(--chieu);
+            color: #1d4ed8;
+        }
+
+        .option-btn.selected[data-val="OFF"] {
+            background: var(--off-soft);
+            border-color: var(--off);
+            color: #b91c1c;
         }
 
         /* Upload proof box */
         .proof-box {
             display: none;
-            background: rgba(99, 102, 241, 0.04);
-            border: 1px dashed rgba(99, 102, 241, 0.3);
-            border-radius: 16px;
+            margin: 4px 16px 4px;
+            background: var(--brand-soft);
+            border: 1.5px dashed rgba(8, 145, 178, 0.35);
+            border-radius: var(--r-lg);
             padding: 16px;
-            margin-bottom: 24px;
             text-align: center;
-            animation: fadeIn 0.3s ease;
         }
 
         .proof-box-title {
             font-size: 13px;
-            font-weight: 600;
-            color: #a5b4fc;
+            font-weight: 800;
+            color: #0e7490;
             margin-bottom: 6px;
         }
 
         .proof-box-desc {
             font-size: 12px;
-            color: var(--text-secondary);
+            color: var(--muted);
             margin-bottom: 12px;
         }
 
@@ -337,13 +474,13 @@
         }
 
         .btn-upload {
-            background: rgba(99, 102, 241, 0.15);
-            border: 1px solid rgba(99, 102, 241, 0.3);
-            color: #c7d2fe;
+            background: #fff;
+            border: 1.5px solid var(--brand);
+            color: var(--brand);
             padding: 8px 16px;
-            border-radius: 8px;
+            border-radius: var(--r-md);
             font-size: 12px;
-            font-weight: 500;
+            font-weight: 700;
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -363,220 +500,142 @@
         .preview-img {
             max-width: 100%;
             max-height: 120px;
-            border-radius: 8px;
+            border-radius: 10px;
             margin-top: 12px;
             display: none;
             object-fit: contain;
         }
 
-        /* Submit Button */
+        /* Footer / submit */
+        .sheet-foot {
+            padding: 14px 16px 26px;
+        }
+
         .btn-submit {
             width: 100%;
-            background: var(--primary);
-            color: white;
+            background: var(--brand);
+            color: #fff;
             border: none;
-            border-radius: 12px;
-            padding: 16px;
-            font-size: 16px;
-            font-weight: 600;
+            border-radius: var(--r-md);
+            padding: 15px;
+            font-size: 15px;
+            font-weight: 800;
             cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 4px 12px var(--primary-glow);
             font-family: inherit;
-        }
-
-        .btn-submit:hover:not(:disabled) {
-            background: var(--primary-hover);
-            box-shadow: 0 6px 20px rgba(99, 102, 241, 0.5);
-            transform: translateY(-1px);
-        }
-
-        .btn-submit:active:not(:disabled) {
-            transform: translateY(1px);
         }
 
         .btn-submit:disabled {
             opacity: 0.5;
             cursor: not-allowed;
-            box-shadow: none;
         }
 
-        /* Alerts & Screens */
-        .alert {
-            display: none;
-            padding: 12px 16px;
-            border-radius: 12px;
-            font-size: 13px;
-            font-weight: 500;
-            margin-bottom: 20px;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .alert-error {
-            background: rgba(244, 63, 94, 0.1);
-            border: 1px solid rgba(244, 63, 94, 0.2);
-            color: #fda4af;
-        }
-
-        .alert-success {
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: #6ee7b7;
-        }
-
-        .success-screen {
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: #0b0f19;
-            border-radius: 24px;
-            z-index: 100;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 24px;
-            animation: fadeIn 0.4s ease;
-        }
-
-        .success-icon {
-            width: 64px;
-            height: 64px;
-            background: rgba(16, 185, 129, 0.1);
-            border: 1px solid rgba(16, 185, 129, 0.2);
-            color: var(--success);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 28px;
-            margin-bottom: 16px;
-            box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
-        }
-
-        .success-screen h2 {
-            font-size: 20px;
-            margin-bottom: 8px;
-        }
-
-        .success-screen p {
-            color: var(--text-secondary);
-            font-size: 13px;
-            line-height: 1.5;
-            margin-bottom: 20px;
-        }
-
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(-5px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        .shake { animation: shakeAnim 0.4s ease; }
+        @keyframes shakeAnim {
+            0%, 100% { transform: translateX(0); }
+            20% { transform: translateX(-6px); }
+            40% { transform: translateX(6px); }
+            60% { transform: translateX(-4px); }
+            80% { transform: translateX(4px); }
         }
     </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="card">
-            <!-- Alerts -->
-            <div id="alertBox" class="alert"></div>
+    <div class="app-shell">
+        <!-- Alerts -->
+        <div id="alertBox" class="alert"></div>
 
-            <!-- Success screen -->
-            <div id="successScreen" class="success-screen">
-                <div class="success-icon">✓</div>
-                <h2>Chốt Lịch Thành Công</h2>
-                <p>Lịch làm việc của bạn đã được ghi nhận trong cơ sở dữ liệu.</p>
-                <button class="btn-submit" onclick="closeWebApp()">Hoàn Thành</button>
+        <!-- Header -->
+        <div class="header">
+            <div class="logo-container">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                </svg>
             </div>
+            <h1>ĐĂNG KÝ LỊCH TUẦN</h1>
+            <p>Lên lịch làm việc hàng tuần cho nhân sự</p>
+        </div>
 
-            <!-- Header -->
-            <div class="header">
-                <div class="logo-container">
-                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+        <!-- User info -->
+        <div class="user-card">
+            <div class="avatar" id="avatarInit">?</div>
+            <div>
+                <div id="userName" class="user-info-name">Đang tải...</div>
+                <div class="user-info-row">
+                    <span id="userRole" class="role-badge">Đang tải...</span>
+                    <span id="tgName" class="username-text">@...</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin selector (employee picker, hidden by default) -->
+        <div id="adminPanel" class="admin-panel" style="display: none;">
+            <div class="admin-panel-title">🛡️ QUẢN LÝ NHÂN VIÊN (ADMIN MODE)</div>
+            <label class="admin-field-label">Chọn nhân viên để xếp ca hộ</label>
+            <select id="userDropdown" class="select-control" onchange="onAdminSelectUser()">
+                <!-- Options filled by JS -->
+            </select>
+        </div>
+
+        <!-- Week tabs -->
+        <div class="tab-wrap">
+            <button class="tab-btn active" onclick="switchTab('current')">Tuần Này</button>
+            <button class="tab-btn" onclick="switchTab('next')">Tuần Sau</button>
+        </div>
+
+        <!-- Status strip: global registration state + fill progress -->
+        <div class="status-strip">
+            <span id="lockStatusLabel" class="lbl-open">🟢 Đang mở đăng ký</span>
+            <div class="progress-wrap">
+                <div class="progress-bar-track">
+                    <div class="progress-bar-fill" id="progressFill" style="width:0%"></div>
+                </div>
+                <span id="progressText">0/7</span>
+            </div>
+        </div>
+
+        <!-- Manager Toggle Schedule Button -->
+        <div id="managerToggleBtn" class="manager-toggle-wrap" style="display: none;">
+            <button id="btnToggleSchedule" class="lock-toggle-btn state-open" onclick="toggleSchedule()">
+                🔄 Đóng đăng ký lịch
+            </button>
+        </div>
+
+        <!-- Locked Schedule Alert banner -->
+        <div id="lockBanner" class="lock-banner">
+            <span>🔒 Quản lý đã đóng đăng ký lịch tuần sau.</span>
+        </div>
+
+        <!-- Days list -->
+        <div id="daysList" class="days-list">
+            <!-- Day rows dynamically injected by JS -->
+        </div>
+
+        <!-- Upload Proof Area -->
+        <div id="proofBox" class="proof-box">
+            <div class="proof-box-title">⚠️ Đăng Ký Nghỉ Từ 2 Ngày Trở Lên</div>
+            <div class="proof-box-desc">Bạn chọn tổng số ngày nghỉ từ 2 ngày trở lên trong tuần. Vui lòng gửi ảnh
+                minh chứng đi kèm.</div>
+            <div class="file-input-wrapper">
+                <button class="btn-upload">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2.5">
-                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                        <line x1="16" y1="2" x2="16" y2="6"></line>
-                        <line x1="8" y1="2" x2="8" y2="6"></line>
-                        <line x1="3" y1="10" x2="21" y2="10"></line>
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
                     </svg>
-                </div>
-                <h1>ĐĂNG KÝ LỊCH TUẦN</h1>
-                <p>Lên lịch làm việc hàng tuần cho nhân sự</p>
-            </div>
-
-            <!-- Profile Info Banner -->
-            <div class="profile-section">
-                <div class="profile-info">
-                    <div>
-                        <div id="userName" style="font-weight:700; font-size:15px;">Đang tải...</div>
-                        <div id="userRole" style="font-size:12px; color:var(--text-secondary);">Vai trò: Đang tải...
-                        </div>
-                    </div>
-                    <span id="tgName">@...</span>
-                </div>
-
-                <!-- Admin selector (Hidden by default) -->
-                <div id="adminPanel" class="admin-select-wrapper" style="display: none;">
-                    <label>Quản lý nhân viên (Admin mode)</label>
-                    <select id="userDropdown" class="select-control" onchange="onAdminSelectUser()">
-                        <!-- Options filled by JS -->
-                    </select>
-                </div>
-            </div>
-
-            <!-- Tabs System -->
-            <div class="tabs-header">
-                <button class="tab-btn active" onclick="switchTab('current')">Tuần Này</button>
-                <button class="tab-btn" onclick="switchTab('next')">Tuần Sau</button>
-            </div>
-
-            <!-- Manager Toggle Schedule Button -->
-            <div id="managerToggleBtn" style="display: none; justify-content: flex-end; margin-bottom: 12px;">
-                <button id="btnToggleSchedule" class="btn-upload" style="background: var(--warning); color: #0f172a; border: none; font-weight: 600;" onclick="toggleSchedule()">
-                    🔄 Đóng đăng ký lịch
+                    Chọn ảnh minh chứng
                 </button>
+                <input type="file" id="fileProof" class="file-input" accept="image/*" onchange="previewFile()">
             </div>
+            <img id="imgPreview" class="preview-img" alt="Ảnh minh chứng">
+        </div>
 
-            <!-- Locked Schedule Alert banner -->
-            <div id="lockBanner" class="lock-banner" style="display: none;">
-                <span>🔒 Quản lý đã đóng đăng ký lịch tuần sau.</span>
-            </div>
-
-            <!-- Days list -->
-            <div id="daysList" class="days-list">
-                <!-- Day rows dynamically injected by JS -->
-            </div>
-
-            <!-- Upload Proof Area -->
-            <div id="proofBox" class="proof-box">
-                <div class="proof-box-title">⚠️ Đăng Ký Nghỉ Từ 2 Ngày Trở Lên</div>
-                <div class="proof-box-desc">Bạn chọn tổng số ngày nghỉ từ 2 ngày trở lên trong tuần. Vui lòng gửi ảnh
-                    minh chứng đi kèm.</div>
-                <div class="file-input-wrapper">
-                    <button class="btn-upload">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                            stroke-width="2.5">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="17 8 12 3 7 8"></polyline>
-                            <line x1="12" y1="3" x2="12" y2="15"></line>
-                        </svg>
-                        Chọn ảnh minh chứng
-                    </button>
-                    <input type="file" id="fileProof" class="file-input" accept="image/*" onchange="previewFile()">
-                </div>
-                <img id="imgPreview" class="preview-img" alt="Ảnh minh chứng">
-            </div>
-
-            <!-- Save Button -->
+        <!-- Save Button -->
+        <div class="sheet-foot">
             <button id="btnSave" class="btn-submit" onclick="saveSchedule()">LƯU LỊCH TUẦN</button>
         </div>
     </div>
@@ -622,11 +681,11 @@
         let telegramUsername = "";
         let chatId = "";
         let initData = "";
-        
+
         let payloadAction = "";
         let payloadTs = "";
         let payloadSig = "";
-        
+
         let isUserAdmin = false;
         let isCurrentWeekLocked = false;
         let isNextWeekLocked = false;
@@ -656,7 +715,8 @@
 
             if (!initData) {
                 document.getElementById('alertBox').textContent = '⚠️ Lỗi bảo mật: Vui lòng mở Mini App trực tiếp trong ứng dụng Telegram!';
-                document.getElementById('alertBox').style.display = 'block';
+                document.getElementById('alertBox').className = 'alert alert-error';
+                document.getElementById('alertBox').style.display = 'flex';
                 document.body.style.pointerEvents = 'none';
                 return;
             }
@@ -720,8 +780,8 @@
                         selectedUserId = res.user.id;
                         selectedUserRole = res.user.role;
 
-                        document.getElementById('userName').textContent = res.user.full_name;
-                        document.getElementById('userRole').textContent = `Vị trí: ${res.user.role}`;
+                        renderUserCard(res.user.full_name, res.user.role);
+                        renderLockStatusLabel();
 
                         // Setup Admin Selector Panel if Admin
                         if (isUserAdmin && allUsers.length > 0) {
@@ -768,6 +828,26 @@
                 });
         }
 
+        // Renders avatar/name/role badge for whichever profile is being viewed
+        function renderUserCard(fullName, role) {
+            document.getElementById('userName').textContent = fullName;
+            document.getElementById('userRole').textContent = role;
+            document.getElementById('avatarInit').textContent = (fullName || '?').charAt(0).toUpperCase();
+        }
+
+        // Reflects the global registration switch (toggleSchedule) in the status strip
+        function renderLockStatusLabel() {
+            const el = document.getElementById('lockStatusLabel');
+            if (!el) return;
+            if (scheduleRegistrationOpen) {
+                el.textContent = '🟢 Đang mở đăng ký';
+                el.className = 'lbl-open';
+            } else {
+                el.textContent = '🔴 Đang khóa đăng ký';
+                el.className = 'lbl-lock';
+            }
+        }
+
         // Triggered when admin selects another user in dropdown
         function onAdminSelectUser() {
             const userDropdown = document.getElementById('userDropdown');
@@ -776,8 +856,7 @@
             const selectedUser = allUsers.find(u => u.id === selectedUserId);
             if (selectedUser) {
                 selectedUserRole = selectedUser.role;
-                document.getElementById('userName').textContent = selectedUser.full_name;
-                document.getElementById('userRole').textContent = `Vị trí: ${selectedUser.role}`;
+                renderUserCard(selectedUser.full_name, selectedUser.role);
 
                 // Fetch this specific user's schedules
                 // For simplicity, we filter from groupSchedules or reload
@@ -820,21 +899,19 @@
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
 
-            const isUserManager = allUsers.find(u => u.id === selectedUserId)?.role === 'Quản lý' || 
+            const isUserManager = allUsers.find(u => u.id === selectedUserId)?.role === 'Quản lý' ||
                                   document.getElementById('userRole').textContent.includes('Quản lý');
 
             if (isUserAdmin || isUserManager) {
                 const toggleBtn = document.getElementById('managerToggleBtn');
-                toggleBtn.style.display = 'flex';
+                toggleBtn.style.display = 'block';
                 const btnEl = document.getElementById('btnToggleSchedule');
                 if (scheduleRegistrationOpen) {
                     btnEl.innerHTML = '🔄 Đóng đăng ký lịch';
-                    btnEl.style.background = 'var(--warning)';
-                    btnEl.style.color = '#0f172a';
+                    btnEl.className = 'lock-toggle-btn state-open';
                 } else {
                     btnEl.innerHTML = '🔄 Mở đăng ký lịch';
-                    btnEl.style.background = 'var(--success)';
-                    btnEl.style.color = '#fff';
+                    btnEl.className = 'lock-toggle-btn state-closed';
                 }
             } else {
                 document.getElementById('managerToggleBtn').style.display = 'none';
@@ -855,7 +932,7 @@
                 document.getElementById('lockBanner').style.display = 'flex';
                 document.getElementById('btnSave').style.display = 'none';
             } else if ((isUserAdmin || isUserManager) && (tab === 'current' ? isCurrentWeekLocked : isNextWeekLocked)) {
-                document.getElementById('lockBanner').innerHTML = '<span style="color:#f59e0b;">⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
+                document.getElementById('lockBanner').innerHTML = '<span>⚠️ Bạn đang xem dưới quyền Admin/Quản lý (Lịch hiện đang ĐÓNG với nhân viên).</span>';
                 document.getElementById('lockBanner').style.display = 'flex';
                 document.getElementById('btnSave').style.display = 'block';
             } else {
@@ -896,37 +973,36 @@
                     const d = new Date(meta.updated_at);
                     const pad = (n) => String(n).padStart(2, '0');
                     const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())} ${pad(d.getDate())}/${pad(d.getMonth() + 1)}`;
-                    metaHtml = `<div class="admin-edit-badge" style="font-size: 11px; color: #f59e0b; margin-top: 4px; font-weight: 500; display: flex; align-items: center; gap: 4px;">
-                                    ✏️ Đổi bởi ${meta.updated_by} lúc ${timeStr}
-                                </div>`;
+                    metaHtml = `<div class="admin-edit-badge">✏️ Đổi bởi ${meta.updated_by} lúc ${timeStr}</div>`;
                 }
 
                 if (isPastDay) {
-                    metaHtml += '<div style="font-size:11px;color:#94a3b8;margin-top:4px;">🔒 Ngày đã qua — chỉ xem</div>';
+                    metaHtml += '<div class="past-day-note">🔒 Ngày đã qua — chỉ xem</div>';
                 }
 
                 row.innerHTML = `
                     <div class="day-info">
                         <div>
-                            <span class="day-name">${dayName}</span>
-                            <span class="day-date">${displayDate}</span>
+                            <span class="day-name">${dayName}</span><span class="day-date">${displayDate}</span>
+                            ${metaHtml}
                         </div>
                         <div class="overlap-warning" id="warning-${dateStr}" style="display: ${isOverlapping ? 'flex' : 'none'};">
-                            ⚠️ Trùng lịch nghỉ với nhân sự khác
+                            ⚠️ Trùng lịch nghỉ
                         </div>
-                        ${metaHtml}
                     </div>
                     <div class="options-group">
-                        <button class="option-btn ${selectedVal === 'CA_SANG' ? 'selected' : ''}" 
+                        <button class="option-btn ${selectedVal === 'CA_SANG' ? 'selected' : ''}"
                                 data-val="CA_SANG" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_SANG')">Ca 8h30</button>
-                        <button class="option-btn ${selectedVal === 'CA_CHIEU' ? 'selected' : ''}" 
+                        <button class="option-btn ${selectedVal === 'CA_CHIEU' ? 'selected' : ''}"
                                 data-val="CA_CHIEU" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'CA_CHIEU')">Ca 9h30</button>
-                        <button class="option-btn ${selectedVal === 'OFF' ? 'selected' : ''}" 
+                        <button class="option-btn ${selectedVal === 'OFF' ? 'selected' : ''}"
                                 data-val="OFF" ${dayLocked ? 'disabled' : ''} onclick="selectOption('${dateStr}', 'OFF')">Nghỉ (OFF)</button>
                     </div>
                 `;
                 container.appendChild(row);
             });
+
+            updateProgress();
         }
 
         // Option click handler
@@ -959,6 +1035,7 @@
             }
 
             updateSaveButtonState();
+            updateProgress();
         }
 
         function getEditableDays(days) {
@@ -1038,6 +1115,20 @@
             } else {
                 btnSave.disabled = !allFilled || hasOverlap || missingProof;
             }
+        }
+
+        // Reflects how many days of the active week already have a shift chosen
+        function updateProgress() {
+            const activeDays = getEditableDays(currentTab === 'current' ? currentWeekDays : nextWeekDays);
+            const total = activeDays.length;
+            let count = 0;
+            activeDays.forEach(d => { if (currentSelections[d]) count++; });
+            const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+
+            const fill = document.getElementById('progressFill');
+            const text = document.getElementById('progressText');
+            if (fill) fill.style.width = pct + '%';
+            if (text) text.textContent = `${count}/${total}`;
         }
 
         // Handle Image preview and conversion to base64

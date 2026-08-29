@@ -1,0 +1,350 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Navigate, Outlet, Route, Routes, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import axios from 'axios';
+import {
+  CalendarDays,
+  CalendarX,
+  ClipboardCheck,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Package,
+  Settings,
+  Shield,
+  UserCheck,
+  Users,
+  X,
+  Zap
+} from 'lucide-react';
+import LoginScreen from './LoginScreen.jsx';
+import StaffManagement from './StaffManagement.jsx';
+import CheckinManagement from './CheckinManagement.jsx';
+import ScheduleManagement from './ScheduleManagement.jsx';
+import LeaveManagement from './LeaveManagement.jsx';
+import DashboardTab from './DashboardTab.jsx';
+import AdminManagement from './AdminManagement.jsx';
+import WarehouseManagement from './WarehouseManagement.jsx';
+import SettingsManagement from './SettingsManagement.jsx';
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+/**
+ * Mỗi mục menu là một đường dẫn thật, để tải lại trang không mất chỗ đang đứng.
+ *
+ * `id` giữ nguyên tên cũ vì DashboardTab gọi onNavigate('checkins'), và
+ * AdminShell.test.js đối chiếu theo nhãn. Đổi `path` thì đổi luôn link cũ của
+ * người dùng đã lưu, nên coi như hợp đồng.
+ */
+const TABS = [
+  { id: 'dashboard', path: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard },
+  { id: 'staff', path: '/nhan-su', label: 'Nhân sự', icon: UserCheck },
+  { id: 'checkins', path: '/diem-danh', label: 'Điểm danh', icon: ClipboardCheck },
+  { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
+  { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
+  { id: 'warehouse', path: '/kho', label: 'Quản lý kho', icon: Package, needsWarehouse: true },
+  { id: 'settings', path: '/cau-hinh', label: 'Cấu hình nhóm', icon: Settings },
+  { id: 'admins', path: '/tai-khoan', label: 'Tài khoản quản trị', icon: Shield, needsSuperAdmin: true }
+];
+
+const PATH_BY_ID = Object.fromEntries(TABS.map(tab => [tab.id, tab.path]));
+
+/** Nhóm đang lọc nằm trên URL (?nhom=…) nên tải lại trang vẫn giữ đúng nhóm. */
+const GROUP_PARAM = 'nhom';
+
+function savedAdmin() {
+  try {
+    const value = localStorage.getItem('admin_user');
+    return value ? JSON.parse(value) : null;
+  } catch {
+    return null;
+  }
+}
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(localStorage.getItem('admin_token')));
+  const [user, setUser] = useState(savedAdmin);
+  const [checkingSession, setCheckingSession] = useState(() => Boolean(localStorage.getItem('admin_token')));
+
+  const clearSession = useCallback(() => {
+    localStorage.removeItem('admin_token');
+    localStorage.removeItem('admin_token_expires_at');
+    localStorage.removeItem('admin_user');
+    setUser(null);
+    setIsLoggedIn(false);
+  }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('admin_token');
+    if (!token) {
+      setCheckingSession(false);
+      return;
+    }
+    axios.get(`${API_URL}/admin/session`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(response => {
+        localStorage.setItem('admin_user', JSON.stringify(response.data.user));
+        setUser(response.data.user);
+        setIsLoggedIn(true);
+      })
+      .catch(clearSession)
+      .finally(() => setCheckingSession(false));
+  }, [clearSession]);
+
+  const logout = async () => {
+    const token = localStorage.getItem('admin_token');
+    try {
+      if (token) {
+        await axios.post(`${API_URL}/admin/logout`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      }
+    } catch {
+      // Phiên đã hết hạn cũng được coi là đăng xuất thành công ở trình duyệt.
+    } finally {
+      clearSession();
+    }
+  };
+
+  if (checkingSession) {
+    return <div className="flex min-h-screen items-center justify-center bg-[#0B0F19] text-sm text-slate-400">Đang xác thực phiên quản trị…</div>;
+  }
+
+  if (!isLoggedIn) {
+    return <LoginScreen onLogin={authenticatedUser => {
+      setUser(authenticatedUser || savedAdmin());
+      setIsLoggedIn(true);
+    }} />;
+  }
+
+  return <AdminShell user={user} onLogout={logout} onSessionExpired={clearSession} />;
+}
+
+function AdminShell({ user, onLogout, onSessionExpired }) {
+  const [groups, setGroups] = useState([]);
+  const [groupsLoaded, setGroupsLoaded] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [toast, setToast] = useState(null);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  const selectedGroupId = searchParams.get(GROUP_PARAM) || 'ALL';
+
+  /** Đổi nhóm là đổi URL. `replace` để nút Quay lại không kẹt ở từng lần đổi nhóm. */
+  const setSelectedGroupId = useCallback(value => {
+    setSearchParams(previous => {
+      const next = new URLSearchParams(previous);
+      if (!value || value === 'ALL') next.delete(GROUP_PARAM);
+      else next.set(GROUP_PARAM, value);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
+  const showToast = useCallback(message => {
+    setToast(message);
+    window.setTimeout(() => setToast(null), 3000);
+  }, []);
+
+  useEffect(() => {
+    const requestInterceptor = axios.interceptors.request.use(config => {
+      const token = localStorage.getItem('admin_token');
+      if (token) config.headers.Authorization = `Bearer ${token}`;
+      return config;
+    });
+    const responseInterceptor = axios.interceptors.response.use(
+      response => response,
+      error => {
+        if (error.response?.status === 401) onSessionExpired();
+        return Promise.reject(error);
+      }
+    );
+    return () => {
+      axios.interceptors.request.eject(requestInterceptor);
+      axios.interceptors.response.eject(responseInterceptor);
+    };
+  }, [onSessionExpired]);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const response = await axios.get(`${API_URL}/groups`);
+      setGroups(response.data);
+    } catch (error) {
+      console.error('Không tải được danh sách nhóm:', error);
+      showToast('❌ Không tải được danh sách nhóm.');
+    } finally {
+      setGroupsLoaded(true);
+    }
+  }, [showToast]);
+
+  useEffect(() => {
+    const requestId = window.setTimeout(fetchGroups, 0);
+    return () => window.clearTimeout(requestId);
+  }, [fetchGroups]);
+
+  const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const displayGroups = useMemo(() => {
+    const assignedGroupIds = user?.assigned_groups || [];
+    return isSuperAdmin
+      ? groups
+      : groups.filter(group => assignedGroupIds.includes(group.telegram_group_id));
+  }, [groups, isSuperAdmin, user?.assigned_groups]);
+  const showWarehouse = isSuperAdmin || displayGroups.some(group => group.bot_role === 'warehouse');
+
+  /** Giữ nguyên chữ ký cũ: DashboardTab vẫn gọi onNavigate('checkins'). */
+  const navigateTo = useCallback(tab => {
+    const path = PATH_BY_ID[tab] || PATH_BY_ID.dashboard;
+    // Mang theo nhóm đang lọc để đổi màn hình không mất bộ lọc.
+    const query = searchParams.toString();
+    navigate(query ? `${path}?${query}` : path);
+    setMobileSidebarOpen(false);
+  }, [navigate, searchParams]);
+
+  const updateGroupSettings = async (telegramGroupId, settings) => {
+    try {
+      await axios.put(`${API_URL}/tk_group_settings/${telegramGroupId}`, settings);
+      showToast('✅ Đã cập nhật cài đặt nhóm.');
+      await fetchGroups();
+    } catch (error) {
+      showToast(`❌ Không thể cập nhật nhóm: ${error.response?.data?.error || error.message}`);
+      throw error;
+    }
+  };
+
+  const deleteGroup = async telegramGroupId => {
+    if (!window.confirm('Bạn có chắc muốn xóa nhóm này khỏi hệ thống?')) return;
+    try {
+      await axios.delete(`${API_URL}/groups/${telegramGroupId}`);
+      if (String(selectedGroupId) === String(telegramGroupId)) setSelectedGroupId('ALL');
+      showToast('✅ Đã xóa nhóm.');
+      await fetchGroups();
+    } catch (error) {
+      showToast(`❌ Không thể xóa nhóm: ${error.response?.data?.error || error.message}`);
+    }
+  };
+
+  const navItems = TABS.filter(tab =>
+    (!tab.needsWarehouse || showWarehouse) && (!tab.needsSuperAdmin || isSuperAdmin));
+
+  /**
+   * Chặn vào màn hình không đủ quyền bằng đường dẫn trực tiếp.
+   *
+   * Phải chờ danh sách nhóm tải xong mới xét: lúc đầu `groups` còn rỗng nên
+   * `showWarehouse` là false, xét sớm sẽ đá nhầm người có quyền ra khỏi /kho.
+   */
+  const guard = allowed => {
+    if (!groupsLoaded) return null;
+    return allowed ? null : <Navigate to={PATH_BY_ID.dashboard} replace />;
+  };
+
+  const shell = (
+    <AdminLayout
+      user={user}
+      isSuperAdmin={isSuperAdmin}
+      navItems={navItems}
+      displayGroups={displayGroups}
+      selectedGroupId={selectedGroupId}
+      onSelectGroup={setSelectedGroupId}
+      onNavigate={navigateTo}
+      onLogout={onLogout}
+      mobileSidebarOpen={mobileSidebarOpen}
+      setMobileSidebarOpen={setMobileSidebarOpen}
+      toast={toast}
+    />
+  );
+
+  return (
+    <Routes>
+      <Route element={shell}>
+        <Route index element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
+        <Route path="/dashboard" element={<DashboardTab selectedGroupId={selectedGroupId} onNavigate={navigateTo} />} />
+        <Route path="/nhan-su" element={<StaffManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/diem-danh" element={<CheckinManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/lich-lam-viec" element={<ScheduleManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/nghi-phep" element={<LeaveManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/kho/*" element={guard(showWarehouse) ?? <WarehouseManagement />} />
+        <Route path="/cau-hinh" element={<SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />} />
+        <Route path="/tai-khoan" element={guard(isSuperAdmin) ?? <AdminManagement groups={groups} />} />
+        {/* Đường dẫn lạ hoặc link cũ đều về Tổng quan thay vì trang trắng. */}
+        <Route path="*" element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
+      </Route>
+    </Routes>
+  );
+}
+
+function AdminLayout({
+  user, isSuperAdmin, navItems, displayGroups, selectedGroupId, onSelectGroup,
+  onNavigate, onLogout, mobileSidebarOpen, setMobileSidebarOpen, toast
+}) {
+  const activeTab = useActiveTabId();
+
+  return (
+    <div className="flex min-h-screen bg-[#0B0F19] font-sans text-slate-200 selection:bg-cyan-500/30">
+      {mobileSidebarOpen && <button type="button" aria-label="Đóng menu" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden" />}
+
+      <aside className={`fixed inset-y-0 left-0 z-40 flex h-screen w-72 flex-col border-r border-white/5 bg-[#111827]/95 backdrop-blur-xl transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex items-center justify-between border-b border-white/5 p-6 md:p-8">
+          <div className="flex items-center gap-3">
+            <div className="rounded-xl bg-gradient-to-br from-cyan-400 to-blue-600 p-2 shadow-lg shadow-cyan-500/20"><Zap className="h-6 w-6 text-white" /></div>
+            <h1 className="bg-gradient-to-r from-white to-slate-400 bg-clip-text text-2xl font-bold text-transparent">KPI Master</h1>
+          </div>
+          <button type="button" onClick={() => setMobileSidebarOpen(false)} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white md:hidden" aria-label="Đóng menu"><X className="h-5 w-5" /></button>
+        </div>
+
+        <nav className="flex-1 space-y-2 overflow-y-auto px-4 py-6">
+          {navItems.map(item => <NavItem key={item.id} {...item} active={activeTab === item.id} onClick={() => onNavigate(item.id)} />)}
+        </nav>
+
+        <div className="m-4 p-4">
+          <button type="button" onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 py-2.5 text-sm font-medium text-rose-400 hover:bg-rose-500/20">
+            <LogOut className="h-4 w-4" />Đăng xuất
+          </button>
+        </div>
+      </aside>
+
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-20 flex min-h-20 items-center justify-between gap-3 border-b border-white/5 bg-[#0B0F19]/90 px-4 py-3 backdrop-blur-md sm:px-6 lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button type="button" onClick={() => setMobileSidebarOpen(true)} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white md:hidden" aria-label="Mở menu"><Menu className="h-6 w-6" /></button>
+            {activeTab !== 'warehouse' && <div className="flex min-w-0 items-center gap-2 rounded-full border border-white/10 bg-[#111827] px-3 py-2 sm:px-4">
+              <Users className="h-4 w-4 shrink-0 text-cyan-400" />
+              <select value={selectedGroupId} onChange={event => onSelectGroup(event.target.value)} className="max-w-[145px] cursor-pointer truncate border-none bg-transparent text-xs font-medium text-white outline-none sm:max-w-[280px] sm:text-sm">
+                <option value="ALL" className="bg-[#111827]">Tất cả nhóm ({displayGroups.length})</option>
+                {displayGroups.map(group => <option key={group.telegram_group_id} value={group.telegram_group_id} className="bg-[#111827]">{group.group_name || `Nhóm ${group.telegram_group_id}`}</option>)}
+              </select>
+            </div>}
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-semibold text-white">{user?.full_name || user?.username || 'Admin'}</p>
+              <p className="text-xs font-medium text-cyan-400">{isSuperAdmin ? 'Super Admin' : 'Admin'}</p>
+            </div>
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-tr from-cyan-500 to-blue-500 text-xs font-bold text-white">{user?.username?.slice(0, 2)?.toUpperCase() || 'AD'}</div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+          <h1 className="sr-only">{TABS.find(tab => tab.id === activeTab)?.label || 'Tổng quan'}</h1>
+          <Outlet />
+        </div>
+      </main>
+
+      {toast && <div className="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border border-cyan-500/30 bg-[#111827] px-5 py-3 text-sm font-medium text-white shadow-2xl shadow-cyan-500/20">{toast}</div>}
+    </div>
+  );
+}
+
+/**
+ * Mục menu nào đang sáng, suy từ đường dẫn hiện tại.
+ *
+ * Phải dùng useLocation chứ không phải window.location: đọc thẳng window thì
+ * React không biết đường dẫn đã đổi, ô menu sẽ đứng yên ở mục cũ.
+ */
+function useActiveTabId() {
+  const { pathname } = useLocation();
+  const match = TABS.find(tab => pathname === tab.path || pathname.startsWith(`${tab.path}/`));
+  return match?.id || 'dashboard';
+}
+
+function NavItem({ icon: Icon, label, active, onClick }) {
+  return (
+    <button type="button" onClick={onClick} className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left font-medium transition ${active ? 'border-cyan-500/20 bg-gradient-to-r from-cyan-500/10 to-blue-500/5 text-cyan-400' : 'border-transparent text-slate-400 hover:bg-white/5 hover:text-white'}`}>
+      <Icon className={`h-5 w-5 ${active ? 'text-cyan-400' : 'text-slate-500'}`} />{label}
+    </button>
+  );
+}

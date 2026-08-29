@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import {
     effectiveShiftForRequest,
     snapshotSchedule
-} from '../leave-request-service.js';
+} from '../application/leave-request-service.js';
 
 test('maps immediate leave request types to the effective schedule', () => {
     assert.equal(effectiveShiftForRequest('FULL_DAY'), 'OFF');
@@ -32,10 +32,7 @@ test('captures enough schedule state to restore after rejection', () => {
 });
 
 test('new requests are auto-accepted and group notification only exposes reject', () => {
-    const source = fs.readFileSync(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url), 'utf8');
-    const routeStart = source.indexOf("botApp.post('/api/timekeep/leave-request/save'");
-    const routeEnd = source.indexOf("botApp.post('/api/timekeep/checkin/save'", routeStart);
-    const route = source.slice(routeStart, routeEnd);
+    const route = fs.readFileSync(new URL('../application/save-leave-request.js', import.meta.url), 'utf8');
 
     assert.match(route, /createAutoAcceptedLeaveRequest\(\{/);
     assert.match(route, /ĐƠN ĐÃ ĐƯỢC TỰ ĐỘNG CHẤP NHẬN/);
@@ -44,9 +41,9 @@ test('new requests are auto-accepted and group notification only exposes reject'
 });
 
 test('only APPROVED requests affect absence and late penalty rules', () => {
-    const attendance = fs.readFileSync(new URL('../attendance-penalties.js', import.meta.url), 'utf8');
-    const bot = fs.readFileSync(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url), 'utf8');
+    const penaltyRepo = fs.readFileSync(new URL('../infrastructure/postgres/penalty-repository.js', import.meta.url), 'utf8');
+    const attendanceCronRepo = fs.readFileSync(new URL('../infrastructure/postgres/attendance-cron-repository.js', import.meta.url), 'utf8');
 
-    assert.match(attendance, /UPPER\(r\.status\) = 'APPROVED'/);
-    assert.match(bot, /request_type = 'LATE'[\s\S]{0,120}status = 'APPROVED'/);
+    assert.match(penaltyRepo, /UPPER\(r\.status\) = 'APPROVED'/);
+    assert.match(attendanceCronRepo, /request_type = 'LATE'[\s\S]{0,120}status = 'APPROVED'/);
 });

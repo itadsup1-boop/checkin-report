@@ -23,6 +23,7 @@ import { createTransferRepository } from '../infrastructure/postgres/transfer-re
 import { createOutboxRepository } from '../infrastructure/postgres/outbox-repository.js';
 import { createOrderRepository } from '../infrastructure/postgres/order-repository.js';
 import { createCatalogRepository } from '../infrastructure/postgres/catalog-repository.js';
+import { createPricingRepository } from '../infrastructure/postgres/pricing-repository.js';
 
 import { createTransactionRunner } from './_shared/with-transaction.js';
 import { createActorContextResolver } from './_shared/actor-context.js';
@@ -34,6 +35,7 @@ import { createCreateCustomerOrderUseCase } from './create-customer-order.js';
 import { createRejectOrderUseCase } from './reject-order.js';
 import { createRollbackOrderUseCase } from './rollback-order.js';
 import { createSuggestCustomerUseCase } from './suggest-customer.js';
+import { createCreateStockTransferUseCase } from './create-stock-transfer.js';
 
 export function createWarehouseOrderService({ pool, adminIds = [] }) {
     // Tầng hạ tầng: nơi duy nhất được viết SQL.
@@ -44,6 +46,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
     const outboxRepo = createOutboxRepository(pool);
     const orderRepo = createOrderRepository(pool);
     const catalogRepo = createCatalogRepository(pool);
+    const pricingRepo = createPricingRepository(pool);
 
     // Phần dùng chung giữa các use case.
     const withTransaction = createTransactionRunner(pool);
@@ -52,7 +55,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
     const orderGraph = createOrderGraphBuilder({ catalogRepo });
 
     const chung = {
-        repository, orderRepo, inventoryRepo, ledgerRepo, transferRepo, outboxRepo,
+        repository, orderRepo, inventoryRepo, ledgerRepo, transferRepo, outboxRepo, pricingRepo,
         availability, actorContext, withTransaction
     };
 
@@ -69,6 +72,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
     const { rejectOrder, rejectOrderAsAdmin } = createRejectOrderUseCase(chung);
     const { reverseOrder } = createRollbackOrderUseCase(chung);
     const { suggestCustomer } = createSuggestCustomerUseCase({ pool, catalogRepo });
+    const { createStockTransfer } = createCreateStockTransferUseCase({ ...chung, catalogRepo });
 
     return {
         repository,
@@ -79,6 +83,7 @@ export function createWarehouseOrderService({ pool, adminIds = [] }) {
         rejectOrderAsAdmin,
         reverseOrder,
         suggestCustomer,
+        createStockTransfer,
         authorizeActor: actorContext.authorizeActor
     };
 }

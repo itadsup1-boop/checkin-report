@@ -70,16 +70,21 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
         app[method] = (path, handler) => routes.set(`${method.toUpperCase()} ${path}`, handler);
     }
     registerWarehouseAdminRoutes({ app, pool });
-    const headers = { 'x-admin-id': 'super-admin-id', 'x-admin-role': 'SUPER_ADMIN' };
+    const admin = {
+        id: 'super-admin-id',
+        role: 'SUPER_ADMIN',
+        isSuperAdmin: true,
+        allowedGroupIds: []
+    };
     const readCases = [
-        ['GET /api/admin/warehouse/services', { headers, query: {} }, 'services'],
-        ['GET /api/admin/warehouse/products', { headers, query: {} }, 'products'],
-        ['GET /api/admin/warehouse/products/audit', { headers, query: {} }, 'audit'],
-        [`GET /api/admin/warehouse/groups/:groupId/permissions`, { headers, params: { groupId } }, 'employees'],
-        [`GET /api/admin/warehouse/groups/:groupId/permission-audit`, { headers, params: { groupId } }, 'audit'],
-        [`GET /api/admin/warehouse/groups/:groupId/orders`, { headers, params: { groupId } }, 'orders'],
-        [`GET /api/admin/warehouse/groups/:groupId/ledger`, { headers, params: { groupId }, query: {} }, 'ledger'],
-        [`GET /api/admin/warehouse/groups/:groupId/outbox`, { headers, params: { groupId } }, 'events']
+        ['GET /api/admin/warehouse/services', { admin, query: {} }, 'services'],
+        ['GET /api/admin/warehouse/products', { admin, query: {} }, 'products'],
+        ['GET /api/admin/warehouse/products/audit', { admin, query: {} }, 'audit'],
+        [`GET /api/admin/warehouse/groups/:groupId/permissions`, { admin, params: { groupId } }, 'employees'],
+        [`GET /api/admin/warehouse/groups/:groupId/permission-audit`, { admin, params: { groupId } }, 'audit'],
+        [`GET /api/admin/warehouse/groups/:groupId/orders`, { admin, params: { groupId } }, 'orders'],
+        [`GET /api/admin/warehouse/groups/:groupId/ledger`, { admin, params: { groupId }, query: {} }, 'ledger'],
+        [`GET /api/admin/warehouse/groups/:groupId/outbox`, { admin, params: { groupId } }, 'events']
     ];
 
     for (const [routeKey, req, arrayKey] of readCases) {
@@ -102,7 +107,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
     const updateProduct = routes.get('PUT /api/admin/warehouse/products/:productId');
     const decimalModeResponse = createResponse();
     await updateProduct({
-        headers,
+        admin,
         params: { productId: catalogProductId },
         body: { quantity_mode: 'DECIMAL' }
     }, decimalModeResponse);
@@ -111,7 +116,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
 
     const createResponseValue = createResponse();
     await routes.get('POST /api/admin/warehouse/services')({
-        headers,
+        admin,
         body: {
             service_code: `ADMIN_${String(Date.now()).slice(-10)}`,
             service_name: `Dịch vụ mẫu ${suffix}`
@@ -124,7 +129,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
     const replaceTemplate = routes.get('PUT /api/admin/warehouse/services/:serviceId/products');
     const addResponse = createResponse();
     await replaceTemplate({
-        headers,
+        admin,
         params: { serviceId: catalogServiceId },
         body: { items: [{ product_id: catalogProductId, default_quantity: 1.2 }] }
     }, addResponse);
@@ -139,7 +144,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
 
     const rejectIntegerMode = createResponse();
     await updateProduct({
-        headers,
+        admin,
         params: { productId: catalogProductId },
         body: { quantity_mode: 'INTEGER' }
     }, rejectIntegerMode);
@@ -147,7 +152,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
 
     const removeResponse = createResponse();
     await replaceTemplate({
-        headers,
+        admin,
         params: { serviceId: catalogServiceId },
         body: { items: [] }
     }, removeResponse);
@@ -162,7 +167,7 @@ test('các truy vấn đọc Warehouse Admin chạy được trên schema thật
 
     const integerModeResponse = createResponse();
     await updateProduct({
-        headers,
+        admin,
         params: { productId: catalogProductId },
         body: { quantity_mode: 'INTEGER' }
     }, integerModeResponse);

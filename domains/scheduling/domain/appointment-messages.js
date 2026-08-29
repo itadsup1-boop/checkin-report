@@ -233,4 +233,22 @@ export const cancelReasonKeyboard = id => ({
     ]
 });
 
+/** Báo vào nhóm khi ảnh chứng thực vừa được nộp — dùng chung Mini App và reply Telegram. */
+export function buildProofReceivedCaption(apt) {
+    const timeStr = timeOf(apt.appointment_time);
+    return `📸 <b>ĐÃ NHẬN ẢNH BẰNG CHỨNG</b> 📸\n\n` +
+        `👤 Khách hàng: <b>${apt.customer_name}</b> (Lúc ${timeStr})\n` +
+        `💼 KTV: <b>${apt.employee_name}</b>\n\n` +
+        `✅ <i>Đã lưu ảnh vào hệ thống thành công!</i>`;
+}
+
+/** Reply riêng cho luồng nộp ảnh bằng cách trả lời trực tiếp tin nhắn Telegram. */
+export function buildProofReceivedReply(apt) {
+    const timeStr = timeOf(apt.appointment_time);
+    return `✅ <b>ĐÃ LƯU ẢNH CHỨNG THỰC (TỪ TELEGRAM)</b> ✅\n\n` +
+        `👤 Khách hàng: <b>${apt.customer_name}</b> (Lúc ${timeStr})\n` +
+        `💼 KTV: <b>${apt.employee_name}</b>\n\n` +
+        `<i>Ảnh đã được tự động đồng bộ vào kho dữ liệu và Google Sheet!</i>`;
+}
+
 export { timeOf, dateOf };

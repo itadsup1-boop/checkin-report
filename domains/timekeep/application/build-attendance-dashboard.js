@@ -16,8 +16,11 @@ const EMPTY_STATS = {
 };
 
 export function createBuildAttendanceDashboard({ repository }) {
-    return async function buildAttendanceDashboard(groupIdParam) {
-        const groups = await repository.listGroups();
+    return async function buildAttendanceDashboard(groupIdParam, allowedTelegramGroupIds = null) {
+        const allAvailableGroups = await repository.listGroups();
+        const groups = allowedTelegramGroupIds === null
+            ? allAvailableGroups
+            : allAvailableGroups.filter(group => allowedTelegramGroupIds.map(String).includes(String(group.telegram_group_id)));
         if (groups.length === 0) {
             return { ok: true, payload: { groups: [], group: null, today: getTodayVN(), employees: [], stats: EMPTY_STATS } };
         }
@@ -34,7 +37,10 @@ export function createBuildAttendanceDashboard({ repository }) {
         const today = getTodayVN();
         const { start: weekStart, end: weekEnd } = getIsoWeekRangeVN();
 
-        const rows = await repository.listEmployeesOfDay(targetGroup?.id || null, today);
+        const scopedGroupIds = targetGroup
+            ? targetGroup.id
+            : (allowedTelegramGroupIds === null ? null : groups.map(group => group.id));
+        const rows = await repository.listEmployeesOfDay(scopedGroupIds, today);
         const employees = rows.map(row => ({
             user_id: row.user_id,
             full_name: row.full_name,
@@ -53,7 +59,7 @@ export function createBuildAttendanceDashboard({ repository }) {
             })
         }));
 
-        const weekly = await repository.weeklyStats(targetGroup?.id || null, weekStart, weekEnd);
+        const weekly = await repository.weeklyStats(scopedGroupIds, weekStart, weekEnd);
         const totalCheckins = parseInt(weekly.total_checkins) || 0;
         const weeklyLateCount = parseInt(weekly.late_count) || 0;
         const weeklyOnTimeCount = totalCheckins - weeklyLateCount;

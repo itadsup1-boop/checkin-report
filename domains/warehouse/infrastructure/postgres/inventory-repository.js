@@ -52,6 +52,20 @@ export function createInventoryRepository(pool) {
         return result.rowCount === 1;
     }
 
+    /**
+     * Cộng tồn — dùng khi hàng THẬT nằm lại một cơ sở: nhập kho, và chuyển kho ở
+     * đầu nhận. Khác với điều chuyển "dùng ngay" cho khách (approve-order.js),
+     * nơi cơ sở đích không thực sự nhận hàng nên không gọi hàm này.
+     */
+    async function increase(db, productId, branch, quantity) {
+        await db.query(
+            `UPDATE tk_inventory
+             SET quantity = quantity + $3, updated_at = NOW()
+             WHERE product_id = $1 AND branch = $2`,
+            [productId, branch, quantity]
+        );
+    }
+
     /** Đọc và khóa đúng một dòng tồn, dùng khi hoàn tác đơn. */
     async function getForUpdate(db, productId, branch) {
         const result = await db.query(
@@ -78,6 +92,7 @@ export function createInventoryRepository(pool) {
         ensureBranchRows,
         listStocks,
         deduct,
+        increase,
         getForUpdate,
         setQuantity
     };

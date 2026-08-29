@@ -2,9 +2,13 @@ import { registerWarehouseHttpRoutes } from './interfaces/miniapp-api/register-w
 import { createWarehouseImageReceiver } from './interfaces/miniapp-api/warehouse-image-upload.js';
 import { createWarehouseSheetSync } from './infrastructure/google-sheet/google-sheets.js';
 import { createServiceOrderSheetSync } from './infrastructure/google-sheet/service-order-sheet-sync.js';
+import { createPricingSheetSync } from './infrastructure/google-sheet/pricing-sheet-sync.js';
 import { startWarehouseOutboxWorker } from './infrastructure/outbox/outbox-worker.js';
 import { registerWarehouseTelegramHandlers } from './interfaces/telegram/register-warehouse-handlers.js';
 import { createWarehouseOrderService } from './application/warehouse-order-service.js';
+import { createSetProductPriceUseCase } from './application/set-product-price.js';
+import { createPricingRepository } from './infrastructure/postgres/pricing-repository.js';
+import { createTransactionRunner } from './application/_shared/with-transaction.js';
 
 /**
  * Cổng vào công khai DUY NHẤT của domain kho.
@@ -65,10 +69,22 @@ export function registerWarehouseModule(dependencies) {
         moment,
         getDocById
     });
+    const pricingSheetSync = createPricingSheetSync({
+        pool,
+        moment,
+        getDocById
+    });
     const warehouseOrderService = createWarehouseOrderService({
         pool,
         adminIds: process.env.ADMIN_IDS
     });
+    const pricingRepo = createPricingRepository(pool);
+    const setProductPrice = createSetProductPriceUseCase({
+        pool,
+        pricingRepo,
+        withTransaction: createTransactionRunner(pool),
+        sheetSync: pricingSheetSync
+    }).setProductPrice;
     const receiveWarehouseImages = dependencies.receiveWarehouseImages
         || createWarehouseImageReceiver({
             uploadDir: dependencies.warehouseTempUploadDir
@@ -78,6 +94,8 @@ export function registerWarehouseModule(dependencies) {
         ...dependencies,
         receiveWarehouseImages,
         warehouseOrderService,
+        pricingRepo,
+        setProductPrice,
         syncWarehouseSheets: sheetSync.syncWarehouseSheets
     });
 

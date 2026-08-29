@@ -19,7 +19,7 @@ import { roundQuantity } from '../domain/quantity-rules.js';
 import { makeCode } from './_shared/codes.js';
 
 export function createApproveOrderUseCase({
-    repository, orderRepo, inventoryRepo, ledgerRepo, transferRepo, outboxRepo,
+    repository, orderRepo, inventoryRepo, ledgerRepo, transferRepo, outboxRepo, pricingRepo,
     availability: availabilityService, actorContext: actorContextResolver, withTransaction
 }) {
     const { getAvailability } = availabilityService;
@@ -147,6 +147,10 @@ export function createApproveOrderUseCase({
             // Bước 3: ghi lại từng dòng hàng lấy bao nhiêu tại chỗ, bao nhiêu lấy bù.
             let remainingLocal = localDeduct;
             const productItems = activeItems.filter(item => item.product_id === allocation.product_id);
+            // Giá tại thời điểm duyệt — NULL nếu kế toán chưa từng nhập giá cho
+            // sản phẩm này. Không chặn duyệt đơn; phần thiếu sẽ được vá lại tự
+            // động khi có giá đầu tiên (xem set-product-price.js).
+            const priceSnapshot = pricingRepo ? await pricingRepo.snapshotPriceForApproval(client, allocation.product_id) : null;
             for (const item of productItems) {
                 const quantity = Number(item.actual_quantity);
                 const itemLocal = Math.min(quantity, remainingLocal);
@@ -157,11 +161,15 @@ export function createApproveOrderUseCase({
                     transferQuantity: itemTransfer,
                     transferFromBranch: itemTransfer > 0 ? otherBranch : null
                 });
+                if (priceSnapshot !== null) {
+                    await pricingRepo.setOrderItemPriceSnapshot(client, item.id, priceSnapshot);
+                }
             }
         }
 
         // Bước 4: chốt trạng thái và xếp việc báo Telegram + ghi Sheet vào hàng đợi.
         await orderRepo.markApproved(client, order.id, actor);
+        if (pricingRepo) await pricingRepo.recomputeOrderTotal(client, order.id);
         await outboxRepo.enqueue(client, order.id, 'ORDER_APPROVED', {
             has_transfer: requiresTransfer
         });

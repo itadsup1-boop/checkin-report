@@ -14,7 +14,7 @@ export function registerTimekeepScheduleRoutes({ botApp, manageSchedules, syncSh
 
     botApp.put('/api/admin/schedules/:id', async (req, res) => {
         try {
-            const outcome = await manageSchedules.updateShift(req.params.id, req.body.shift_type);
+            const outcome = await manageSchedules.updateShift(req.params.id, req.body.shift_type, req.admin);
             if (!outcome.ok) return fail(res, outcome);
             res.json({ success: true, data: outcome.data });
         } catch (error) {
@@ -28,7 +28,8 @@ export function registerTimekeepScheduleRoutes({ botApp, manageSchedules, syncSh
             const outcome = await manageSchedules.createSchedule({
                 userId: req.body.user_id,
                 date: req.body.date,
-                shiftType: req.body.shift_type
+                shiftType: req.body.shift_type,
+                admin: req.admin
             });
             if (!outcome.ok) return fail(res, outcome);
             res.json({ success: true, data: outcome.data });
@@ -40,7 +41,7 @@ export function registerTimekeepScheduleRoutes({ botApp, manageSchedules, syncSh
 
     botApp.delete('/api/admin/schedules/:id', async (req, res) => {
         try {
-            const outcome = await manageSchedules.deleteSchedule(req.params.id);
+            const outcome = await manageSchedules.deleteSchedule(req.params.id, req.admin);
             if (!outcome.ok) return fail(res, outcome);
             res.json({ success: true });
         } catch (error) {
@@ -51,6 +52,9 @@ export function registerTimekeepScheduleRoutes({ botApp, manageSchedules, syncSh
 
     botApp.post('/api/admin/timekeep/sync-sheet', async (req, res) => {
         try {
+            if (!req.admin.isSuperAdmin) {
+                return res.status(403).json({ success: false, message: 'Chỉ Super Admin được đồng bộ toàn bộ Sheet.' });
+            }
             res.json(await syncSheets());
         } catch (e) {
             res.status(500).json({ success: false, message: e.message });

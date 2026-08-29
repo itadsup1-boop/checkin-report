@@ -139,9 +139,50 @@ export function createLedgerRepository(pool) {
         );
     }
 
+    /**
+     * Bút toán chuyển kho THẬT — khác `recordTransferExport` ở chỗ hàng thực sự
+     * nằm lại cơ sở đích (không có bước CUSTOMER_EXPORT tiêu thụ ngay, không đánh
+     * dấu `virtual_balance`). Ghi cả hai đầu trong một câu lệnh để không lệch sổ
+     * nếu nửa chừng lỗi.
+     */
+    async function recordStockTransfer(db, {
+        transferId, groupId, productId, fromBranch, toBranch, quantity,
+        fromBalanceBefore, fromBalanceAfter, toBalanceBefore, toBalanceAfter, actor
+    }) {
+        await db.query(
+            `INSERT INTO tk_warehouse_ledger
+                (event_key, event_type, transfer_id, group_id, product_id,
+                 branch, quantity_delta, balance_before, balance_after,
+                 actor_employee_id, actor_telegram_id, metadata)
+             VALUES
+                ($1, 'TRANSFER_OUT', $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb),
+                ($12, 'TRANSFER_IN', $2, $3, $4, $13, $14, $15, $16, $9, $10, $17::jsonb)`,
+            [
+                `${transferId}:${productId}:transfer-out`,
+                transferId,
+                groupId,
+                productId,
+                fromBranch,
+                -quantity,
+                fromBalanceBefore,
+                fromBalanceAfter,
+                actor.employeeId,
+                actor.telegramId,
+                JSON.stringify({ to_branch: toBranch }),
+                `${transferId}:${productId}:transfer-in`,
+                toBranch,
+                quantity,
+                toBalanceBefore,
+                toBalanceAfter,
+                JSON.stringify({ from_branch: fromBranch })
+            ]
+        );
+    }
+
     return {
         recordLocalExport,
         recordTransferExport,
+        recordStockTransfer,
         listPhysicalMovements,
         recordReversal
     };

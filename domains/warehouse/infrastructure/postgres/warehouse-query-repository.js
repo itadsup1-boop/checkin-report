@@ -4,7 +4,7 @@ export function createWarehouseQueryRepository(pool) {
     async function getActiveGroup(chatId, db = pool) {
         const result = await db.query(
             `SELECT id, telegram_group_id, group_name, bot_role,
-                    warehouse_service_order_enabled
+                    warehouse_service_order_enabled, pricing_sheet_id
              FROM telegram_groups
              WHERE telegram_group_id = $1
                AND bot_role = 'warehouse'
@@ -99,7 +99,7 @@ export function createWarehouseQueryRepository(pool) {
     async function getWarehouseGroupById(groupId, db = pool) {
         const result = await db.query(
             `SELECT id, telegram_group_id, group_name, bot_role,
-                    warehouse_service_order_enabled
+                    warehouse_service_order_enabled, pricing_sheet_id
              FROM telegram_groups
              WHERE id = $1 AND bot_role = 'warehouse'
                AND is_active = TRUE AND COALESCE(is_deleted, FALSE) = FALSE
@@ -258,6 +258,33 @@ export function createWarehouseQueryRepository(pool) {
         };
     }
 
+    /** Chi tiết phiếu chuyển kho (transfer_type = 'RESTOCK'), để trả về sau khi tạo. */
+    async function getStockTransferDetail(transferId, db = pool) {
+        const result = await db.query(
+            `SELECT t.id, t.transfer_code, t.from_branch, t.to_branch, t.status,
+                    t.transfer_type, t.confirmed_at, t.confirmed_by, t.telegram_group_id,
+                    COALESCE(
+                        JSON_AGG(
+                            JSON_BUILD_OBJECT(
+                                'product_id', ti.product_id,
+                                'product_name', p.product_name,
+                                'barcode', p.barcode,
+                                'quantity', ti.quantity
+                            )
+                            ORDER BY p.product_name
+                        ) FILTER (WHERE ti.id IS NOT NULL),
+                        '[]'::JSON
+                    ) AS items
+             FROM tk_warehouse_transfers t
+             LEFT JOIN tk_warehouse_transfer_items ti ON ti.transfer_id = t.id
+             LEFT JOIN tk_products p ON p.id = ti.product_id
+             WHERE t.id = $1
+             GROUP BY t.id`,
+            [transferId]
+        );
+        return result.rows[0] || null;
+    }
+
     return {
         getActiveGroup,
         getWarehouseGroupById,
@@ -265,6 +292,7 @@ export function createWarehouseQueryRepository(pool) {
         hasActiveGroupMembership,
         getPermissionSet,
         getBootstrap,
-        getOrderDetail
+        getOrderDetail,
+        getStockTransferDetail
     };
 }

@@ -56,6 +56,18 @@ export function buildApprovedMessage(order, escapeHtml) {
     return message.trim();
 }
 
+/** Thông báo chuyển kho — hàng thực sự nằm lại cơ sở đích, không phải điều chuyển "dùng ngay". */
+export function buildStockTransferMessage(payload, escapeHtml) {
+    let message = `🚚 <b>[CHUYỂN KHO THÀNH CÔNG]</b>\n\n` +
+        `🆔 <b>Mã phiếu:</b> <code>${escapeHtml(payload.transfer_code)}</code>\n` +
+        `🏢 <b>Từ:</b> ${escapeHtml(payload.from_branch)} → <b>Đến:</b> ${escapeHtml(payload.to_branch)}\n\n` +
+        `📦 <b>Danh sách sản phẩm:</b>\n`;
+    (payload.items || []).forEach((item, index) => {
+        message += `${index + 1}. <b>${escapeHtml(item.product_name)}</b>: ${item.quantity}\n`;
+    });
+    return message.trim();
+}
+
 function isTelegramMessageAlreadyUpdated(error) {
     return /message is not modified/i.test(String(error?.description || error?.message || error));
 }
@@ -228,6 +240,21 @@ export function startWarehouseOutboxWorker({
                     console.warn('[Warehouse Import Cleanup]', error.message);
                 }
             }
+            return;
+        }
+
+        if (event.event_type === 'STOCK_TRANSFER_COMPLETED') {
+            const payload = event.payload;
+            const message = buildStockTransferMessage(payload, escapeHtml);
+            const sent = await sendMessageToRoleGroup(
+                bot,
+                payload.telegram_group_id,
+                'warehouse',
+                message,
+                { parse_mode: 'HTML' },
+                'warehouse_stock_transfer_completed'
+            );
+            if (!sent) throw new Error('Không gửi được thông báo chuyển kho');
             return;
         }
 

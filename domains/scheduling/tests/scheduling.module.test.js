@@ -31,6 +31,7 @@ function createHarness() {
     const routes = [];
     const actions = [];
     const crons = [];
+    const photoHandlers = [];
     let queryCount = 0;
 
     const moduleApi = registerSchedulingModule({
@@ -44,8 +45,11 @@ function createHarness() {
         sendMessageToRoleGroup: async () => ({}),
         getGroupRole: async () => 'report_tour',
         schedulePagePath: '/public/schedule.html',
-        kpiComposer: { action(pattern, handler) { actions.push({ pattern: pattern.toString(), handler }); } },
-        syncMakeupToGoogleSheet: async () => {},
+        kpiComposer: {
+            action(pattern, handler) { actions.push({ pattern: pattern.toString(), handler }); },
+            on(event, handler) { photoHandlers.push({ event, handler }); }
+        },
+        getCustomerDocForGroup: async () => null,
         pool: {
             async query() {
                 queryCount += 1;
@@ -66,11 +70,11 @@ function createHarness() {
         publicBaseUrl: 'https://example.test'
     });
 
-    return { routes, actions, crons, queryCount, moduleApi };
+    return { routes, actions, crons, queryCount, moduleApi, photoHandlers };
 }
 function checkPayloadLimit() {}
 
-test('module lịch khách đăng ký đúng 10 endpoint cũ và không chạm database lúc khởi động', () => {
+test('module lịch khách đăng ký đúng 12 endpoint và không chạm database lúc khởi động', () => {
     const harness = createHarness();
 
     assert.deepEqual(
@@ -87,7 +91,10 @@ test('module lịch khách đăng ký đúng 10 endpoint cũ và không chạm d
             'GET /api/schedules/:id',
             'PUT /api/schedules/update',
             'POST /api/schedules/edit',
-            'POST /api/schedules/cancel'
+            'POST /api/schedules/cancel',
+            // Nợ ảnh
+            'GET /api/photo-debts',
+            'POST /api/upload-proof'
         ]
     );
     assert.equal(harness.queryCount, 0);
@@ -125,12 +132,17 @@ test('module đăng ký đúng 6 nút, giữ nguyên callback_data cũ', () => {
     );
 });
 
-test('4 cron lịch khách giữ nguyên giờ chạy', () => {
+test('5 cron lịch khách giữ nguyên giờ chạy', () => {
     const harness = createHarness();
     assert.deepEqual(
         harness.crons.map(job => job.expression),
-        ['2 20 * * *', '0 22 * * *', '0 0 * * *', '* * * * *']
+        ['2 20 * * *', '0 22 * * *', '0 0 * * *', '* * * * *', '*/5 * * * *']
     );
+});
+
+test('module đăng ký handler reply ảnh trực tiếp trên Telegram', () => {
+    const harness = createHarness();
+    assert.deepEqual(harness.photoHandlers.map(h => h.event), ['photo']);
 });
 
 test('ai được duyệt: chính chủ, Quản lý nhóm, hoặc Admin', () => {
@@ -222,12 +234,13 @@ test('kpi_features.js chỉ lắp ghép, không còn khai báo route báo bù tr
     assert.doesNotMatch(source, /TỔNG KẾT LỊCH KHÁCH HÀNG HÔM NAY/);
     assert.doesNotMatch(source, /CHƯA ĐỦ CÔNG TOUR/);
 
-    // CÒN NỢ, cố ý để lại — nằm trong vùng file đang có người sửa dở, tách bây giờ
-    // sẽ đụng công của họ. Ghi ở đây để lần sau biết còn thiếu gì, và để test
-    // không báo sai là "đã xong".
-    assert.match(source, /syncMakeupToGoogleSheetWithRetry/, 'đồng bộ Sheet vẫn phải chạy');
-    assert.match(source, /botApp\.get\('\/api\/photo-debts'/, 'nợ ảnh vẫn ở file này');
-    assert.match(source, /botApp\.post\('\/api\/upload-proof'/, 'tải ảnh vẫn ở file này');
+    // Nợ ảnh + đồng bộ Sheet đã rời khỏi file này — domain không còn "còn nợ" nào.
+    assert.doesNotMatch(source, /syncMakeupToGoogleSheetWithRetry/, 'đồng bộ Sheet đã rời file này');
+    assert.doesNotMatch(source, /botApp\.get\('\/api\/photo-debts'/, 'nợ ảnh đã rời file này');
+    assert.doesNotMatch(source, /botApp\.post\('\/api\/upload-proof'/, 'tải ảnh đã rời file này');
+    assert.doesNotMatch(source, /kpiComposer\.on\('photo'/, 'reply ảnh lịch khách đã rời file này');
+    assert.doesNotMatch(source, /function getCustomerSheetTarget/, 'hàm đồng bộ Sheet đã rời file này');
+    assert.doesNotMatch(source, /function writeToGoogleSheets/, 'hàm đồng bộ Sheet đã rời file này');
 });
 
 test('module phải đăng ký TRƯỚC mọi route /api/schedules còn lại trong kpi_features.js', () => {
@@ -307,6 +320,7 @@ test('đặt lịch trùng khung giờ dưới 1 tiếng bị chặn, trừ lị
         repository: {
             SCHEDULE_NOTIFY_ROLES: ['report', 'report_tour'],
             async findOverlap() { return overlap; },
+            async findActiveByPhoneToday() { return null; },
             async findEmployee() { return { full_name: 'Lan', employee_code: 'NV1' }; },
             async insert() { inserted += 1; return 7; },
             async findUrgentTargetGroups() { return []; }
@@ -324,10 +338,40 @@ test('đặt lịch trùng khung giờ dưới 1 tiếng bị chặn, trừ lị
     assert.match(blocked.error, /Vui lòng chọn giờ cách ít nhất 1 tiếng/);
     assert.equal(inserted, 0, 'lịch trùng không được ghi vào database');
 
-    // Khách đi luôn: khách đã ở đó rồi nên bỏ qua kiểm trùng.
+    // Khách đi luôn: khách đã ở đó rồi nên bỏ qua kiểm trùng KHUNG GIỜ.
     const urgent = await book({ initData, requestedGroupId: '-1001234', form: { ...form, is_urgent: true } });
     assert.equal(urgent.ok, true);
     assert.equal(inserted, 1);
+});
+
+test('lịch đi luôn vẫn bị chặn nếu CÙNG KHÁCH đã có lịch ACTIVE trong ngày', async () => {
+    const existing = {
+        id: 42, employee_name: 'Lan', appointment_time: '2026-08-14T09:00:00Z'
+    };
+    let inserted = 0;
+    const book = createBookAppointmentService({
+        repository: {
+            SCHEDULE_NOTIFY_ROLES: ['report', 'report_tour'],
+            async findOverlap() { throw new Error('không được gọi khi is_urgent = true'); },
+            async findActiveByPhoneToday() { return existing; },
+            async findEmployee() { return { full_name: 'Lan', employee_code: 'NV1' }; },
+            async insert() { inserted += 1; return 99; },
+            async findUrgentTargetGroups() { return []; }
+        },
+        notifier: { async send() {} },
+        getGroupRole: async () => 'report_tour'
+    });
+
+    const initData = 'user=' + encodeURIComponent(JSON.stringify({ id: 111, first_name: 'Lan' }))
+        + '&start_param=schedule_-1001234';
+    const form = {
+        appointment_time: '2026-08-14T14:00:00Z', customer_name: 'Cô Đằm', phone: '55222', is_urgent: true
+    };
+
+    const outcome = await book({ initData, requestedGroupId: '-1001234', form });
+    assert.equal(outcome.ok, false);
+    assert.match(outcome.error, /đã có lịch #42/);
+    assert.equal(inserted, 0, 'không được tạo thêm lịch trùng cho cùng khách');
 });
 
 test('không đặt được lịch chéo nhóm', async () => {
@@ -431,15 +475,17 @@ test('reply ảnh đọc mã lịch mới và vẫn nhận diện được tin n
 });
 
 test('reply ảnh lịch khách nhận cả ACTIVE và luôn giới hạn đúng nhóm', () => {
-    const source = fs.readFileSync(
-        fileURLToPath(new URL('../../../apps/bot/kpi_features.js', import.meta.url)), 'utf8');
-    assert.match(source, /status IN \('ACTIVE', 'ARRIVED'\)/);
-    assert.match(source, /group_id = \$2/);
-    assert.match(source, /SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = \$1/);
-    assert.match(source, /TO_CHAR\(appointment_time, 'HH24:MI'\)/);
-    assert.match(source, /groupRole === 'report'/);
-    assert.match(source, /diff\(moment\(apt\.appointment_time\), 'hours', true\) > 48/);
-    assert.match(source, /canOverride = isAdmin \|\| managerRes\.rows\.length > 0/);
+    const handlerSource = fs.readFileSync(
+        path.join(DOMAIN_DIR, 'interfaces', 'telegram', 'register-photo-reply-handler.js'), 'utf8');
+    assert.match(handlerSource, /groupRole === 'report'/);
+    assert.match(handlerSource, /diff\(moment\(apt\.appointment_time\), 'hours', true\) > 48/);
+    assert.match(handlerSource, /canOverride = isAdmin \|\| await repository\.isManagerOfGroup/);
+
+    const repoSource = fs.readFileSync(
+        path.join(DOMAIN_DIR, 'infrastructure', 'postgres', 'proof-repository.js'), 'utf8');
+    assert.match(repoSource, /status IN \('ACTIVE', 'ARRIVED'\)/);
+    assert.match(repoSource, /SET status = 'ARRIVED', is_photo_debt = FALSE, proof_image = \$1/);
+    assert.match(repoSource, /TO_CHAR\(appointment_time, 'HH24:MI'\)/);
 });
 
 /* ---------- Luật kiến trúc, nhân bản từ domains/warehouse ---------- */

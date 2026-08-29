@@ -22,7 +22,7 @@ export function registerTimekeepRegistrationRoutes({ botApp, registerEmployee, t
             if (!outcome.ok) {
                 return res.status(outcome.status).json({ success: false, message: outcome.message });
             }
-            res.json({ success: true, message: outcome.message });
+            res.json({ success: true, pending: outcome.pending === true, message: outcome.message });
         } catch (error) {
             if (error instanceof TimekeepError) {
                 return res.status(error.status).json({ success: false, message: error.message });

@@ -1,23 +1,49 @@
 /**
- * Use case: nhân sự tự đăng ký tài khoản từ Mini App.
+ * Use case: nhân sự gửi yêu cầu đăng ký tài khoản từ Mini App.
  *
- * Có HAI đường đi khác hẳn nhau, tuỳ vai trò của nhóm:
- *
- *   Nhóm KPI  — một tài khoản nhân viên dùng chung toàn hệ thống, mỗi nhóm là một
- *               "membership" riêng. Đăng ký lại ở nhóm khác KHÔNG tạo bản sao.
- *               Chạy trong transaction + FOR UPDATE để hai lần bấm cùng lúc không
- *               sinh hai hồ sơ.
- *
- *   Nhóm khác — mỗi nhóm một hồ sơ riêng. Đã đăng ký rồi thì từ chối.
+ * Tài khoản Telegram đã được xác minh trước đó có thể đăng ký thêm nhóm KPI.
+ * Mọi tài khoản mới chỉ tạo yêu cầu chờ Admin duyệt; tên chỉ là dữ liệu gợi ý,
+ * tuyệt đối không tự động gắn Telegram vào hồ sơ nhân viên cùng tên.
  */
 
 import { TimekeepError, buildEmployeeCode, checkRegistrationInput } from '../domain/timekeep-rules.js';
 
 export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles, registerInKpiGroup }) {
-    /** Nhóm chưa có trong bảng thì tạo — nhân sự không phải chờ Admin khai báo trước. */
+    const pendingOutcome = {
+        ok: true,
+        pending: true,
+        message: 'Đã gửi yêu cầu đăng ký. Vui lòng chờ Admin xác nhận đúng hồ sơ nhân viên.'
+    };
+
     async function resolveGroup(telegramGroupId) {
         const existing = await repository.findGroup(telegramGroupId);
         return existing || repository.createGroup(telegramGroupId);
+    }
+
+    async function queuePendingRegistration(client, { groupId, data, isKpiGroup }) {
+        const existingPending = await repository.lockPendingByTelegramInGroup(
+            client,
+            data.telegramId,
+            data.telegramGroupId
+        );
+        if (existingPending) return pendingOutcome;
+
+        // Tên chỉ dùng để gợi ý hồ sơ cho Admin; bước này không gắn Telegram ID.
+        const suggestedProfile = await repository.lockUnlinkedByName(client, groupId, data.fullName);
+        if (suggestedProfile) {
+            const queued = await repository.setPendingRegistration(client, suggestedProfile.id, data);
+            if (queued) {
+                await repository.createRegistrationRequest(client, queued, data, { isNewProfile: false });
+                return pendingOutcome;
+            }
+        }
+
+        const pendingEmployee = await repository.insertPendingEmployee(client, groupId, {
+            ...data,
+            employeeCode: buildEmployeeCode(data.telegramId)
+        }, { isKpiGroup });
+        await repository.createRegistrationRequest(client, pendingEmployee, data, { isNewProfile: true });
+        return pendingOutcome;
     }
 
     async function registerInKpiFlow({ groupId, telegramGroupId, data }) {
@@ -25,16 +51,12 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
         try {
             await client.query('BEGIN');
 
-            let employee = await repository.lockGlobalEmployee(client, data.telegramId)
-                || await repository.lockUnlinkedByName(client, groupId, data.fullName);
-
-            if (employee) {
-                employee = await repository.attachTelegramToEmployee(client, employee.id, data);
-            } else {
-                employee = await repository.insertKpiEmployee(client, groupId, {
-                    ...data,
-                    employeeCode: buildEmployeeCode(data.telegramId)
-                });
+            // Đã xác minh bằng chính Telegram ID trước đó: chỉ thêm membership nhóm KPI.
+            const employee = await repository.lockGlobalEmployee(client, data.telegramId);
+            if (!employee) {
+                const outcome = await queuePendingRegistration(client, { groupId, data, isKpiGroup: true });
+                await client.query('COMMIT');
+                return outcome;
             }
 
             const registration = await registerInKpiGroup(client, employee, telegramGroupId, 'mini_app_registration');
@@ -44,9 +66,11 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
             }
 
             await client.query('COMMIT');
-            return { ok: true, message: 'Đăng ký hoạt động KPI trong nhóm thành công!' };
+            return { ok: true, pending: false, message: 'Đăng ký hoạt động KPI trong nhóm thành công!' };
         } catch (error) {
             await client.query('ROLLBACK');
+            // Hai lần gửi đồng thời cùng Telegram/nhóm đều được coi là cùng một yêu cầu.
+            if (error.code === '23505') return pendingOutcome;
             throw error;
         } finally {
             client.release();
@@ -68,29 +92,30 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
         console.log(`[Registration] Nhận yêu cầu đăng ký: ID=${data.telegramId}, Name=${data.fullName}, Role=${data.role}, GroupID=${data.telegramGroupId}`);
 
         const group = await resolveGroup(data.telegramGroupId);
-
         if (kpiGroupRoles.includes(group.bot_role)) {
             return registerInKpiFlow({ groupId: group.id, telegramGroupId: data.telegramGroupId, data });
         }
 
-        const existing = await repository.findByTelegramIdInGroup(group.id, data.telegramId);
-        if (existing) {
-            console.log(`[Registration] Người dùng đã tồn tại trong nhóm, từ chối đăng ký lại. telegram_id=${data.telegramId}, group_id=${group.id}`);
-            return { ok: false, status: 400, message: 'Người dùng đã đăng ký trong nhóm này.' };
-        }
+        const client = await pool.connect();
+        try {
+            await client.query('BEGIN');
 
-        // Ưu tiên gắn vào hồ sơ Admin đã tạo sẵn, tránh tách đôi dữ liệu một người.
-        const unlinked = await repository.findUnlinkedByName(group.id, data.fullName);
-        if (unlinked) {
-            await repository.linkExisting(unlinked.id, data);
-        } else {
-            await repository.insertEmployee(group.id, {
-                ...data,
-                employeeCode: buildEmployeeCode(data.telegramId)
-            });
-        }
+            const existing = await repository.lockByTelegramIdInGroup(client, group.id, data.telegramId);
+            if (existing) {
+                await client.query('ROLLBACK');
+                return { ok: false, status: 400, message: 'Người dùng đã đăng ký trong nhóm này.' };
+            }
 
-        console.log(`[Registration] Thêm mới thành công user: ${data.fullName}`);
-        return { ok: true, message: 'Đăng ký tài khoản thành công!' };
+            const outcome = await queuePendingRegistration(client, { groupId: group.id, data, isKpiGroup: false });
+            await client.query('COMMIT');
+            console.log(`[Registration] Đã tạo yêu cầu chờ Admin duyệt: ${data.fullName}`);
+            return outcome;
+        } catch (error) {
+            await client.query('ROLLBACK');
+            if (error.code === '23505') return pendingOutcome;
+            throw error;
+        } finally {
+            client.release();
+        }
     };
 }

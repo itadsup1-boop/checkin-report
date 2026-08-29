@@ -5,18 +5,19 @@
  * application/, infrastructure/ hay interfaces/ — giống cách domains/warehouse
  * đang làm.
  *
- * Phạm vi: toàn bộ lịch khách của role `report_tour` — đặt lịch, nhắc lịch, xác
- * nhận khách đến/hủy, tổng hợp công tour, và báo bù.
- *
- * Còn nợ (nằm trong vùng file kpi_features.js đang có người sửa dở): nợ ảnh
- * (`/api/photo-debts`, `/api/upload-proof`) và các hàm đồng bộ Google Sheet.
- * Xem mục "Còn nợ" trong README.md.
+ * Phạm vi: toàn bộ lịch khách của role `report`/`report_tour` — đặt lịch, nhắc
+ * lịch, xác nhận khách đến/hủy, tổng hợp công tour, báo bù, nợ ảnh, và đồng bộ
+ * Google Sheet của tất cả các phần trên.
  */
 
 import { createMakeupRepository } from './infrastructure/postgres/makeup-repository.js';
 import { createAppointmentRepository } from './infrastructure/postgres/appointment-repository.js';
+import { createAppointmentReportsRepository } from './infrastructure/postgres/appointment-reports-repository.js';
 import { createCompletionRepository } from './infrastructure/postgres/completion-repository.js';
+import { createProofRepository } from './infrastructure/postgres/proof-repository.js';
+import { createRetryRepository } from './infrastructure/postgres/retry-repository.js';
 import { createProofImageStore } from './infrastructure/storage/proof-image-store.js';
+import { createAppointmentSheetSync } from './infrastructure/google-sheet/appointment-sheet-sync.js';
 import { createMakeupNotifier } from './interfaces/telegram/makeup-notification.js';
 import { createAppointmentNotifier } from './infrastructure/telegram/appointment-notifier.js';
 import { createMakeupRequestService } from './application/create-makeup-request.js';
@@ -26,11 +27,16 @@ import { createManageAppointmentService } from './application/manage-appointment
 import { createConfirmArrivalService } from './application/confirm-arrival.js';
 import { createScheduleReportService } from './application/schedule-reports.js';
 import { createRemindDueAppointments } from './application/remind-due-appointments.js';
+import { createSyncMakeupSheet } from './application/sync-makeup-sheet.js';
+import { createSubmitProofPhoto } from './application/submit-proof-photo.js';
 import { registerMakeupRoutes } from './interfaces/miniapp-api/makeup-routes.js';
 import { registerAppointmentRoutes } from './interfaces/miniapp-api/appointment-routes.js';
+import { registerPhotoDebtRoutes } from './interfaces/miniapp-api/photo-debt-routes.js';
 import { registerMakeupActions } from './interfaces/telegram/register-makeup-actions.js';
 import { registerAppointmentActions } from './interfaces/telegram/register-appointment-actions.js';
+import { registerPhotoReplyHandler } from './interfaces/telegram/register-photo-reply-handler.js';
 import { registerScheduleCrons } from './interfaces/cron/register-schedule-crons.js';
+import { registerRetryCron } from './interfaces/cron/register-retry-cron.js';
 
 /**
  * Lắp chức năng báo bù công tour vào bot.
@@ -65,7 +71,7 @@ export function registerSchedulingModule({
     getImageExtension,
     escapeHtml,
     sendPhotoToRoleGroup,
-    syncMakeupToGoogleSheet,
+    getCustomerDocForGroup,
     fs,
     path,
     moment,
@@ -73,9 +79,19 @@ export function registerSchedulingModule({
     publicBaseUrl,
     cron,
     sendMessageToRoleGroup,
-    getGroupRole
+    getGroupRole,
+    adminIds = ''
 }) {
     const repository = createMakeupRepository({ pool });
+    // Một object duy nhất: cron/báo cáo và luồng đặt/sửa lịch trực tiếp đều gọi
+    // qua `repository.<tên hàm>` như trước, chỉ SQL được chia làm 2 file để mỗi
+    // file giữ dưới 300 dòng — xem appointment-reports-repository.js.
+    const appointments = {
+        ...createAppointmentRepository({ pool }),
+        ...createAppointmentReportsRepository({ pool })
+    };
+    const proofRepository = createProofRepository({ pool });
+    const retryRepository = createRetryRepository({ pool });
 
     const imageStore = createProofImageStore({
         fs, path, isValidImage, getImageExtension, uploadDir, publicBaseUrl
@@ -87,17 +103,22 @@ export function registerSchedulingModule({
         pool, repository, imageStore, notifier, moment
     });
 
+    // Đồng bộ Sheet của lịch khách/báo bù — dùng chung cho duyệt báo bù, nợ ảnh,
+    // và cron quét lại khi lỗi.
+    const sheetSync = createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRole, moment });
+    const { syncMakeupToGoogleSheet } = createSyncMakeupSheet({ retryRepository, sheetSync, moment });
+    const submitProofPhoto = createSubmitProofPhoto({
+        repository: proofRepository, sheetSync, moment, fs, path, uploadDir, publicBaseUrl
+    });
+
     const reviewService = createReviewMakeupService({
         pool,
         repository,
-        // Đồng bộ Sheet vẫn nằm ở kpi_features.js (vùng đang có người sửa dở) nên
-        // truyền vào thay vì import — xem mục "Còn nợ" trong README.
         syncToSheet: syncMakeupToGoogleSheet
     });
 
     /* ---------- Đặt lịch khách ---------- */
 
-    const appointments = createAppointmentRepository({ pool });
     const completionRepository = createCompletionRepository({ pool });
     const appointmentNotifier = createAppointmentNotifier({ bot, sendMessageToRoleGroup });
 
@@ -127,15 +148,29 @@ export function registerSchedulingModule({
         botApp, repository: appointments, bookAppointment, manageService
     });
 
+    registerPhotoDebtRoutes({
+        botApp, authenticateTelegramMiniApp, repository: proofRepository, submitProofPhoto,
+        bot, sendPhotoToRoleGroup
+    });
+
     // kpiComposer là tuỳ chọn: harness test đăng ký route không cần Telegraf.
     if (kpiComposer) {
         registerMakeupActions({ kpiComposer, reviewService });
         registerAppointmentActions({ kpiComposer, confirmService });
+        registerPhotoReplyHandler({
+            kpiComposer, repository: proofRepository, submitProofPhoto, moment, fs, adminIds
+        });
     }
 
     // cron tuỳ chọn vì cùng lý do.
     const scheduledJobs = cron
-        ? registerScheduleCrons({ cron, reportService, remindDueAppointments })
+        ? [
+            ...registerScheduleCrons({ cron, reportService, remindDueAppointments }),
+            registerRetryCron({
+                cron, retryRepository, syncMakeupToGoogleSheet, sheetSync,
+                sendPhotoToRoleGroup, escapeHtml, bot, fs, path, moment, uploadDir
+            })
+        ]
         : [];
 
     return Object.freeze({

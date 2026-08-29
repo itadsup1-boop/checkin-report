@@ -10,27 +10,27 @@ import { h } from '../../../shared-ui/core/dom.js';
 import { icon, iconTile } from '../../../shared-ui/ui/icons.js';
 import { notice } from '../ui/components.js';
 
-// Hai luồng phân biệt bằng ĐẬM/NHẠT của cùng màu chủ đạo, không phải hai màu khác
+// Ba luồng phân biệt bằng ĐẬM/NHẠT của cùng màu chủ đạo, không phải các màu khác
 // nhau: cả ba Mini App kho dùng chung một bộ token (xem theme-tokens.css).
 const CUSTOMER_TONE = 'brand';
 const QUICK_TONE = 'alt';
+const TRANSFER_TONE = 'alt';
 
-function optionCard({ iconName, title, desc, tags, tone, onClick, disabled, disabledReason }) {
+function optionCard({ iconName, title, desc, tone, onClick, disabled, disabledReason }) {
     return h('div', null,
         h('button', {
-            class: 'option',
+            class: 'option option--compact',
             type: 'button',
             disabled,
             onClick: disabled ? null : onClick
         },
-            h('div', { class: 'option__top' },
+            h('div', { class: 'option__row' },
                 iconTile(iconName, { tone }),
-                icon('chevronRight', { size: 20, class: 'text-muted' })
-            ),
-            h('div', { class: 'option__title' }, title),
-            h('div', { class: 'option__desc' }, desc),
-            h('div', { class: 'option__tags' },
-                tags.map(tag => h('span', { class: `option__tag option__tag--${tone}` }, tag))
+                h('div', { class: 'option__info' },
+                    h('div', { class: 'option__title' }, title),
+                    h('div', { class: 'option__desc' }, desc)
+                ),
+                icon('chevronRight', { size: 18, class: 'text-muted' })
             )
         ),
         disabled && disabledReason
@@ -42,7 +42,7 @@ function optionCard({ iconName, title, desc, tags, tone, onClick, disabled, disa
 /**
  * @param {object} params
  * @param {{serviceOrderEnabled:boolean, services:Array, products:Array}} params.catalog
- * @param {(flow:'customer'|'quick')=>void} params.onPick
+ * @param {(flow:'customer'|'quick'|'transfer')=>void} params.onPick
  */
 export function createEntryScreen({ catalog, onPick }) {
     const hasServices = catalog.services.length > 0;
@@ -66,8 +66,7 @@ export function createEntryScreen({ catalog, onPick }) {
             optionCard({
                 iconName: 'users',
                 title: 'Xuất theo khách hàng',
-                desc: 'Tạo đơn gắn với khách hàng cụ thể, chọn một hoặc nhiều dịch vụ, sản phẩm hiển thị tách riêng theo từng dịch vụ.',
-                tags: ['Có tên & SĐT khách', 'Nhiều dịch vụ', 'Theo mẫu dịch vụ'],
+                desc: 'Gắn khách hàng, chọn theo dịch vụ.',
                 tone: CUSTOMER_TONE,
                 disabled: !customerReady,
                 disabledReason,
@@ -77,42 +76,20 @@ export function createEntryScreen({ catalog, onPick }) {
             optionCard({
                 iconName: 'bag',
                 title: 'Xuất lẻ',
-                desc: 'Xuất nhanh không cần gắn khách hàng hay dịch vụ. Phù hợp xuất nội bộ, dùng thử, hoặc khách vãng lai.',
-                tags: ['Không cần thông tin khách', 'Quét mã nhanh', 'Chọn từ danh mục'],
+                desc: 'Xuất nhanh, không cần thông tin khách.',
                 tone: QUICK_TONE,
                 disabled: noProducts,
                 onClick: () => onPick('quick')
             }),
 
-            h('div', { class: 'card' },
-                h('div', { class: 'card__body' },
-                    h('div', {
-                        class: 'row-between',
-                        style: { marginBottom: '10px', justifyContent: 'flex-start', gap: '8px' }
-                    },
-                        icon('clipboard', { size: 15, class: 'text-muted' }),
-                        h('span', { style: { fontSize: '12px', fontWeight: '700', color: 'var(--muted)' } },
-                            'Cả hai loại đơn đều')
-                    ),
-                    h('div', { class: 'stack-sm' },
-                        [
-                            'Chọn cơ sở ngay ở bước đầu tiên',
-                            'Cảnh báo ngay khi số lượng vượt tồn kho',
-                            'Nhân viên tạo đơn phải chờ người có quyền kho duyệt'
-                        ].map(text => h('div', {
-                            style: { display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--muted)' }
-                        },
-                            h('span', {
-                                style: {
-                                    width: '6px', height: '6px', borderRadius: '999px',
-                                    background: 'var(--line)', flexShrink: '0'
-                                }
-                            }),
-                            text
-                        ))
-                    )
-                )
-            )
+            optionCard({
+                iconName: 'arrowLeftRight',
+                title: 'Chuyển kho',
+                desc: 'Chuyển hàng thật giữa hai cơ sở.',
+                tone: TRANSFER_TONE,
+                disabled: noProducts,
+                onClick: () => onPick('transfer')
+            })
         )
     );
 }

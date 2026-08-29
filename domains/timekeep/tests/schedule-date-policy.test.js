@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { normalizeDateKey, validateScheduleDates } from '../schedule-date-policy.js';
+import { normalizeDateKey, validateScheduleDates } from '../domain/schedule-date-policy.js';
 
 test('chuẩn hóa ngày lịch chỉ chấp nhận YYYY-MM-DD có thật', () => {
     assert.equal(normalizeDateKey('2026-08-18'), '2026-08-18');

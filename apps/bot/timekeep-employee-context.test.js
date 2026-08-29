@@ -38,15 +38,27 @@ test('chỉ dùng hồ sơ toàn cục làm dự phòng khi không có hồ sơ 
 });
 
 test('mọi API chấm công theo nhóm dùng chung bộ nhận diện hồ sơ', () => {
-    const source = fs.readFileSync(new URL('./timekeep_bot.js', import.meta.url), 'utf8');
-    const usages = source.match(/findEmployeeForTimekeepContext\(pool, telegram_id, chat_id\)/g) || [];
-    const routeStart = source.indexOf("botApp.get('/api/timekeep/personal-stats'");
-    const routeEnd = source.indexOf('\nbotApp.', routeStart + 1);
-    const personalStatsRoute = source.slice(routeStart, routeEnd);
+    // 5 dịch vụ chuyển vào domains/timekeep/application/ đều gọi qua
+    // findEmployeeContext (bó sẵn findEmployeeForTimekeepContext + pool ở
+    // domains/timekeep/index.js) thay vì tự viết SQL lấy hồ sơ riêng.
+    const domainFiles = [
+        'get-schedule-view.js', 'save-weekly-schedule.js', 'save-leave-request.js',
+        'save-checkin.js', 'get-personal-stats.js'
+    ];
+    let usageCount = 0;
+    for (const file of domainFiles) {
+        const source = fs.readFileSync(
+            new URL(`../../domains/timekeep/application/${file}`, import.meta.url), 'utf8');
+        const matches = source.match(/findEmployeeContext\(telegramId, chatId\)/g) || [];
+        assert.ok(matches.length > 0, `${file} phải gọi findEmployeeContext`);
+        usageCount += matches.length;
+    }
+    assert.equal(usageCount, 5);
 
-    assert.equal(usages.length, 5);
+    const personalStatsSource = fs.readFileSync(
+        new URL('../../domains/timekeep/application/get-personal-stats.js', import.meta.url), 'utf8');
     assert.doesNotMatch(
-        personalStatsRoute,
+        personalStatsSource,
         /SELECT id, full_name, role, group_id FROM employees WHERE telegram_id = \$1 LIMIT 1/
     );
 });

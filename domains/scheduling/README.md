@@ -2,8 +2,8 @@
 
 Nghiệp vụ lịch khách dùng chung cho `report` và `report_tour`; phần công tour chỉ áp dụng cho `report_tour`.
 
-**Phạm vi: đặt lịch · nhắc lịch · xác nhận khách đến/hủy · tổng hợp công tour · báo bù.**
-Còn nợ hai phần nhỏ, xem mục "Còn nợ" bên dưới.
+**Phạm vi: đặt lịch · nhắc lịch · xác nhận khách đến/hủy · tổng hợp công tour ·
+báo bù · nợ ảnh · đồng bộ Google Sheet của tất cả các phần trên.**
 
 ## Cấu trúc
 
@@ -13,7 +13,8 @@ domains/scheduling/
 ├── domain/
 │   ├── appointment-rules.js                     Trạng thái, buổi làm, doanh thu, đủ công tour
 │   ├── appointment-messages.js                  Soạn tin + bàn phím nút
-│   └── makeup-rules.js                          Báo bù: 48 giờ, ảnh, chuẩn hoá SĐT
+│   ├── makeup-rules.js                          Báo bù: 48 giờ, ảnh, chuẩn hoá SĐT
+│   └── sheet-row-matching.js                    Khoá chống trùng dòng Sheet
 ├── application/
 │   ├── book-appointment.js                      Đặt lịch + chống trùng giờ + báo động đi luôn
 │   ├── manage-appointment.js                    Cập nhật phát sinh · dời lịch · hủy lịch
@@ -21,20 +22,28 @@ domains/scheduling/
 │   ├── schedule-reports.js                      3 báo cáo theo giờ
 │   ├── remind-due-appointments.js               Nhắc khi tới giờ hẹn
 │   ├── create-makeup-request.js                 Báo bù: transaction + chống trùng
-│   └── review-makeup-request.js                 Báo bù: duyệt / từ chối
+│   ├── review-makeup-request.js                 Báo bù: duyệt / từ chối
+│   ├── sync-makeup-sheet.js                     Ghi báo bù đã duyệt lên Sheet, tự thử lại khi lỗi
+│   └── submit-proof-photo.js                    Bổ sung ảnh chứng thực — dùng chung Mini App + Telegram
 ├── infrastructure/
 │   ├── postgres/appointment-repository.js       SQL của customer_appointments
 │   ├── postgres/completion-repository.js        Lịch report còn thiếu cần nhắc sau 30 phút
 │   ├── postgres/makeup-repository.js            SQL của tour_makeup_requests
+│   ├── postgres/proof-repository.js             SQL của nợ ảnh / bổ sung minh chứng
+│   ├── postgres/retry-repository.js             SQL của cron quét retry mỗi 5 phút
+│   ├── google-sheet/appointment-sheet-sync.js   Ghi/đọc Sheet lịch khách + báo bù
 │   ├── telegram/appointment-notifier.js         Gửi tin qua sendMessageToRoleGroup
-│   └── storage/proof-image-store.js             Giải mã base64, ghi file, dọn khi lỗi
+│   └── storage/proof-image-store.js             Giải mã base64, ghi file, dọn khi lỗi (ảnh báo bù)
 ├── interfaces/
 │   ├── miniapp-api/appointment-routes.js        7 endpoint đặt lịch
 │   ├── miniapp-api/makeup-routes.js             3 endpoint báo bù
+│   ├── miniapp-api/photo-debt-routes.js         2 endpoint nợ ảnh
 │   ├── telegram/register-appointment-actions.js 4 nút lịch khách
 │   ├── telegram/register-makeup-actions.js      2 nút duyệt/từ chối
+│   ├── telegram/register-photo-reply-handler.js Reply ảnh trực tiếp trên Telegram
 │   ├── telegram/makeup-notification.js          Soạn + gửi tin duyệt
-│   └── cron/register-schedule-crons.js          4 lịch chạy nền
+│   ├── cron/register-schedule-crons.js          4 lịch chạy nền
+│   └── cron/register-retry-cron.js              Cron quét retry mỗi 5 phút
 └── tests/
 ```
 
@@ -120,12 +129,15 @@ Hệ quả: việc kiểm chuyển thành **hậu kiểm** — ảnh minh chứn
 duyệt ghi **"(tự duyệt)"**. Muốn quay lại tiền kiểm thì chặn `isOwner` trong
 `checkReviewPermission()`.
 
-## Còn nợ — cố ý chưa tách
+## Đã tách xong — không còn nợ
 
-| Phần | Ở đâu | Vì sao chưa |
-|---|---|---|
-| Nợ ảnh: `GET /api/photo-debts`, `POST /api/upload-proof` | `kpi_features.js` | `upload-proof` nằm chồng lên vùng agent khác đang sửa dở |
-| Đồng bộ Google Sheet lịch khách + cron gửi lại | `kpi_features.js` | Cùng lý do |
+Nợ ảnh (`GET /api/photo-debts`, `POST /api/upload-proof`, reply ảnh trên Telegram)
+và đồng bộ Google Sheet (lịch khách + báo bù + cron quét lại mỗi 5 phút) đã chuyển
+từ `kpi_features.js` vào domain này — xem `infrastructure/postgres/proof-repository.js`,
+`infrastructure/postgres/retry-repository.js`, `infrastructure/google-sheet/appointment-sheet-sync.js`,
+`application/submit-proof-photo.js`, `application/sync-makeup-sheet.js`,
+`interfaces/miniapp-api/photo-debt-routes.js`, `interfaces/telegram/register-photo-reply-handler.js`,
+`interfaces/cron/register-retry-cron.js`.
 
 ## Lỗi có sẵn, CHƯA sửa
 

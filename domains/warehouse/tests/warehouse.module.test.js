@@ -154,7 +154,15 @@ test('module kho đăng ký đủ endpoint cũ và không truy cập database l�
             'POST /api/warehouse/service-orders',
             'GET /api/warehouse/service-orders/:orderId',
             'POST /api/warehouse/service-orders/:orderId/approve',
-            'POST /api/warehouse/service-orders/:orderId/reject'
+            'POST /api/warehouse/service-orders/:orderId/reject',
+            'POST /api/warehouse/stock-transfers',
+            'GET /api/warehouse/pricing/access',
+            'GET /api/warehouse/pricing/search',
+            'GET /api/warehouse/pricing/products',
+            'GET /api/warehouse/pricing/history',
+            'GET /api/warehouse/pricing/orders',
+            'POST /api/warehouse/pricing/save',
+            'POST /api/warehouse/pricing/save-batch'
         ]
     );
     assert.equal(harness.queryCount, 0);

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     calculateBaseQuantity,
+    calculateBasePrice,
     formatUnitLabel,
     formatDualUnitDisplay,
     validateConversionConfig,
@@ -19,6 +20,22 @@ test('quy đổi số lượng nhập sang đơn vị cơ sở chuẩn xác', ()
     assert.equal(calculateBaseQuantity(10), 10);
     assert.equal(calculateBaseQuantity(10, 0), 10);
     assert.equal(calculateBaseQuantity(10, -1), 10);
+});
+
+test('quy đổi giá nhập theo đóng gói về giá theo đơn vị cơ sở', () => {
+    // 1 Lọ = 2.5 ml, giá 1 Lọ = 50.000đ => giá cơ sở = 20.000đ/ml
+    assert.equal(calculateBasePrice(50000, 2.5), 20000);
+
+    // Xuất 1.5 ml với giá cơ sở 20.000đ/ml => 30.000đ (khớp ví dụ người dùng hỏi)
+    assert.equal(1.5 * calculateBasePrice(50000, 2.5), 30000);
+
+    // Không có hệ số quy đổi (mặc định = 1) => giữ nguyên giá đã nhập
+    assert.equal(calculateBasePrice(20000), 20000);
+    assert.equal(calculateBasePrice(20000, 0), 20000);
+    assert.equal(calculateBasePrice(20000, -1), 20000);
+
+    // Làm tròn 2 chữ số thập phân
+    assert.equal(calculateBasePrice(100000, 3), 33333.33);
 });
 
 test('định dạng nhãn đơn vị tính rõ ràng', () => {

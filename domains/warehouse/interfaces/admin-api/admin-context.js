@@ -35,35 +35,14 @@ export function sendError(res, error) {
  */
 export function createAdminContext({ pool }) {
     async function getContext(req) {
-        const headerId = String(req.headers['x-admin-id'] || '').trim();
-        const headerRole = String(req.headers['x-admin-role'] || '').trim();
-        if (!headerId || !headerRole) {
+        if (!req.admin?.id || !req.admin?.role) {
             throw new WarehouseError('Phiên đăng nhập Admin không hợp lệ.', { status: 401 });
         }
-
-        if (headerId === 'super-admin-id' && headerRole === 'SUPER_ADMIN') {
-            return { adminId: headerId, role: headerRole, isSuperAdmin: true, allowedGroupIds: [] };
-        }
-
-        const adminResult = await pool.query(
-            `SELECT id, role
-             FROM admin_accounts
-             WHERE id = $1 AND is_active = TRUE
-             LIMIT 1`,
-            [headerId]
-        );
-        const admin = adminResult.rows[0];
-        if (!admin) throw new WarehouseError('Tài khoản Admin không tồn tại hoặc đã bị khóa.', { status: 401 });
-
-        const groups = await pool.query(
-            'SELECT telegram_group_id FROM admin_group_mappings WHERE admin_id = $1',
-            [admin.id]
-        );
         return {
-            adminId: String(admin.id),
-            role: admin.role,
-            isSuperAdmin: admin.role === 'SUPER_ADMIN',
-            allowedGroupIds: groups.rows.map(row => String(row.telegram_group_id))
+            adminId: String(req.admin.id),
+            role: req.admin.role,
+            isSuperAdmin: req.admin.isSuperAdmin,
+            allowedGroupIds: (req.admin.allowedGroupIds || []).map(String)
         };
     }
 

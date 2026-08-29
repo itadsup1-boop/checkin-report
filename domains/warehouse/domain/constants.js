@@ -7,7 +7,9 @@ export const WAREHOUSE_PERMISSIONS = Object.freeze([
     'MANAGE_TEMPLATES',
     'MANAGE_PRODUCTS',
     'ADJUST_INVENTORY',
-    'VIEW_REPORTS'
+    'VIEW_REPORTS',
+    'MANAGE_PRICING',
+    'VIEW_PRICING'
 ]);
 
 export const WAREHOUSE_ORDER_STATUSES = Object.freeze({
