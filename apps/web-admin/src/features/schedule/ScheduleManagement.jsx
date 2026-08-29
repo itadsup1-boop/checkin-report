@@ -8,12 +8,16 @@ const SHIFT_LABELS = {
   'CA_SANG': { label: 'Ca 8:30', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
   'CA_CHIEU': { label: 'Ca 9:30', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
   'FULL_DAY': { label: 'Cả ngày', color: 'text-warning', bg: 'bg-orange-500/10', border: 'border-orange-500/20' },
+  'HALF_DAY_AM_WORK': { label: 'Nửa ngày (Sáng)', color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+  'HALF_DAY_PM_WORK': { label: 'Nửa ngày (Chiều)', color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
   'OFF': { label: 'Nghỉ', color: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20' },
 };
 
 const SHIFT_OPTIONS = [
   { value: 'CA_SANG', label: 'Ca 8:30' },
   { value: 'CA_CHIEU', label: 'Ca 9:30' },
+  { value: 'HALF_DAY_AM_WORK', label: 'Nửa ngày (Sáng)' },
+  { value: 'HALF_DAY_PM_WORK', label: 'Nửa ngày (Chiều)' },
   { value: 'OFF', label: 'Nghỉ' },
 ];
 
