@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(()=>c.query('SELECT * FROM tk_penalties')).then(r=>{console.log('Total penalties:', r.rows.length); c.end()});

@@ -48,6 +48,41 @@ CREATE TABLE IF NOT EXISTS employees (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- Membership and KPI state are scoped to a Telegram group. The employee row
+-- remains the global identity shared by all roles and groups.
+CREATE TABLE IF NOT EXISTS employee_group_memberships (
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    telegram_group_id VARCHAR NOT NULL REFERENCES telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE' CHECK (status IN ('ACTIVE', 'PAUSED')),
+    need_report BOOLEAN NOT NULL DEFAULT true,
+    current_kpi_target NUMERIC NOT NULL DEFAULT 0,
+    pause_reason TEXT,
+    paused_at TIMESTAMP WITH TIME ZONE,
+    resumed_at TIMESTAMP WITH TIME ZONE,
+    last_registered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_by VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (employee_id, telegram_group_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_group_memberships_group_status
+    ON employee_group_memberships(telegram_group_id, status, need_report);
+
+CREATE TABLE IF NOT EXISTS employee_group_membership_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+    telegram_group_id VARCHAR NOT NULL REFERENCES telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    old_status VARCHAR(20),
+    new_status VARCHAR(20) NOT NULL,
+    reason TEXT,
+    actor VARCHAR(255),
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_employee_group_membership_events_lookup
+    ON employee_group_membership_events(employee_id, telegram_group_id, created_at DESC);
+
 -- 5. kpi_policies
 CREATE TABLE IF NOT EXISTS kpi_policies (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -125,3 +160,39 @@ CREATE TABLE IF NOT EXISTS reminder_logs (
     send_type VARCHAR, -- AUTO, MANUAL_ADMIN
     sent_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- 10. tour_makeup_requests
+CREATE TABLE IF NOT EXISTS tour_makeup_requests (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    telegram_group_id VARCHAR REFERENCES telegram_groups(telegram_group_id) ON DELETE CASCADE,
+    telegram_id VARCHAR NOT NULL,
+    employee_name VARCHAR NOT NULL,
+    request_type VARCHAR(50) NOT NULL CHECK (request_type IN ('EXISTING_APPOINTMENT', 'MISSING_APPOINTMENT')),
+    original_appointment_id INTEGER REFERENCES customer_appointments(id) ON DELETE SET NULL,
+    work_date DATE NOT NULL,
+    appointment_time TIMESTAMP WITHOUT TIME ZONE NOT NULL,
+    customer_name VARCHAR(255) NOT NULL,
+    customer_phone VARCHAR(50) NOT NULL,
+    service VARCHAR(255) NOT NULL,
+    sessions VARCHAR(50) NOT NULL,
+    session_type VARCHAR(50) NOT NULL DEFAULT 'Bán',
+    revenue VARCHAR(50) NOT NULL,
+    reason TEXT NOT NULL,
+    proof_image TEXT NOT NULL,
+    status VARCHAR(50) NOT NULL CHECK (status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'REJECTED', 'NOTIFICATION_FAILED')),
+    sheet_sync_status VARCHAR(50) DEFAULT 'NOT_STARTED',
+    sheet_sync_error TEXT,
+    submitted_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    reviewed_at TIMESTAMP WITH TIME ZONE,
+    reviewed_by VARCHAR(255),
+    review_note TEXT,
+    approved_appointment_id INTEGER REFERENCES customer_appointments(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_group ON tour_makeup_requests(telegram_group_id);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_employee ON tour_makeup_requests(telegram_id);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_status ON tour_makeup_requests(status);
+CREATE INDEX IF NOT EXISTS idx_tour_makeup_work_date ON tour_makeup_requests(work_date);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tour_makeup_dedupe ON tour_makeup_requests(telegram_id, telegram_group_id, work_date, customer_phone) WHERE status IN ('PENDING_NOTIFICATION', 'PENDING', 'APPROVED', 'NOTIFICATION_FAILED');
