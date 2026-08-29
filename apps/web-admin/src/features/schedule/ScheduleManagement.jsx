@@ -326,7 +326,7 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
             Chưa có dữ liệu lịch trong tuần này.
           </div>
         ) : (
-          <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
+          <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-slate-50 text-slate-500 text-xs uppercase tracking-wider">
