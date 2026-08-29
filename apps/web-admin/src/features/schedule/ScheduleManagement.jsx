@@ -235,7 +235,7 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   };
 
   return (
-    <>
+    <div className="pb-24">
       {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end mb-8 gap-4">
         <div>
@@ -501,6 +501,6 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
           <p className="font-medium text-sm">{toast}</p>
         </div>
       )}
-    </>
+    </div>
   );
 }
