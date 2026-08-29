@@ -16,15 +16,16 @@ import {
   X,
   ShieldCheck
 } from 'lucide-react';
-import LoginScreen from './LoginScreen.jsx';
-import StaffManagement from './StaffManagement.jsx';
-import CheckinManagement from './CheckinManagement.jsx';
-import ScheduleManagement from './ScheduleManagement.jsx';
-import LeaveManagement from './LeaveManagement.jsx';
-import DashboardTab from './DashboardTab.jsx';
-import AdminManagement from './AdminManagement.jsx';
-import WarehouseManagement from './WarehouseManagement.jsx';
-import SettingsManagement from './SettingsManagement.jsx';
+import LoginScreen from '../features/auth/LoginScreen.jsx';
+import StaffManagement from '../features/staff/StaffManagement.jsx';
+import EmployeeDetailPage from '../features/staff/detail/EmployeeDetailPage.jsx';
+import CheckinManagement from '../features/attendance/CheckinManagement.jsx';
+import ScheduleManagement from '../features/schedule/ScheduleManagement.jsx';
+import LeaveManagement from '../features/leave/LeaveManagement.jsx';
+import DashboardTab from '../features/dashboard/DashboardTab.jsx';
+import AdminManagement from '../features/admin/AdminManagement.jsx';
+import WarehouseManagement from '../features/warehouse/WarehouseManagement.jsx';
+import SettingsManagement from '../features/settings/SettingsManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -38,7 +39,7 @@ const API_URL = import.meta.env.VITE_API_URL || '/api';
 const TABS = [
   { id: 'dashboard', path: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'staff', path: '/nhan-su', label: 'Nhân sự', icon: UserCheck },
-  { id: 'checkins', path: '/diem-danh', label: 'Điểm danh', icon: ClipboardCheck },
+  { id: 'checkins', path: '/diem-danh', label: 'Check in', icon: ClipboardCheck },
   { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
   { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
   { id: 'warehouse', path: '/kho', label: 'Quản lý kho', icon: Package },
@@ -175,6 +176,8 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
   }, [fetchGroups]);
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+  const isWarehouseAccountant = user?.role === 'WAREHOUSE_ACCOUNTANT';
+  const homePath = isWarehouseAccountant ? '/kho/san-pham' : PATH_BY_ID.dashboard;
   const displayGroups = useMemo(() => {
     const assignedGroupIds = user?.assigned_groups || [];
     return isSuperAdmin
@@ -185,12 +188,17 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
 
   /** Giữ nguyên chữ ký cũ: DashboardTab vẫn gọi onNavigate('checkins'). */
   const navigateTo = useCallback(tab => {
+    if (isWarehouseAccountant) {
+      navigate('/kho/san-pham');
+      setMobileSidebarOpen(false);
+      return;
+    }
     const path = PATH_BY_ID[tab] || PATH_BY_ID.dashboard;
     // Mang theo nhóm đang lọc để đổi màn hình không mất bộ lọc.
     const query = searchParams.toString();
     navigate(query ? `${path}?${query}` : path);
     setMobileSidebarOpen(false);
-  }, [navigate, searchParams]);
+  }, [isWarehouseAccountant, navigate, searchParams]);
 
   const updateGroupSettings = async (telegramGroupId, settings) => {
     try {
@@ -217,7 +225,10 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
 
   // Luôn hiển thị mục Kho để người dùng không hiểu nhầm rằng chức năng bị thiếu.
   // Quyền truy cập thật vẫn được kiểm tra ở route và phía API.
-  const navItems = TABS.filter(tab => !tab.needsSuperAdmin || isSuperAdmin);
+  const navItems = isWarehouseAccountant
+    ? TABS.filter(tab => tab.id === 'warehouse')
+    : TABS.filter(tab => !tab.needsSuperAdmin || isSuperAdmin);
+  const canAccessGeneralAdmin = !isWarehouseAccountant;
 
   /**
    * Chặn vào màn hình không đủ quyền bằng đường dẫn trực tiếp.
@@ -227,13 +238,14 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
    */
   const guard = allowed => {
     if (!groupsLoaded) return null;
-    return allowed ? null : <Navigate to={PATH_BY_ID.dashboard} replace />;
+    return allowed ? null : <Navigate to={homePath} replace />;
   };
 
   const shell = (
     <AdminLayout
       user={user}
       isSuperAdmin={isSuperAdmin}
+      isWarehouseAccountant={isWarehouseAccountant}
       navItems={navItems}
       displayGroups={displayGroups}
       selectedGroupId={selectedGroupId}
@@ -249,37 +261,38 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
   return (
     <Routes>
       <Route element={shell}>
-        <Route index element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
-        <Route path="/dashboard" element={<DashboardTab selectedGroupId={selectedGroupId} onNavigate={navigateTo} />} />
-        <Route path="/nhan-su" element={<StaffManagement selectedGroupId={selectedGroupId} />} />
-        <Route path="/diem-danh" element={<CheckinManagement selectedGroupId={selectedGroupId} />} />
-        <Route path="/lich-lam-viec" element={<ScheduleManagement selectedGroupId={selectedGroupId} />} />
-        <Route path="/nghi-phep" element={<LeaveManagement selectedGroupId={selectedGroupId} />} />
+        <Route index element={<Navigate to={homePath} replace />} />
+        <Route path="/dashboard" element={guard(canAccessGeneralAdmin) ?? <DashboardTab selectedGroupId={selectedGroupId} onNavigate={navigateTo} />} />
+        <Route path="/nhan-su" element={guard(canAccessGeneralAdmin) ?? <StaffManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/nhan-su/:employeeId" element={guard(canAccessGeneralAdmin) ?? <EmployeeDetailPage selectedGroupId={selectedGroupId} />} />
+        <Route path="/diem-danh" element={guard(canAccessGeneralAdmin) ?? <CheckinManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/lich-lam-viec" element={guard(canAccessGeneralAdmin) ?? <ScheduleManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/nghi-phep" element={guard(canAccessGeneralAdmin) ?? <LeaveManagement selectedGroupId={selectedGroupId} />} />
         <Route
           path="/kho/*"
           element={!groupsLoaded
             ? <PageLoading label="Đang kiểm tra quyền quản lý kho…" />
             : showWarehouse
-              ? <WarehouseManagement />
+              ? <WarehouseManagement groups={displayGroups.filter(group => group.bot_role === 'warehouse')} />
               : <WarehouseAccessNotice />}
         />
-        <Route path="/cau-hinh" element={<SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />} />
+        <Route path="/cau-hinh" element={guard(canAccessGeneralAdmin) ?? <SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />} />
         <Route path="/tai-khoan" element={guard(isSuperAdmin) ?? <AdminManagement groups={groups} />} />
         {/* Đường dẫn lạ hoặc link cũ đều về Tổng quan thay vì trang trắng. */}
-        <Route path="*" element={<Navigate to={PATH_BY_ID.dashboard} replace />} />
+        <Route path="*" element={<Navigate to={homePath} replace />} />
       </Route>
     </Routes>
   );
 }
 
 function AdminLayout({
-  user, isSuperAdmin, navItems, displayGroups, selectedGroupId, onSelectGroup,
+  user, isSuperAdmin, isWarehouseAccountant, navItems, displayGroups, selectedGroupId, onSelectGroup,
   onNavigate, onLogout, mobileSidebarOpen, setMobileSidebarOpen, toast
 }) {
   const activeTab = useActiveTabId();
 
   return (
-    <div className="flex min-h-screen bg-slate-100 font-sans text-slate-900">
+    <div className="flex h-screen bg-slate-100 font-sans text-slate-900">
       {mobileSidebarOpen && <button type="button" aria-label="Đóng menu" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-30 bg-slate-900/50 md:hidden" />}
 
       <aside className={`fixed inset-y-0 left-0 z-40 flex h-screen w-72 flex-col bg-slate-950 text-white transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -306,7 +319,7 @@ function AdminLayout({
         </div>
       </aside>
 
-      <div className="ml-0 flex min-h-screen flex-1 flex-col md:ml-0">
+      <div className="ml-0 flex h-screen flex-1 flex-col md:ml-0">
         <header className="sticky top-0 z-20 flex min-h-20 items-center justify-between gap-3 border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-md sm:px-6 lg:px-8">
           <div className="flex min-w-0 items-center gap-3">
             <button type="button" onClick={() => setMobileSidebarOpen(true)} className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 md:hidden" aria-label="Mở menu"><Menu className="h-6 w-6" /></button>
@@ -321,13 +334,13 @@ function AdminLayout({
           <div className="flex shrink-0 items-center gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold text-slate-800">{user?.full_name || user?.username || 'Admin'}</p>
-              <p className="text-xs font-medium text-blue-600">{isSuperAdmin ? 'Super Admin' : 'Admin'}</p>
+              <p className="text-xs font-medium text-blue-600">{isSuperAdmin ? 'Super Admin' : (isWarehouseAccountant ? 'Kế toán kho' : 'Admin')}</p>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{user?.username?.slice(0, 2)?.toUpperCase() || 'AD'}</div>
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <main className="flex flex-1 flex-col overflow-y-auto p-4 sm:p-6 lg:p-8">
           <h1 className="sr-only">{TABS.find(tab => tab.id === activeTab)?.label || 'Tổng quan'}</h1>
           <Outlet />
         </main>
