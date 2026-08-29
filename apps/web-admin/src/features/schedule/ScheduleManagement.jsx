@@ -108,28 +108,44 @@ export default function ScheduleManagement({ selectedGroupId = 'ALL' }) {
   const todayStr = toLocalDateStr(new Date());
   const isThisWeek = weekDates.includes(todayStr);
 
-  // A schedule belongs to an employee inside one timekeeping group. Keep a
-  // separate row per group membership so no check-in group is hidden when the
-  // same Telegram account participates in several groups.
+  // Build matrix grouped by user. Merging schedules across groups 
+  // so users don't appear in multiple rows, and all their schedules show up.
   const buildUserMatrix = () => {
     const userMap = {};
     allUsers.forEach(user => {
-      const groupId = String(user.selected_telegram_group_id || user.telegram_group_id || 'ungrouped');
-      const rowKey = `${user.id}:${groupId}`;
-      userMap[rowKey] = {
-        full_name: user.full_name,
-        group_name: user.group_name,
-        dates: {}
-      };
+      const rowKey = user.id;
+      if (!userMap[rowKey]) {
+        userMap[rowKey] = {
+          full_name: user.full_name,
+          group_names: new Set(),
+          dates: {}
+        };
+      }
+      if (user.group_name) {
+        userMap[rowKey].group_names.add(user.group_name);
+      }
     });
 
     schedules.forEach(s => {
-      const rowKey = `${s.user_id}:${s.telegram_group_id || s.group_id || 'ungrouped'}`;
+      const rowKey = s.user_id;
       if (!userMap[rowKey]) {
-        userMap[rowKey] = { full_name: s.full_name, group_name: s.group_name, dates: {} };
+        userMap[rowKey] = { 
+          full_name: s.full_name, 
+          group_names: new Set(), 
+          dates: {} 
+        };
+      }
+      if (s.group_name) {
+        userMap[rowKey].group_names.add(s.group_name);
       }
       userMap[rowKey].dates[s.date?.split('T')[0] || s.date] = s;
     });
+    
+    // Convert sets to array for rendering
+    Object.values(userMap).forEach(userData => {
+      userData.group_name = Array.from(userData.group_names).join(', ');
+    });
+
     return userMap;
   };
 
