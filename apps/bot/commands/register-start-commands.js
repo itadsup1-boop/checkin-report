@@ -1,3 +1,5 @@
+import crypto from 'crypto';
+
 export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHelpHtml }) {
     // ==========================================
     // 4. CẤU HÌNH BOT TELEGRAM
@@ -368,7 +370,7 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                 }
             }
         } catch (e) {
-            console.error('Lỗi startHandler:', e);
+            console.error('Lỗi startHandler:', e?.stack || e);
         }
     }
     
