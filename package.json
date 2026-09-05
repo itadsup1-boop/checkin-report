@@ -11,7 +11,7 @@
     "test:kpi-memberships": "node packages/database/test_kpi_memberships.js",
     "test:kpi-membership-api": "node packages/database/test_kpi_membership_api.js",
     "test:customer-sheet-routing": "node --experimental-test-isolation=none --test apps/bot/customer-sheet-routing.test.js",
-    "test:retail-checkin": "node --test domains/retail-checkin/tests/retail-rules.test.js",
+    "test:retail-checkin": "node --test domains/retail-checkin/tests/retail-rules.test.js domains/retail-checkin/tests/retail-miniapp.test.js",
     "test:timekeep-penalties": "node --experimental-test-isolation=none --test domains/timekeep/tests/attendance-penalties.test.js",
     "test:timekeep-module": "node --experimental-test-isolation=none --test domains/timekeep/tests/timekeep.module.test.js",
     "test:timekeep-leave-requests": "node --experimental-test-isolation=none --test domains/timekeep/tests/leave-request-service.test.js",

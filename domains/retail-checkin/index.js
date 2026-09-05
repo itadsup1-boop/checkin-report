@@ -9,13 +9,18 @@ import { createSummarizeDailyKpi } from './application/summarize-daily-kpi.js';
 import { createSendProgressReminders } from './application/send-progress-reminders.js';
 import { registerRetailTelegramHandler } from './interfaces/telegram/register-retail-handler.js';
 import { registerRetailCron } from './interfaces/cron/register-retail-cron.js';
+import { registerRetailMiniappRoutes } from './interfaces/miniapp-api/register-retail-miniapp-routes.js';
 
 export function registerRetailCheckinModule({
+    botApp,
     bot,
     pool,
     cron,
     moment,
     crypto,
+    fs,
+    retailUploadDir,
+    authenticateTelegramMiniApp,
     getGroupRole,
     getDocForGroup
 }) {
@@ -47,6 +52,21 @@ export function registerRetailCheckinModule({
         getGroupRole,
         crypto
     });
+
+    // Đăng ký REST API cho Mini App
+    if (botApp) {
+        registerRetailMiniappRoutes({
+            botApp,
+            bot,
+            repository,
+            sheetSync,
+            moment,
+            crypto,
+            fs,
+            retailUploadDir,
+            authenticateTelegramMiniApp
+        });
+    }
 
     // Đăng ký Cron tự động
     if (cron) {

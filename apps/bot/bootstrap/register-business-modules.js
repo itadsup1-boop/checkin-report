@@ -60,11 +60,15 @@ export function registerBusinessModules({
 
     // Module check-in điểm bán thị trường (KPI 15 điểm/ngày)
     registerRetailCheckinModule({
+        botApp,
         bot,
         pool,
         cron,
         moment,
         crypto,
+        fs,
+        retailUploadDir: path.join(baseDir, 'public/uploads/retail'),
+        authenticateTelegramMiniApp,
         getGroupRole,
         getDocForGroup: getCustomerDocForGroup || getDocById
     });

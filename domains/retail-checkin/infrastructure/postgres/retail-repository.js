@@ -78,6 +78,18 @@ export function createRetailRepository({ pool }) {
         return result.rows[0]?.count || 0;
     }
 
+    async function findTodayCheckins(employeeId, dateStr, groupId = null) {
+        let query = `SELECT * FROM public.retail_checkins WHERE employee_id = $1 AND checkin_date = $2`;
+        const params = [employeeId, dateStr];
+        if (groupId) {
+            query += ` AND group_id = $3`;
+            params.push(groupId);
+        }
+        query += ` ORDER BY checkin_time DESC`;
+        const result = await pool.query(query, params);
+        return result.rows;
+    }
+
     async function findRecentPhotoHashes(employeeId, days = 30) {
         const result = await pool.query(
             `SELECT UNNEST(photo_hashes) AS hash
@@ -166,6 +178,7 @@ export function createRetailRepository({ pool }) {
         findGroupByTelegramId,
         findLastCheckin,
         insertCheckin,
+        findTodayCheckins,
         countDailyValidCheckins,
         findRecentPhotoHashes,
         upsertDailySummary,
