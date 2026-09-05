@@ -7,14 +7,26 @@ function normalizeTime(value, fallback) {
   return String(value || fallback).slice(0, 5);
 }
 
+function extractDriveFolderId(value) {
+  if (!value) return '';
+  const match = String(value).match(/\/folders\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : String(value).trim();
+}
+
+function extractSheetId(value) {
+  if (!value) return '';
+  const match = String(value).match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : String(value).trim();
+}
+
 function GroupSettingsCard({ group, onUpdate, onDelete }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(() => ({
     bot_role: group.bot_role || '',
-    customer_sheet_id: group.customer_sheet_id || '',
-    kpi_sheet_id: group.kpi_sheet_id || '',
-    pricing_sheet_id: group.pricing_sheet_id || '',
-    customer_drive_folder_id: group.customer_drive_folder_id || '',
+    customer_sheet_id: extractSheetId(group.customer_sheet_id) || '',
+    kpi_sheet_id: extractSheetId(group.kpi_sheet_id) || '',
+    pricing_sheet_id: extractSheetId(group.pricing_sheet_id) || '',
+    customer_drive_folder_id: extractDriveFolderId(group.customer_drive_folder_id) || '',
     shift_1_time: normalizeTime(group.shift_1_time, '08:00'),
     shift_2_time: normalizeTime(group.shift_2_time, '13:30'),
     penalty_under_15: group.penalty_under_15 ?? 20000,
@@ -30,7 +42,15 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
   const showPricingSheet = role === 'warehouse';
   const showTimekeep = !role || role === 'timekeep';
 
-  const update = (field, value) => setForm(current => ({ ...current, [field]: value }));
+  const update = (field, value) => {
+    let cleanValue = value;
+    if (field === 'customer_drive_folder_id') {
+      cleanValue = extractDriveFolderId(value);
+    } else if (field === 'customer_sheet_id' || field === 'kpi_sheet_id' || field === 'pricing_sheet_id') {
+      cleanValue = extractSheetId(value);
+    }
+    setForm(current => ({ ...current, [field]: cleanValue }));
+  };
 
   const save = async () => {
     setSaving(true);
@@ -38,10 +58,10 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
       await onUpdate(group.telegram_group_id, {
         ...form,
         bot_role: form.bot_role || null,
-        customer_sheet_id: form.customer_sheet_id || null,
-        kpi_sheet_id: form.kpi_sheet_id || null,
-        pricing_sheet_id: form.pricing_sheet_id || null,
-        customer_drive_folder_id: form.customer_drive_folder_id || null,
+        customer_sheet_id: extractSheetId(form.customer_sheet_id) || null,
+        kpi_sheet_id: extractSheetId(form.kpi_sheet_id) || null,
+        pricing_sheet_id: extractSheetId(form.pricing_sheet_id) || null,
+        customer_drive_folder_id: extractDriveFolderId(form.customer_drive_folder_id) || null,
         shift_1_time: `${form.shift_1_time}:00`,
         shift_2_time: `${form.shift_2_time}:00`,
         penalty_under_15: Number(form.penalty_under_15) || 0,
