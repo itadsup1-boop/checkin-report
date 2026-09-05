@@ -883,7 +883,7 @@
                 cameraVideo.classList.remove('mirrored');
             }
 
-            // Nếu stream hiện tại vẫn sống và cùng góc quay, tái sử dụng tức thì không hỏi lại quyền
+            // Nếu stream hiện tại vẫn sống và cùng góc quay, tái sử dụng tức thì
             const hasActiveTracks = cameraStream && cameraStream.getVideoTracks().some(t => t.readyState === 'live');
             if (hasActiveTracks && activeFacingMode === facingMode) {
                 try {
@@ -892,58 +892,29 @@
                 } catch (_) {}
             }
 
-            // Kỹ thuật "Switch-before-stop":
-            // Giữ luồng cũ active trong khi gọi getUserMedia để WebView nhận diện phiên cấp quyền liên tục,
-            // KHÔNG kích hoạt lại popup hỏi quyền của hệ điều hành Android/iOS.
+            // BẮT BUỘC: Giải phóng cảm biến camera cũ trước khi mở camera mới
+            // Tránh lỗi khóa phần cứng (NotReadableError: Device in use) giữa camera trước và sau
+            terminateCameraStream();
+            await new Promise(r => setTimeout(r, 80));
+
+            // Gọi đúng 1 lần duy nhất với ideal facingMode, không gọi retry lặp lại gây hỏi quyền nhiều lần
             const constraints = {
                 video: {
-                    facingMode: { ideal: facingMode },
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
+                    facingMode: { ideal: facingMode }
                 },
                 audio: false
             };
 
-            let newStream = null;
             try {
-                newStream = await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (err1) {
-                console.warn('Lỗi mở camera ideal resolution, thử lại cơ bản:', err1);
-                try {
-                    newStream = await navigator.mediaDevices.getUserMedia({
-                        video: { facingMode: facingMode },
-                        audio: false
-                    });
-                } catch (err2) {
-                    console.warn('Lỗi mở camera với facingMode, thử lại video: true:', err2);
-                    try {
-                        newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    } catch (err3) {
-                        console.error('Không thể mở camera:', err3);
-                        showError('Không thể mở camera. Bạn có thể chọn ảnh từ Thư viện.');
-                        switchToGallery();
-                        return;
-                    }
-                }
-            }
-
-            if (newStream) {
-                const oldStream = cameraStream;
-                cameraStream = newStream;
+                const stream = await navigator.mediaDevices.getUserMedia(constraints);
+                cameraStream = stream;
                 activeFacingMode = facingMode;
                 cameraVideo.srcObject = cameraStream;
-                try {
-                    await cameraVideo.play();
-                } catch (playErr) {
-                    console.warn('Lỗi cameraVideo.play():', playErr);
-                }
-
-                // Dừng stream cũ sau khi stream mới đã bắt đầu chạy
-                if (oldStream && oldStream !== newStream) {
-                    try {
-                        oldStream.getTracks().forEach(track => track.stop());
-                    } catch (_) {}
-                }
+                await cameraVideo.play();
+            } catch (err) {
+                console.error('Không thể mở camera:', err);
+                showError('Không thể mở camera. Bạn có thể chọn ảnh từ Thư viện.');
+                switchToGallery();
             }
         }
 
@@ -1068,9 +1039,15 @@
         btnCloseCamera.addEventListener('click', () => closeCameraModal(false));
         btnSwitchToGallery.addEventListener('click', switchToGallery);
         btnShutter.addEventListener('click', takeSnapshot);
-        btnFlipCamera.addEventListener('click', () => {
+        btnFlipCamera.addEventListener('click', async () => {
+            if (btnFlipCamera.disabled) return;
+            btnFlipCamera.disabled = true;
             const nextMode = currentFacingMode === 'user' ? 'environment' : 'user';
-            startCamera(nextMode);
+            try {
+                await startCamera(nextMode);
+            } finally {
+                btnFlipCamera.disabled = false;
+            }
         });
         btnRetakePhoto.addEventListener('click', retakePhoto);
         btnAcceptPhoto.addEventListener('click', acceptPhoto);
