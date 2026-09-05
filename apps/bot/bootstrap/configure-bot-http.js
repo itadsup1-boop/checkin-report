@@ -118,7 +118,7 @@ export function configureBotHttp({ botApp, pool, cors, baseDir, authenticateTele
         if (groupId) {
             const role = await getGroupRole(groupId);
             const isRegistration = req.path === '/register';
-            const allowedRoles = isRegistration ? ['timekeep', 'report', 'report_tour', 'customer', 'warehouse'] : ['timekeep'];
+            const allowedRoles = isRegistration ? ['timekeep', 'report', 'report_tour', 'customer', 'warehouse', 'retail_checkin'] : ['timekeep'];
             if (!allowedRoles.includes(role)) {
                 return res.status(403).json({
                     success: false,
