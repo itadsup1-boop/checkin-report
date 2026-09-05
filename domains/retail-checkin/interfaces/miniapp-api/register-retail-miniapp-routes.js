@@ -43,7 +43,7 @@ export function registerRetailMiniappRoutes({
 
     const uploadRetail = multer({
         storage,
-        limits: { fileSize: 20 * 1024 * 1024, files: 5 }
+        limits: { fileSize: 30 * 1024 * 1024, files: 35 }
     });
 
     // 1. API Bootstrap / Lấy thông tin tiến độ hiện tại của nhân viên
@@ -97,12 +97,13 @@ export function registerRetailMiniappRoutes({
         '/api/retail-checkin/submit',
         uploadRetail.fields([
             { name: 'photo_selfie', maxCount: 1 },
-            { name: 'photo_store', maxCount: 1 }
+            { name: 'photo_store', maxCount: 30 }
         ]),
         async (req, res) => {
             const uploadedFiles = [];
-            if (req.files?.photo_selfie) uploadedFiles.push(...req.files.photo_selfie);
-            if (req.files?.photo_store) uploadedFiles.push(...req.files.photo_store);
+            const selfieFiles = req.files?.photo_selfie || [];
+            const storeFiles = req.files?.photo_store || [];
+            uploadedFiles.push(...selfieFiles, ...storeFiles);
 
             const cleanupFiles = () => {
                 uploadedFiles.forEach(f => {
@@ -133,9 +134,12 @@ export function registerRetailMiniappRoutes({
                     return res.status(400).json({ ok: false, message: 'Vui lòng nhập địa chỉ chi tiết của điểm bán!' });
                 }
 
-                if (uploadedFiles.length < 2) {
+                if (selfieFiles.length < 1 || storeFiles.length < 1) {
                     cleanupFiles();
-                    return res.status(400).json({ ok: false, message: 'Bắt buộc phải chụp đủ 2 ảnh (Ảnh selfie cổng và Ảnh quầy kệ bên trong)!' });
+                    return res.status(400).json({
+                        ok: false,
+                        message: 'Bắt buộc phải chụp đủ ít nhất 1 ảnh selfie cổng và 1 ảnh quầy kệ (tổng cộng tối thiểu 2 ảnh)!'
+                    });
                 }
 
                 const employee = await repository.findEmployeeByTelegramId(telegramId);
@@ -199,19 +203,19 @@ export function registerRetailMiniappRoutes({
                 const newProgress = calculateKpiProgress(todayValidCount + 1);
 
                 // Gửi ảnh kèm thông báo vào nhóm chat Telegram để Quản lý theo dõi
-                let selfieFileId = null;
-                let storePhotoFileId = null;
-
+                const allSentFileIds = [];
                 try {
-                    if (bot && bot.telegram) {
-                        const selfieFile = uploadedFiles[0];
-                        const storeFile = uploadedFiles[1];
+                    if (bot && bot.telegram && uploadedFiles.length > 0) {
+                        const storeCountDesc = storeFiles.length === 1 
+                            ? '1 ảnh quầy kệ' 
+                            : `${storeFiles.length} ảnh quầy kệ`;
 
                         const captionText = 
                             `📍 <b>XÁC NHẬN CHECK-IN ĐIỂM BÁN HỢP LỆ (QUA MINI APP)</b>\n\n` +
                             `👤 <b>Nhân viên:</b> ${employee.full_name}\n` +
                             `🏪 <b>Điểm bán:</b> ${storeName}\n` +
                             `📬 <b>Địa chỉ:</b> ${storeAddress}\n` +
+                            `📸 <b>Minh chứng:</b> 1 ảnh cổng + ${storeCountDesc} (${uploadedFiles.length} ảnh)\n` +
                             `⏰ <b>Thời gian:</b> ${displayDateTime}\n\n` +
                             `🎯 <b>Tiến độ hôm nay:</b> ${todayValidCount + 1}/${RETAIL_CONFIG.TARGET_POINTS_PER_DAY} điểm\n` +
                             (newProgress.completed
@@ -219,30 +223,38 @@ export function registerRetailMiniappRoutes({
                                 : `⌛ Còn thiếu: <b>${newProgress.remaining} điểm</b> nữa để hoàn thành KPI.`) +
                             `\n\n<i>Hệ thống đã tự động ghi nhận và đồng bộ dữ liệu vào bảng theo dõi.</i>`;
 
-                        const mediaGroup = [
-                            {
-                                type: 'photo',
-                                media: { source: selfieFile.path },
-                                caption: captionText,
-                                parse_mode: 'HTML'
-                            },
-                            {
-                                type: 'photo',
-                                media: { source: storeFile.path }
-                            }
-                        ];
+                        // Cắt thành các nhóm tối đa 10 ảnh (theo giới hạn media group của Telegram)
+                        const chunks = [];
+                        for (let i = 0; i < uploadedFiles.length; i += 10) {
+                            chunks.push(uploadedFiles.slice(i, i + 10));
+                        }
 
-                        const sentMessages = await bot.telegram.sendMediaGroup(telegramGroupId, mediaGroup);
-                        if (sentMessages && sentMessages.length >= 2) {
-                            const p0 = sentMessages[0]?.photo;
-                            const p1 = sentMessages[1]?.photo;
-                            selfieFileId = p0 && p0.length > 0 ? p0[p0.length - 1].file_id : null;
-                            storePhotoFileId = p1 && p1.length > 0 ? p1[p1.length - 1].file_id : null;
+                        for (let cIdx = 0; cIdx < chunks.length; cIdx++) {
+                            const chunk = chunks[cIdx];
+                            const mediaGroup = chunk.map((file, fIdx) => ({
+                                type: 'photo',
+                                media: { source: file.path },
+                                ...(cIdx === 0 && fIdx === 0 ? { caption: captionText, parse_mode: 'HTML' } : {})
+                            }));
+
+                            const sentMessages = await bot.telegram.sendMediaGroup(telegramGroupId, mediaGroup);
+                            if (sentMessages && Array.isArray(sentMessages)) {
+                                sentMessages.forEach(msg => {
+                                    const p = msg?.photo;
+                                    if (p && p.length > 0) {
+                                        allSentFileIds.push(p[p.length - 1].file_id);
+                                    }
+                                });
+                            }
                         }
                     }
                 } catch (sendErr) {
                     console.error('[Retail MiniApp Send Telegram Group Error]:', sendErr.message || sendErr);
                 }
+
+                const selfieFileId = allSentFileIds[0] || null;
+                const storePhotoFileIds = allSentFileIds.slice(1);
+                const storePhotoFileId = storePhotoFileIds[0] || null;
 
                 // Ghi nhận vào cơ sở dữ liệu
                 const checkinRecord = await repository.insertCheckin({
@@ -252,7 +264,7 @@ export function registerRetailMiniappRoutes({
                     storeAddress,
                     selfiePhotoUrl: selfieFileId || null,
                     storePhotoUrl: storePhotoFileId || null,
-                    mediaUrls: [selfieFileId, storePhotoFileId].filter(Boolean),
+                    mediaUrls: allSentFileIds,
                     checkinTime: now.toISOString(),
                     checkinDate: dateStr,
                     isValid: true,
@@ -270,7 +282,7 @@ export function registerRetailMiniappRoutes({
                         storeAddress,
                         progressStr: `${todayValidCount + 1}/${RETAIL_CONFIG.TARGET_POINTS_PER_DAY}`,
                         selfieUrl: selfieFileId || '',
-                        storePhotoUrl: storePhotoFileId || '',
+                        storePhotoUrl: storePhotoFileIds.join(', ') || storePhotoFileId || '',
                         isValid: true,
                         rejectReason: ''
                     });

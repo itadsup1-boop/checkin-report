@@ -256,5 +256,42 @@ test('Retail Mini App Routes - Submit kiểm tra chặn spam 120s và xử lý c
 
     assert.ok(telegramMediaSent, 'Phải gửi thông báo ảnh vào nhóm Telegram');
     assert.equal(telegramMediaSent.chatId, '-5488818649');
+
+    // 3. Test gửi nhiều ảnh quầy kệ (1 selfie + 3 quầy kệ = 4 ảnh)
+    mockBot.telegram.sendMediaGroup = async (chatId, media) => {
+        telegramMediaSent = { chatId, media };
+        return [
+            { photo: [{ file_id: 'selfie_id' }] },
+            { photo: [{ file_id: 'shelf_id_1' }] },
+            { photo: [{ file_id: 'shelf_id_2' }] },
+            { photo: [{ file_id: 'shelf_id_3' }] }
+        ];
+    };
+
+    const reqMultiShelf = {
+        body: {
+            telegram_id: '8634311806',
+            chat_id: '-5488818649',
+            store_name: 'Siêu thị Mini Mart',
+            store_address: '200 Hai Bà Trưng'
+        },
+        files: {
+            photo_selfie: [{ path: '/tmp/s.jpg' }],
+            photo_store: [
+                { path: '/tmp/shelf1.jpg' },
+                { path: '/tmp/shelf2.jpg' },
+                { path: '/tmp/shelf3.jpg' }
+            ]
+        }
+    };
+
+    await capturedSubmitHandler(reqMultiShelf, createRes());
+    assert.equal(resStatus, 200);
+    assert.equal(resData.ok, true);
+    assert.equal(insertedRecord.storeName, 'Siêu thị Mini Mart');
+    assert.equal(insertedRecord.mediaUrls.length, 4, 'Phải lưu đủ 4 ảnh vào mediaUrls');
+    assert.equal(insertedRecord.selfiePhotoUrl, 'selfie_id');
+    assert.equal(insertedRecord.storePhotoUrl, 'shelf_id_1');
+    assert.ok(telegramMediaSent.media[0].caption.includes('3 ảnh quầy kệ'), 'Nội dung caption phải nêu rõ 3 ảnh quầy kệ');
 });
 

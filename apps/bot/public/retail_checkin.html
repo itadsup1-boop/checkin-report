@@ -184,6 +184,88 @@
         }
         .photo-box.has-file .photo-box__remove { display: flex; }
 
+        /* Khu vực nhiều ảnh quầy kệ */
+        .shelf-gallery-box {
+            background: var(--surface);
+            border: 1.5px dashed var(--line);
+            border-radius: var(--r-md);
+            padding: 12px;
+            display: none;
+            flex-direction: column;
+            gap: 10px;
+            margin-top: 10px;
+        }
+        .shelf-gallery-box.show { display: flex; }
+        .shelf-gallery-header {
+            display: flex; align-items: center; justify-content: space-between;
+            gap: 8px;
+        }
+        .shelf-gallery-title {
+            font-size: 12px; font-weight: 800; color: var(--ink);
+            display: flex; align-items: center; gap: 6px;
+        }
+        .shelf-gallery-count {
+            background: var(--brand-soft); color: var(--brand);
+            font-size: 11px; font-weight: 800;
+            padding: 2px 8px; border-radius: 99px;
+        }
+        .shelf-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .shelf-card {
+            position: relative;
+            width: 100%; aspect-ratio: 1;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid var(--line-soft);
+            background: #0f172a;
+            box-shadow: var(--shadow-sm);
+        }
+        .shelf-card img {
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+        .shelf-card__badge {
+            position: absolute; bottom: 4px; left: 4px;
+            background: rgba(15, 23, 42, 0.75);
+            backdrop-filter: blur(4px);
+            color: #fff;
+            font-size: 9px; font-weight: 700;
+            padding: 2px 5px; border-radius: 4px;
+        }
+        .shelf-card__remove {
+            position: absolute; top: 4px; right: 4px;
+            width: 22px; height: 22px;
+            border-radius: 50%;
+            background: var(--bad);
+            color: #fff;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 800;
+            border: none; cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            z-index: 5;
+        }
+        .shelf-card--add {
+            border: 1.5px dashed var(--line);
+            background: var(--bg);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            cursor: pointer; color: var(--muted);
+            transition: all 0.15s;
+            text-align: center;
+            padding: 4px;
+        }
+        .shelf-card--add:hover {
+            border-color: var(--brand);
+            background: var(--brand-soft);
+            color: var(--brand);
+        }
+        .shelf-card--add-icon { font-size: 22px; margin-bottom: 2px; }
+        .shelf-card--add-text { font-size: 10px; font-weight: 800; line-height: 1.2; }
+
         /* Banner lỗi */
         .banner {
             display: none;
@@ -339,9 +421,9 @@
 
                 <div class="field">
                     <label class="field__label">
-                        📸 Minh chứng hình ảnh <span class="field__required">* (Bắt buộc đủ 2 ảnh)</span>
+                        📸 Minh chứng hình ảnh <span class="field__required">* (Tối thiểu 2 ảnh: 1 selfie + ≥ 1 quầy kệ)</span>
                     </label>
-                    <div class="photo-grid">
+                    <div class="photo-grid" id="mainPhotoGrid">
                         <!-- Ô ảnh 1: Selfie trước cổng -->
                         <div class="photo-box" id="boxSelfie">
                             <button type="button" class="photo-box__remove" id="btnRemoveSelfie" title="Xóa ảnh">×</button>
@@ -355,19 +437,29 @@
                             <input type="file" id="fileSelfie" accept="image/*" style="display:none">
                         </div>
 
-                        <!-- Ô ảnh 2: Quầy kệ sản phẩm -->
-                        <div class="photo-box" id="boxStore">
-                            <button type="button" class="photo-box__remove" id="btnRemoveStore" title="Xóa ảnh">×</button>
-                            <img class="photo-box__preview" id="previewStore" alt="Quầy kệ">
+                        <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
+                        <div class="photo-box" id="boxStoreInitial">
                             <div class="photo-box__content">
                                 <div class="photo-box__icon">🛒</div>
-                                <div class="photo-box__title">Ảnh 2: Quầy kệ bên trong</div>
-                                <div class="photo-box__sub">Sản phẩm trưng bày</div>
+                                <div class="photo-box__title">Ảnh 2+: Quầy kệ bên trong</div>
+                                <div class="photo-box__sub">Chạm để chụp ảnh quầy kệ</div>
                             </div>
-                            <span class="photo-box__badge">✓ Đã chụp quầy</span>
-                            <input type="file" id="fileStore" accept="image/*" style="display:none">
+                            <span class="photo-box__badge" style="background:var(--brand)">+ Chụp quầy</span>
                         </div>
                     </div>
+
+                    <!-- Khu vực danh sách nhiều ảnh quầy kệ -->
+                    <div class="shelf-gallery-box" id="shelfGalleryBox">
+                        <div class="shelf-gallery-header">
+                            <div class="shelf-gallery-title">
+                                <span>🛒 Ảnh quầy kệ đã chụp</span>
+                                <span class="shelf-gallery-count" id="shelfCountBadge">0 ảnh</span>
+                            </div>
+                            <div style="font-size:10.5px; color:var(--muted)">Có thể chụp thêm nhiều góc</div>
+                        </div>
+                        <div class="shelf-grid" id="shelfGrid"></div>
+                    </div>
+                    <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
                 </div>
             </form>
         </main>
@@ -486,35 +578,83 @@
             validateForm();
         });
 
-        // Xử lý chọn Ảnh 2: Quầy kệ
-        const boxStore = document.getElementById('boxStore');
+        // Xử lý chọn Ảnh 2+: Quầy kệ đa ảnh
+        let storeBlobs = [];
+        const boxStoreInitial = document.getElementById('boxStoreInitial');
+        const shelfGalleryBox = document.getElementById('shelfGalleryBox');
+        const shelfCountBadge = document.getElementById('shelfCountBadge');
+        const shelfGrid = document.getElementById('shelfGrid');
         const fileStore = document.getElementById('fileStore');
-        const previewStore = document.getElementById('previewStore');
-        const btnRemoveStore = document.getElementById('btnRemoveStore');
 
-        boxStore.addEventListener('click', (e) => {
-            if (e.target === btnRemoveStore) return;
+        function renderShelfGallery() {
+            if (storeBlobs.length === 0) {
+                boxStoreInitial.style.display = 'flex';
+                shelfGalleryBox.classList.remove('show');
+            } else {
+                boxStoreInitial.style.display = 'none';
+                shelfGalleryBox.classList.add('show');
+                shelfCountBadge.textContent = `${storeBlobs.length} ảnh`;
+
+                shelfGrid.innerHTML = '';
+                storeBlobs.forEach((item, index) => {
+                    const card = document.createElement('div');
+                    card.className = 'shelf-card';
+                    card.innerHTML = `
+                        <button type="button" class="shelf-card__remove" title="Xóa ảnh này" data-id="${item.id}">×</button>
+                        <img src="${item.url}" alt="Quầy kệ ${index + 1}">
+                        <span class="shelf-card__badge">Quầy #${index + 1}</span>
+                    `;
+                    card.querySelector('.shelf-card__remove').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        removeShelfPhoto(item.id);
+                    });
+                    shelfGrid.appendChild(card);
+                });
+
+                // Thêm ô bấm "+ Thêm ảnh" ngay trong lưới ảnh
+                const addCard = document.createElement('div');
+                addCard.className = 'shelf-card shelf-card--add';
+                addCard.innerHTML = `
+                    <div class="shelf-card--add-icon">➕</div>
+                    <div class="shelf-card--add-text">Thêm ảnh<br>quầy kệ</div>
+                `;
+                addCard.addEventListener('click', () => {
+                    fileStore.click();
+                });
+                shelfGrid.appendChild(addCard);
+            }
+            validateForm();
+        }
+
+        function removeShelfPhoto(id) {
+            const idx = storeBlobs.findIndex(b => b.id === id);
+            if (idx !== -1) {
+                try { URL.revokeObjectURL(storeBlobs[idx].url); } catch (_) {}
+                storeBlobs.splice(idx, 1);
+                renderShelfGallery();
+            }
+        }
+
+        boxStoreInitial.addEventListener('click', () => {
             fileStore.click();
         });
 
         fileStore.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            storeBlob = file;
-            const url = URL.createObjectURL(file);
-            previewStore.src = url;
-            boxStore.classList.add('has-file');
-            hideError();
-            validateForm();
-        });
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
 
-        btnRemoveStore.addEventListener('click', (e) => {
-            e.stopPropagation();
-            storeBlob = null;
+            files.forEach(file => {
+                const url = URL.createObjectURL(file);
+                storeBlobs.push({
+                    id: Date.now() + Math.random(),
+                    file,
+                    url
+                });
+            });
+
             fileStore.value = '';
-            previewStore.src = '';
-            boxStore.classList.remove('has-file');
-            validateForm();
+            hideError();
+            renderShelfGallery();
         });
 
         function updateProgressUI(todayCount, target = 15) {
@@ -596,8 +736,8 @@
             const name = storeNameInput.value.trim();
             const address = storeAddressInput.value.trim();
 
-            if (!name || !address || !selfieBlob || !storeBlob) {
-                showError('Vui lòng điền đầy đủ tên điểm bán, địa chỉ và chụp đủ 2 ảnh!');
+            if (!name || !address || !selfieBlob || storeBlobs.length < 1) {
+                showError('Vui lòng điền đầy đủ tên điểm bán, địa chỉ, chụp 1 ảnh selfie cổng và ít nhất 1 ảnh quầy kệ!');
                 return;
             }
 
@@ -612,7 +752,9 @@
             formData.append('store_name', name);
             formData.append('store_address', address);
             formData.append('photo_selfie', selfieBlob, 'selfie.jpg');
-            formData.append('photo_store', storeBlob, 'store.jpg');
+            storeBlobs.forEach((item, idx) => {
+                formData.append('photo_store', item.file, `store_${idx + 1}.jpg`);
+            });
 
             try {
                 const res = await fetch('/api/retail-checkin/submit', {
@@ -659,7 +801,9 @@
             storeNameInput.value = '';
             storeAddressInput.value = '';
             btnRemoveSelfie.click();
-            btnRemoveStore.click();
+            storeBlobs.forEach(b => { try { URL.revokeObjectURL(b.url); } catch (_) {} });
+            storeBlobs = [];
+            renderShelfGallery();
             btnSubmit.innerHTML = '<span>Xác nhận Check-in</span>';
             btnSubmit.disabled = true;
             window.scrollTo({ top: 0, behavior: 'smooth' });
