@@ -272,6 +272,19 @@ export function registerRetailMiniappRoutes({
                     photoHashes
                 });
 
+                // Cập nhật bảng tổng kết tiến độ ngày
+                if (typeof repository.upsertDailySummary === 'function') {
+                    await repository.upsertDailySummary({
+                        groupId: group.id,
+                        employeeId: employee.id,
+                        recordDate: dateStr,
+                        validPointsCount: todayValidCount + 1,
+                        targetPoints: RETAIL_CONFIG.TARGET_POINTS_PER_DAY,
+                        isCompleted: newProgress.completed,
+                        status: newProgress.completed ? 'COMPLETED' : 'INCOMPLETE'
+                    });
+                }
+
                 // Đồng bộ lên Google Sheets
                 if (sheetSync && typeof sheetSync.syncCheckin === 'function') {
                     await sheetSync.syncCheckin(telegramGroupId, {

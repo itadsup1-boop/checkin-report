@@ -127,6 +127,7 @@ test('Retail Mini App Routes - Submit kiểm tra chặn spam 120s và xử lý c
     };
 
     let insertedRecord = null;
+    let upsertSummaryCall = null;
     let sheetSyncCall = null;
     let telegramMediaSent = null;
 
@@ -150,6 +151,10 @@ test('Retail Mini App Routes - Submit kiểm tra chặn spam 120s và xử lý c
         async insertCheckin(data) {
             insertedRecord = data;
             return { id: 100, ...data };
+        },
+        async upsertDailySummary(data) {
+            upsertSummaryCall = data;
+            return { id: 200, ...data };
         }
     };
 
@@ -249,6 +254,10 @@ test('Retail Mini App Routes - Submit kiểm tra chặn spam 120s và xử lý c
     assert.equal(insertedRecord.storeName, 'Tạp hóa Bình An');
     assert.equal(insertedRecord.selfiePhotoUrl, 'selfie_file_id_test');
     assert.equal(insertedRecord.storePhotoUrl, 'store_file_id_test');
+
+    assert.ok(upsertSummaryCall, 'Phải gọi repository.upsertDailySummary');
+    assert.equal(upsertSummaryCall.validPointsCount, 1);
+    assert.equal(upsertSummaryCall.isCompleted, false);
 
     assert.ok(sheetSyncCall, 'Phải gọi sheetSync.syncCheckin');
     assert.equal(sheetSyncCall.data.storeName, 'Tạp hóa Bình An');

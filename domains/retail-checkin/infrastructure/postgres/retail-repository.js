@@ -152,10 +152,13 @@ export function createRetailRepository({ pool }) {
     async function getDailyProgressForGroup(groupId, dateStr) {
         const result = await pool.query(
             `SELECT e.id AS employee_id, e.full_name AS employee_name,
-                    COALESCE(s.valid_points_count, (
-                        SELECT COUNT(*)::int FROM public.retail_checkins c
-                        WHERE c.employee_id = e.id AND c.checkin_date = $2 AND c.group_id = $1 AND c.is_valid = true
-                    )) AS valid_points,
+                    GREATEST(
+                        COALESCE(s.valid_points_count, 0),
+                        (
+                            SELECT COUNT(*)::int FROM public.retail_checkins c
+                            WHERE c.employee_id = e.id AND c.checkin_date = $2 AND c.group_id = $1 AND c.is_valid = true
+                        )
+                    ) AS valid_points,
                     COALESCE(s.is_completed, false) AS is_completed
              FROM public.employees e
              LEFT JOIN public.retail_daily_summaries s 
@@ -165,12 +168,15 @@ export function createRetailRepository({ pool }) {
                AND e.is_active = true`,
             [groupId, dateStr]
         );
-        return result.rows.map(r => ({
-            employeeId: r.employee_id,
-            employeeName: r.employee_name,
-            validPoints: parseInt(r.valid_points, 10) || 0,
-            isCompleted: (parseInt(r.valid_points, 10) || 0) >= 15
-        }));
+        return result.rows.map(r => {
+            const points = parseInt(r.valid_points, 10) || 0;
+            return {
+                employeeId: r.employee_id,
+                employeeName: r.employee_name,
+                validPoints: points,
+                isCompleted: points >= 15
+            };
+        });
     }
 
     return {
