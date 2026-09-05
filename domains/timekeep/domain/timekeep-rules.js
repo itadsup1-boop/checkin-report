@@ -25,6 +25,7 @@ export const SELF_REGISTER_ROLES = [
     'Kế toán',
     'Telesale',
     'Sales',
+    'Nhân viên thị trường',
     'Kỹ thuật viên',
     'Chăm sóc khách hàng',
     'Marketing',
