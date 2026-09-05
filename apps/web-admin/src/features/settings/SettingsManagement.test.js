@@ -7,7 +7,7 @@ const source = fs.readFileSync(new URL('./SettingsManagement.jsx', import.meta.u
 test('role lịch khách Tour chỉ hiện Sheet lịch khách, không hiện Sheet chấm công', () => {
   assert.match(
     source,
-    /const showCustomerSheet = !role \|\| \['customer', 'report', 'report_tour', 'warehouse'\]\.includes\(role\);/
+    /const showCustomerSheet = !role \|\| \['customer', 'report', 'report_tour', 'warehouse', 'retail_checkin'\]\.includes\(role\);/
   );
   assert.match(
     source,

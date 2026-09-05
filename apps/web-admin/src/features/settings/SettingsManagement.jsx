@@ -24,9 +24,9 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
   }));
 
   const role = form.bot_role;
-  const showCustomerSheet = !role || ['customer', 'report', 'report_tour', 'warehouse'].includes(role);
+  const showCustomerSheet = !role || ['customer', 'report', 'report_tour', 'warehouse', 'retail_checkin'].includes(role);
   const showKpiSheet = !role || ['timekeep', 'report'].includes(role);
-  const showDriveFolder = !role || ['customer', 'warehouse'].includes(role);
+  const showDriveFolder = !role || ['customer', 'warehouse', 'retail_checkin'].includes(role);
   const showPricingSheet = role === 'warehouse';
   const showTimekeep = !role || role === 'timekeep';
 
@@ -83,11 +83,12 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
             <option value="report_tour">Bot lịch khách (Tour)</option>
             <option value="customer">Hồ sơ khách hàng</option>
             <option value="warehouse">Quản lý kho</option>
+            <option value="retail_checkin">Check-in điểm bán (Thị trường)</option>
           </select>
         </label>
 
         {showCustomerSheet && <label className={`${labelClass} xl:col-span-2`}>
-          {role === 'warehouse' ? 'ID Google Sheet báo cáo kho' : 'ID Google Sheet lịch khách'}
+          {role === 'warehouse' ? 'ID Google Sheet báo cáo kho' : role === 'retail_checkin' ? 'ID Google Sheet check-in điểm bán' : 'ID Google Sheet lịch khách'}
           <input value={form.customer_sheet_id} onChange={event => update('customer_sheet_id', event.target.value)} className={`${inputClass} font-mono`} placeholder="Nhập ID Google Sheet" />
         </label>}
 
@@ -96,7 +97,7 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
         </label>}
 
         {showDriveFolder && <label className={`${labelClass} lg:col-span-2 xl:col-span-4`}>
-          {role === 'warehouse' ? 'ID thư mục Drive lưu minh chứng nhập kho' : 'ID thư mục Drive lưu ảnh/video khách hàng'}
+          {role === 'warehouse' ? 'ID thư mục Drive lưu minh chứng nhập kho' : role === 'retail_checkin' ? 'ID thư mục Drive lưu ảnh điểm bán' : 'ID thư mục Drive lưu ảnh/video khách hàng'}
           <input value={form.customer_drive_folder_id} onChange={event => update('customer_drive_folder_id', event.target.value)} className={`${inputClass} font-mono`} placeholder="Để trống để sử dụng thư mục mặc định" />
         </label>}
 

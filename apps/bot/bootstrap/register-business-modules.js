@@ -1,6 +1,8 @@
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { registerWarehouseModule } from '../../../domains/warehouse/index.js';
 import { registerCustomerModule } from '../../../domains/customer/index.js';
+import { registerRetailCheckinModule } from '../../../domains/retail-checkin/index.js';
 import { getGroupRole } from '../role_guard.js';
 
 export function registerBusinessModules({
@@ -54,5 +56,16 @@ export function registerBusinessModules({
         getDocById,
         sendMessageToRoleGroup,
         sendMediaGroupToRoleGroup
+    });
+
+    // Module check-in điểm bán thị trường (KPI 15 điểm/ngày)
+    registerRetailCheckinModule({
+        bot,
+        pool,
+        cron,
+        moment,
+        crypto,
+        getGroupRole,
+        getDocForGroup: getCustomerDocForGroup || getDocById
     });
 }
