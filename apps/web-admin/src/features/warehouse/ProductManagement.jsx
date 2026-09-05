@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import {
   Boxes,
+  FileDown,
   PackagePlus,
   RefreshCw,
   Save,
@@ -9,6 +10,7 @@ import {
   ShieldAlert,
   X
 } from 'lucide-react';
+import InventoryPdfModal from './InventoryPdfModal';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -155,6 +157,7 @@ export default function ProductManagement({ groups = [] }) {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState(null);
   const [showReceipt, setShowReceipt] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
 
@@ -250,6 +253,13 @@ export default function ProductManagement({ groups = [] }) {
           <button onClick={loadProducts} disabled={loading} className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700 disabled:opacity-50">
             <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Làm mới
           </button>
+          <button
+            onClick={() => setShowPdfModal(true)}
+            disabled={!products.some(product => product.is_active !== false)}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700 disabled:opacity-50 shadow-xs"
+          >
+            <FileDown className="h-4 w-4 text-blue-600" />Xuất PDF Tồn Kho
+          </button>
           <button onClick={() => { setError(''); setShowReceipt(true); }} disabled={!products.some(product => product.is_active !== false)} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:bg-slate-300">
             <PackagePlus className="h-4 w-4" />Tạo phiếu nhập kho
           </button>
@@ -326,6 +336,7 @@ export default function ProductManagement({ groups = [] }) {
       </section>
 
       {showReceipt && <ReceiptModal groups={groups} products={products} saving={savingId === 'receipt'} error={error} onClose={() => setShowReceipt(false)} onSubmit={createReceipt} />}
+      {showPdfModal && <InventoryPdfModal products={products} onClose={() => setShowPdfModal(false)} />}
     </div>
   );
 }
