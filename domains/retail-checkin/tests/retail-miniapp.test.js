@@ -18,8 +18,11 @@ test('Retail Mini App - File HTML tồn tại và có đầy đủ cấu trúc U
     assert.ok(content.includes('15 điểm'), 'Phải hiển thị KPI mục tiêu 15 điểm');
     assert.ok(content.includes('storeNameInput'), 'Phải có input tên cửa hàng');
     assert.ok(content.includes('storeAddressInput'), 'Phải có input địa chỉ cửa hàng');
-    assert.ok(content.includes('cameraModal'), 'Phải có modal camera live WebRTC');
-    assert.ok(content.includes('btnSwitchToGallery'), 'Phải có nút chuyển đổi thư viện ảnh');
+    assert.ok(content.includes('actionSheetOverlay'), 'Phải có modal Action Sheet chọn Camera hoặc Thư viện');
+    assert.ok(content.includes('btnActionCamera'), 'Phải có nút Chụp ảnh trực tiếp');
+    assert.ok(content.includes('btnActionGallery'), 'Phải có nút Chọn từ thư viện');
+    assert.ok(content.includes('fileSelfieCamera'), 'Phải có input camera cho selfie');
+    assert.ok(content.includes('fileStoreCamera'), 'Phải có input camera cho quầy kệ');
     assert.ok(content.includes('/api/retail-checkin/submit'), 'Phải gọi API submit');
     assert.ok(content.includes('/api/retail-checkin/bootstrap'), 'Phải gọi API bootstrap');
 });
