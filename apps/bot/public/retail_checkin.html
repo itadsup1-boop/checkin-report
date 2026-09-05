@@ -455,6 +455,22 @@
             border-radius: 99px;
             backdrop-filter: blur(4px);
         }
+        .camera-tip-badge {
+            position: absolute; top: calc(72px + env(safe-area-inset-top)); left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #f1f5f9;
+            font-size: 11px;
+            font-weight: 600;
+            padding: 5px 14px;
+            border-radius: 99px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 15;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+        }
         .camera-bottom {
             position: relative; z-index: 10;
             display: flex; align-items: center; justify-content: space-around;
@@ -709,6 +725,7 @@
             <div class="camera-title" id="cameraTitle">📸 Chụp ảnh</div>
             <div style="width: 42px;"></div>
         </div>
+        <div class="camera-tip-badge" id="cameraTipBadge">💡 Mẹo: Chọn "Trong khi dùng app" để không bị hỏi lại</div>
 
         <!-- Thanh điều khiển chụp ảnh (Lúc đang ngắm) -->
         <div class="camera-bottom" id="cameraControls">
@@ -799,8 +816,10 @@
         // =======================================================
         let currentCameraTarget = 'selfie'; // 'selfie' | 'store'
         let currentFacingMode = 'user'; // 'user' | 'environment'
+        let activeFacingMode = null;
         let cameraStream = null;
         let capturedBlob = null;
+        let cameraIdleTimer = null;
 
         const cameraModal = document.getElementById('cameraModal');
         const cameraVideo = document.getElementById('cameraVideo');
@@ -816,8 +835,39 @@
         const btnRetakePhoto = document.getElementById('btnRetakePhoto');
         const btnAcceptPhoto = document.getElementById('btnAcceptPhoto');
 
+        function clearCameraIdleTimer() {
+            if (cameraIdleTimer) {
+                clearTimeout(cameraIdleTimer);
+                cameraIdleTimer = null;
+            }
+        }
+
+        function resetCameraIdleTimer() {
+            clearCameraIdleTimer();
+            // Tự động giải phóng camera sau 3 phút không dùng để tiết kiệm pin
+            cameraIdleTimer = setTimeout(() => {
+                terminateCameraStream();
+            }, 3 * 60 * 1000);
+        }
+
+        function terminateCameraStream() {
+            clearCameraIdleTimer();
+            if (cameraStream) {
+                try {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                } catch (e) {
+                    console.error('Lỗi dừng camera stream:', e);
+                }
+                cameraStream = null;
+            }
+            activeFacingMode = null;
+            if (cameraVideo) {
+                cameraVideo.srcObject = null;
+            }
+        }
+
         async function startCamera(facingMode) {
-            stopCameraStream();
+            clearCameraIdleTimer();
 
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 console.warn('Trình duyệt không hỗ trợ WebRTC getUserMedia');
@@ -833,6 +883,18 @@
                 cameraVideo.classList.remove('mirrored');
             }
 
+            // Nếu stream hiện tại vẫn sống và cùng góc quay, tái sử dụng tức thì không hỏi lại quyền
+            const hasActiveTracks = cameraStream && cameraStream.getVideoTracks().some(t => t.readyState === 'live');
+            if (hasActiveTracks && activeFacingMode === facingMode) {
+                try {
+                    await cameraVideo.play();
+                    return;
+                } catch (_) {}
+            }
+
+            // Kỹ thuật "Switch-before-stop":
+            // Giữ luồng cũ active trong khi gọi getUserMedia để WebView nhận diện phiên cấp quyền liên tục,
+            // KHÔNG kích hoạt lại popup hỏi quyền của hệ điều hành Android/iOS.
             const constraints = {
                 video: {
                     facingMode: { ideal: facingMode },
@@ -842,49 +904,46 @@
                 audio: false
             };
 
+            let newStream = null;
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+                newStream = await navigator.mediaDevices.getUserMedia(constraints);
             } catch (err1) {
-                console.warn('Lỗi mở camera với ideal resolution, thử lại cấu hình cơ bản:', err1);
+                console.warn('Lỗi mở camera ideal resolution, thử lại cơ bản:', err1);
                 try {
-                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                    newStream = await navigator.mediaDevices.getUserMedia({
                         video: { facingMode: facingMode },
                         audio: false
                     });
                 } catch (err2) {
                     console.warn('Lỗi mở camera với facingMode, thử lại video: true:', err2);
                     try {
-                        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                        newStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
                     } catch (err3) {
                         console.error('Không thể mở camera:', err3);
-                        showError('Không thể mở camera (vui lòng cấp quyền truy cập camera). Bạn có thể chọn ảnh từ Thư viện.');
+                        showError('Không thể mở camera. Bạn có thể chọn ảnh từ Thư viện.');
                         switchToGallery();
                         return;
                     }
                 }
             }
 
-            if (cameraStream) {
+            if (newStream) {
+                const oldStream = cameraStream;
+                cameraStream = newStream;
+                activeFacingMode = facingMode;
                 cameraVideo.srcObject = cameraStream;
                 try {
                     await cameraVideo.play();
                 } catch (playErr) {
                     console.warn('Lỗi cameraVideo.play():', playErr);
                 }
-            }
-        }
 
-        function stopCameraStream() {
-            if (cameraStream) {
-                try {
-                    cameraStream.getTracks().forEach(track => track.stop());
-                } catch (e) {
-                    console.error('Lỗi khi dừng stream camera:', e);
+                // Dừng stream cũ sau khi stream mới đã bắt đầu chạy
+                if (oldStream && oldStream !== newStream) {
+                    try {
+                        oldStream.getTracks().forEach(track => track.stop());
+                    } catch (_) {}
                 }
-                cameraStream = null;
-            }
-            if (cameraVideo) {
-                cameraVideo.srcObject = null;
             }
         }
 
@@ -907,8 +966,17 @@
             startCamera(currentFacingMode);
         }
 
-        function closeCameraModal() {
-            stopCameraStream();
+        function closeCameraModal(terminate = false) {
+            if (terminate) {
+                terminateCameraStream();
+            } else {
+                // Giữ luồng (Keep-alive) và tạm dừng video để lần sau mở ngay tức thì
+                if (cameraVideo) {
+                    try { cameraVideo.pause(); } catch (_) {}
+                }
+                resetCameraIdleTimer();
+            }
+
             if (cameraPreviewImg.src && cameraPreviewImg.src.startsWith('blob:')) {
                 try { URL.revokeObjectURL(cameraPreviewImg.src); } catch (_) {}
             }
@@ -920,7 +988,7 @@
 
         function switchToGallery() {
             const target = currentCameraTarget;
-            closeCameraModal();
+            closeCameraModal(true); // Dừng camera hoàn toàn khi chuyển sang thư viện
             if (target === 'selfie') {
                 fileSelfie.click();
             } else {
@@ -993,11 +1061,11 @@
                 renderShelfGallery();
             }
 
-            closeCameraModal();
+            closeCameraModal(false); // Giữ luồng ấm (Keep-alive) để ảnh tiếp theo mở ngay tức thì
         }
 
         // Đăng ký sự kiện các nút trên Camera Modal
-        btnCloseCamera.addEventListener('click', closeCameraModal);
+        btnCloseCamera.addEventListener('click', () => closeCameraModal(false));
         btnSwitchToGallery.addEventListener('click', switchToGallery);
         btnShutter.addEventListener('click', takeSnapshot);
         btnFlipCamera.addEventListener('click', () => {
@@ -1239,6 +1307,7 @@
                 const data = await res.json();
 
                 if (data.ok && data.success) {
+                    terminateCameraStream();
                     // Cập nhật thẻ KPI
                     if (data.progress) {
                         updateProgressUI(data.progress.todayCount, data.progress.target);
@@ -1268,6 +1337,7 @@
         // Nút tiếp tục sau khi check-in thành công
         document.getElementById('btnContinue').addEventListener('click', () => {
             document.getElementById('successOverlay').classList.remove('show');
+            terminateCameraStream();
             // Reset form cho điểm bán tiếp theo
             storeNameInput.value = '';
             storeAddressInput.value = '';
@@ -1281,8 +1351,12 @@
         });
 
         document.getElementById('btnCloseApp').addEventListener('click', () => {
+            terminateCameraStream();
             if (tg) tg.close();
         });
+
+        window.addEventListener('pagehide', terminateCameraStream);
+        window.addEventListener('beforeunload', terminateCameraStream);
     </script>
 </body>
 
