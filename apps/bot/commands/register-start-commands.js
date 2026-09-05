@@ -167,6 +167,30 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                             }
                         }
                     );
+                } else if (botRole === 'retail_checkin') {
+                    await ctx.reply(
+                        `📍 <b>HỆ THỐNG CHECK-IN ĐIỂM BÁN THỊ TRƯỜNG</b>\n\n` +
+                        `🎯 <b>Chỉ tiêu:</b> Tối thiểu 15 điểm bán / ngày.\n` +
+                        `⏰ <b>Giờ làm việc:</b> 08:30 – 18:00 (Nghỉ trưa: 12:00 – 13:30).\n\n` +
+                        `📸 <b>Quy định gửi check-in:</b>\n` +
+                        `• Gửi kèm <b>2 ảnh</b> trong 1 tin nhắn:\n` +
+                        `   1️⃣ Ảnh selfie tại cổng / biển hiệu điểm bán\n` +
+                        `   2️⃣ Ảnh quầy kệ / sản phẩm bên trong\n` +
+                        `• Cú pháp caption bắt buộc:\n` +
+                        `   <code>[Tên điểm bán] - [Địa chỉ chi tiết]</code>\n` +
+                        `   <i>(Ví dụ: Tạp Hóa Lan Anh - 123 Nguyễn Trãi)</i>\n\n` +
+                        `👇 <i>Nếu là nhân viên mới, vui lòng nhấn nút bên dưới để liên kết tài khoản:</i>`,
+                        {
+                            parse_mode: 'HTML',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
                 }
             } else {
                 // Private Chat Flow
