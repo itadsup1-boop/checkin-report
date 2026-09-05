@@ -364,6 +364,201 @@
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ---------- Màn hình Camera Live (WebRTC Viewfinder) ---------- */
+        .camera-modal {
+            position: fixed; inset: 0; z-index: 1000;
+            background: #000;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .camera-modal.show {
+            display: flex;
+        }
+        .camera-viewfinder {
+            position: absolute; inset: 0;
+            overflow: hidden;
+            display: flex; align-items: center; justify-content: center;
+            background: #000;
+        }
+        .camera-video {
+            width: 100%; height: 100%;
+            object-fit: cover;
+        }
+        .camera-video.mirrored {
+            transform: scaleX(-1);
+        }
+        .camera-preview-img {
+            position: absolute; inset: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            display: none;
+            z-index: 5;
+            background: #000;
+        }
+        .camera-preview-img.show {
+            display: block;
+        }
+        .camera-flash {
+            position: absolute; inset: 0;
+            background: #fff;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 20;
+            transition: opacity 0.08s ease-out;
+        }
+        .camera-flash.flash {
+            opacity: 0.9;
+        }
+        .camera-grid {
+            position: absolute; inset: 0;
+            pointer-events: none;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            opacity: 0.25;
+            z-index: 4;
+        }
+        .camera-grid > div {
+            border: 0.5px solid rgba(255, 255, 255, 0.6);
+        }
+        .camera-topbar {
+            position: relative; z-index: 10;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 16px 20px calc(16px + env(safe-area-inset-top));
+            background: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, transparent 100%);
+            color: #fff;
+        }
+        .camera-btn-icon {
+            width: 42px; height: 42px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            color: #fff; font-size: 20px; font-weight: 800;
+            border: none; cursor: pointer;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .camera-btn-icon:active {
+            background: rgba(255, 255, 255, 0.4);
+            transform: scale(0.92);
+        }
+        .camera-title {
+            font-size: 14px; font-weight: 700;
+            color: #fff; text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+            background: rgba(0,0,0,0.35);
+            padding: 6px 14px;
+            border-radius: 99px;
+            backdrop-filter: blur(4px);
+        }
+        .camera-bottom {
+            position: relative; z-index: 10;
+            display: flex; align-items: center; justify-content: space-around;
+            padding: 20px 24px calc(24px + env(safe-area-inset-bottom));
+            background: linear-gradient(0deg, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.4) 70%, transparent 100%);
+            min-height: 110px;
+        }
+        .camera-gallery-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            color: #fff; font-size: 11px; font-weight: 700;
+            cursor: pointer; border: none; background: none;
+            min-width: 68px;
+        }
+        .camera-gallery-icon {
+            width: 46px; height: 46px;
+            border-radius: 12px;
+            background: rgba(255, 255, 255, 0.2);
+            border: 1.5px solid rgba(255, 255, 255, 0.6);
+            backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            transition: transform 0.1s, background 0.15s;
+        }
+        .camera-gallery-btn:active .camera-gallery-icon {
+            transform: scale(0.92);
+            background: rgba(255, 255, 255, 0.35);
+        }
+        .camera-shutter {
+            width: 72px; height: 72px;
+            border-radius: 50%;
+            border: 4px solid #ffffff;
+            padding: 4px;
+            background: transparent;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer;
+            transition: transform 0.08s;
+        }
+        .camera-shutter-inner {
+            width: 100%; height: 100%;
+            border-radius: 50%;
+            background: #ffffff;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.5);
+            transition: transform 0.08s, background 0.08s;
+        }
+        .camera-shutter:active {
+            transform: scale(0.92);
+        }
+        .camera-shutter:active .camera-shutter-inner {
+            transform: scale(0.88);
+            background: #e2e8f0;
+        }
+        .camera-flip-btn {
+            display: flex; flex-direction: column; align-items: center; gap: 4px;
+            color: #fff; font-size: 11px; font-weight: 700;
+            cursor: pointer; border: none; background: none;
+            min-width: 68px;
+        }
+        .camera-flip-icon {
+            width: 46px; height: 46px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(8px);
+            display: flex; align-items: center; justify-content: center;
+            font-size: 22px;
+            transition: transform 0.3s;
+        }
+        .camera-flip-btn:active .camera-flip-icon {
+            transform: rotate(180deg) scale(0.92);
+        }
+        .camera-review-bar {
+            position: relative; z-index: 10;
+            display: none;
+            align-items: center; justify-content: space-between;
+            gap: 16px;
+            padding: 20px 24px calc(24px + env(safe-area-inset-bottom));
+            background: linear-gradient(0deg, rgba(0,0,0,0.9) 0%, transparent 100%);
+            width: 100%;
+        }
+        .camera-review-bar.show {
+            display: flex;
+        }
+        .camera-btn-review {
+            flex: 1; height: 48px;
+            border-radius: 24px;
+            font-size: 14px; font-weight: 800;
+            display: flex; align-items: center; justify-content: center; gap: 8px;
+            cursor: pointer; border: none;
+        }
+        .camera-btn-retake {
+            background: rgba(255, 255, 255, 0.2);
+            color: #fff;
+            backdrop-filter: blur(8px);
+        }
+        .camera-btn-retake:active {
+            background: rgba(255, 255, 255, 0.35);
+        }
+        .camera-btn-accept {
+            background: #10b981;
+            color: #fff;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
+        }
+        .camera-btn-accept:active {
+            background: #059669;
+        }
     </style>
 </head>
 
@@ -434,7 +629,7 @@
                                 <div class="photo-box__sub">Chụp trực tiếp có mặt trước biển hiệu</div>
                             </div>
                             <span class="photo-box__badge">✓ Đã chụp cổng</span>
-                            <input type="file" id="fileSelfie" accept="image/*" capture="user" style="display:none">
+                            <input type="file" id="fileSelfie" accept="image/*" style="display:none">
                         </div>
 
                         <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
@@ -459,7 +654,7 @@
                         </div>
                         <div class="shelf-grid" id="shelfGrid"></div>
                     </div>
-                    <input type="file" id="fileStore" accept="image/*" capture="environment" style="display:none">
+                    <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
                 </div>
             </form>
         </main>
@@ -491,6 +686,58 @@
             <div class="success-badge" id="successProgressText">Tiến độ hôm nay: 2 / 15 điểm</div>
             <button class="btn btn--brand" id="btnContinue" style="margin-bottom:8px">Tiếp tục check-in điểm khác</button>
             <button type="button" id="btnCloseApp" style="font-size:13px; font-weight:700; color:var(--faint); padding:6px">Đóng ứng dụng</button>
+        </div>
+    </div>
+
+    <!-- Modal Camera Live (WebRTC Viewfinder) -->
+    <div class="camera-modal" id="cameraModal">
+        <!-- Khung ngắm và video stream -->
+        <div class="camera-viewfinder">
+            <video class="camera-video" id="cameraVideo" autoplay playsinline muted></video>
+            <img class="camera-preview-img" id="cameraPreviewImg" alt="Bản chụp">
+            <div class="camera-flash" id="cameraFlash"></div>
+            <div class="camera-grid" id="cameraGrid">
+                <div></div><div></div><div></div>
+                <div></div><div></div><div></div>
+                <div></div><div></div><div></div>
+            </div>
+        </div>
+
+        <!-- Thanh điều khiển trên cùng -->
+        <div class="camera-topbar">
+            <button type="button" class="camera-btn-icon" id="btnCloseCamera" title="Đóng camera">✕</button>
+            <div class="camera-title" id="cameraTitle">📸 Chụp ảnh</div>
+            <div style="width: 42px;"></div>
+        </div>
+
+        <!-- Thanh điều khiển chụp ảnh (Lúc đang ngắm) -->
+        <div class="camera-bottom" id="cameraControls">
+            <!-- Nút thư viện ảnh -->
+            <button type="button" class="camera-gallery-btn" id="btnSwitchToGallery" title="Chọn từ bộ sưu tập">
+                <div class="camera-gallery-icon">🖼️</div>
+                <span>Thư viện</span>
+            </button>
+
+            <!-- Nút chụp -->
+            <button type="button" class="camera-shutter" id="btnShutter" title="Chụp ảnh">
+                <div class="camera-shutter-inner"></div>
+            </button>
+
+            <!-- Nút lật camera -->
+            <button type="button" class="camera-flip-btn" id="btnFlipCamera" title="Đổi camera">
+                <div class="camera-flip-icon">🔄</div>
+                <span>Đổi góc</span>
+            </button>
+        </div>
+
+        <!-- Thanh điều khiển duyệt ảnh (Sau khi chụp) -->
+        <div class="camera-review-bar" id="cameraReviewBar">
+            <button type="button" class="camera-btn-review camera-btn-retake" id="btnRetakePhoto">
+                <span>🔄 Chụp lại</span>
+            </button>
+            <button type="button" class="camera-btn-review camera-btn-accept" id="btnAcceptPhoto">
+                <span>✓ Dùng ảnh này</span>
+            </button>
         </div>
     </div>
 
@@ -540,14 +787,229 @@
         function validateForm() {
             const nameOk = storeNameInput.value.trim().length >= 2;
             const addressOk = storeAddressInput.value.trim().length >= 2;
-            const photosOk = selfieBlob !== null && storeBlob !== null;
+            const photosOk = selfieBlob !== null && storeBlobs.length >= 1;
             btnSubmit.disabled = !(nameOk && addressOk && photosOk);
         }
 
         storeNameInput.addEventListener('input', () => { hideError(); validateForm(); });
         storeAddressInput.addEventListener('input', () => { hideError(); validateForm(); });
 
-        // Xử lý chọn Ảnh 1: Selfie cổng
+        // =======================================================
+        // KHỐI ĐIỀU KHIỂN CAMERA LIVE WEBRTC VÀ THƯ VIỆN ẢNH
+        // =======================================================
+        let currentCameraTarget = 'selfie'; // 'selfie' | 'store'
+        let currentFacingMode = 'user'; // 'user' | 'environment'
+        let cameraStream = null;
+        let capturedBlob = null;
+
+        const cameraModal = document.getElementById('cameraModal');
+        const cameraVideo = document.getElementById('cameraVideo');
+        const cameraPreviewImg = document.getElementById('cameraPreviewImg');
+        const cameraFlash = document.getElementById('cameraFlash');
+        const cameraTitle = document.getElementById('cameraTitle');
+        const cameraControls = document.getElementById('cameraControls');
+        const cameraReviewBar = document.getElementById('cameraReviewBar');
+        const btnCloseCamera = document.getElementById('btnCloseCamera');
+        const btnSwitchToGallery = document.getElementById('btnSwitchToGallery');
+        const btnShutter = document.getElementById('btnShutter');
+        const btnFlipCamera = document.getElementById('btnFlipCamera');
+        const btnRetakePhoto = document.getElementById('btnRetakePhoto');
+        const btnAcceptPhoto = document.getElementById('btnAcceptPhoto');
+
+        async function startCamera(facingMode) {
+            stopCameraStream();
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                console.warn('Trình duyệt không hỗ trợ WebRTC getUserMedia');
+                showError('Thiết bị không hỗ trợ bật Camera trực tiếp. Đang mở Thư viện ảnh...');
+                switchToGallery();
+                return;
+            }
+
+            currentFacingMode = facingMode;
+            if (facingMode === 'user') {
+                cameraVideo.classList.add('mirrored');
+            } else {
+                cameraVideo.classList.remove('mirrored');
+            }
+
+            const constraints = {
+                video: {
+                    facingMode: { ideal: facingMode },
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                },
+                audio: false
+            };
+
+            try {
+                cameraStream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (err1) {
+                console.warn('Lỗi mở camera với ideal resolution, thử lại cấu hình cơ bản:', err1);
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: facingMode },
+                        audio: false
+                    });
+                } catch (err2) {
+                    console.warn('Lỗi mở camera với facingMode, thử lại video: true:', err2);
+                    try {
+                        cameraStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    } catch (err3) {
+                        console.error('Không thể mở camera:', err3);
+                        showError('Không thể mở camera (vui lòng cấp quyền truy cập camera). Bạn có thể chọn ảnh từ Thư viện.');
+                        switchToGallery();
+                        return;
+                    }
+                }
+            }
+
+            if (cameraStream) {
+                cameraVideo.srcObject = cameraStream;
+                try {
+                    await cameraVideo.play();
+                } catch (playErr) {
+                    console.warn('Lỗi cameraVideo.play():', playErr);
+                }
+            }
+        }
+
+        function stopCameraStream() {
+            if (cameraStream) {
+                try {
+                    cameraStream.getTracks().forEach(track => track.stop());
+                } catch (e) {
+                    console.error('Lỗi khi dừng stream camera:', e);
+                }
+                cameraStream = null;
+            }
+            if (cameraVideo) {
+                cameraVideo.srcObject = null;
+            }
+        }
+
+        function openCameraModal(target, preferredFacing) {
+            currentCameraTarget = target;
+            currentFacingMode = preferredFacing || (target === 'selfie' ? 'user' : 'environment');
+
+            cameraTitle.textContent = target === 'selfie' ? '📸 Selfie Cổng / Biển hiệu' : '📸 Chụp Quầy Kệ';
+
+            if (cameraPreviewImg.src && cameraPreviewImg.src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(cameraPreviewImg.src); } catch (_) {}
+            }
+            cameraPreviewImg.src = '';
+            cameraPreviewImg.classList.remove('show');
+            cameraControls.style.display = 'flex';
+            cameraReviewBar.classList.remove('show');
+            capturedBlob = null;
+
+            cameraModal.classList.add('show');
+            startCamera(currentFacingMode);
+        }
+
+        function closeCameraModal() {
+            stopCameraStream();
+            if (cameraPreviewImg.src && cameraPreviewImg.src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(cameraPreviewImg.src); } catch (_) {}
+            }
+            cameraPreviewImg.src = '';
+            cameraPreviewImg.classList.remove('show');
+            cameraModal.classList.remove('show');
+            capturedBlob = null;
+        }
+
+        function switchToGallery() {
+            const target = currentCameraTarget;
+            closeCameraModal();
+            if (target === 'selfie') {
+                fileSelfie.click();
+            } else {
+                fileStore.click();
+            }
+        }
+
+        function takeSnapshot() {
+            if (!cameraVideo.videoWidth || !cameraVideo.videoHeight) return;
+
+            // Hiệu ứng chớp sáng chụp ảnh
+            cameraFlash.classList.add('flash');
+            setTimeout(() => cameraFlash.classList.remove('flash'), 120);
+
+            const vW = cameraVideo.videoWidth;
+            const vH = cameraVideo.videoHeight;
+            const canvas = document.createElement('canvas');
+            canvas.width = vW;
+            canvas.height = vH;
+            const ctx = canvas.getContext('2d');
+
+            if (currentFacingMode === 'user') {
+                ctx.translate(vW, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(cameraVideo, 0, 0, vW, vH);
+
+            canvas.toBlob((blob) => {
+                if (!blob) return;
+                capturedBlob = blob;
+                const previewUrl = URL.createObjectURL(blob);
+                cameraPreviewImg.src = previewUrl;
+                cameraPreviewImg.classList.add('show');
+                cameraControls.style.display = 'none';
+                cameraReviewBar.classList.add('show');
+            }, 'image/jpeg', 0.88);
+        }
+
+        function retakePhoto() {
+            if (cameraPreviewImg.src && cameraPreviewImg.src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(cameraPreviewImg.src); } catch (_) {}
+            }
+            cameraPreviewImg.src = '';
+            cameraPreviewImg.classList.remove('show');
+            cameraReviewBar.classList.remove('show');
+            cameraControls.style.display = 'flex';
+            capturedBlob = null;
+        }
+
+        function acceptPhoto() {
+            if (!capturedBlob) return;
+
+            if (currentCameraTarget === 'selfie') {
+                if (previewSelfie.src && previewSelfie.src.startsWith('blob:')) {
+                    try { URL.revokeObjectURL(previewSelfie.src); } catch (_) {}
+                }
+                selfieBlob = capturedBlob;
+                previewSelfie.src = URL.createObjectURL(capturedBlob);
+                boxSelfie.classList.add('has-file');
+                hideError();
+                validateForm();
+            } else {
+                const storeUrl = URL.createObjectURL(capturedBlob);
+                storeBlobs.push({
+                    id: Date.now() + Math.random(),
+                    file: capturedBlob,
+                    url: storeUrl
+                });
+                hideError();
+                renderShelfGallery();
+            }
+
+            closeCameraModal();
+        }
+
+        // Đăng ký sự kiện các nút trên Camera Modal
+        btnCloseCamera.addEventListener('click', closeCameraModal);
+        btnSwitchToGallery.addEventListener('click', switchToGallery);
+        btnShutter.addEventListener('click', takeSnapshot);
+        btnFlipCamera.addEventListener('click', () => {
+            const nextMode = currentFacingMode === 'user' ? 'environment' : 'user';
+            startCamera(nextMode);
+        });
+        btnRetakePhoto.addEventListener('click', retakePhoto);
+        btnAcceptPhoto.addEventListener('click', acceptPhoto);
+
+        // =======================================================
+        // XỬ LÝ ẢNH 1: SELFIE CỔNG
+        // =======================================================
         const boxSelfie = document.getElementById('boxSelfie');
         const fileSelfie = document.getElementById('fileSelfie');
         const previewSelfie = document.getElementById('previewSelfie');
@@ -555,22 +1017,29 @@
 
         boxSelfie.addEventListener('click', (e) => {
             if (e.target === btnRemoveSelfie) return;
-            fileSelfie.click();
+            openCameraModal('selfie', 'user');
         });
 
         fileSelfie.addEventListener('change', (e) => {
             const file = e.target.files[0];
             if (!file) return;
+            if (previewSelfie.src && previewSelfie.src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(previewSelfie.src); } catch (_) {}
+            }
             selfieBlob = file;
             const url = URL.createObjectURL(file);
             previewSelfie.src = url;
             boxSelfie.classList.add('has-file');
+            fileSelfie.value = '';
             hideError();
             validateForm();
         });
 
         btnRemoveSelfie.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (previewSelfie.src && previewSelfie.src.startsWith('blob:')) {
+                try { URL.revokeObjectURL(previewSelfie.src); } catch (_) {}
+            }
             selfieBlob = null;
             fileSelfie.value = '';
             previewSelfie.src = '';
@@ -578,7 +1047,9 @@
             validateForm();
         });
 
-        // Xử lý chọn Ảnh 2+: Quầy kệ đa ảnh
+        // =======================================================
+        // XỬ LÝ ẢNH 2+: QUẦY KỆ ĐA ẢNH
+        // =======================================================
         let storeBlobs = [];
         const boxStoreInitial = document.getElementById('boxStoreInitial');
         const shelfGalleryBox = document.getElementById('shelfGalleryBox');
@@ -619,7 +1090,7 @@
                     <div class="shelf-card--add-text">Thêm ảnh<br>quầy kệ</div>
                 `;
                 addCard.addEventListener('click', () => {
-                    fileStore.click();
+                    openCameraModal('store', 'environment');
                 });
                 shelfGrid.appendChild(addCard);
             }
@@ -636,7 +1107,7 @@
         }
 
         boxStoreInitial.addEventListener('click', () => {
-            fileStore.click();
+            openCameraModal('store', 'environment');
         });
 
         fileStore.addEventListener('change', (e) => {
