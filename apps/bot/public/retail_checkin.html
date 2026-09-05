@@ -364,119 +364,6 @@
             animation: spin 0.8s linear infinite;
         }
         @keyframes spin { to { transform: rotate(360deg); } }
-
-        /* ---------- Menu Tải Ảnh Thông Minh (Bottom Action Sheet) ---------- */
-        .action-sheet-overlay {
-            position: fixed; inset: 0; z-index: 1000;
-            background: rgba(15, 23, 42, 0.65);
-            backdrop-filter: blur(6px);
-            display: none;
-            align-items: flex-end;
-            justify-content: center;
-            opacity: 0;
-            transition: opacity 0.2s ease;
-        }
-        .action-sheet-overlay.show {
-            display: flex;
-            opacity: 1;
-        }
-        .action-sheet-panel {
-            width: 100%;
-            max-width: 480px;
-            background: var(--card);
-            border-top-left-radius: 24px;
-            border-top-right-radius: 24px;
-            padding: 16px 20px calc(20px + env(safe-area-inset-bottom));
-            box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
-            transform: translateY(100%);
-            transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-        }
-        .action-sheet-overlay.show .action-sheet-panel {
-            transform: translateY(0);
-        }
-        .action-sheet-drag {
-            width: 42px; height: 4px;
-            background: var(--line);
-            border-radius: 2px;
-            margin: 0 auto 16px;
-        }
-        .action-sheet-header {
-            text-align: center;
-            margin-bottom: 18px;
-        }
-        .action-sheet-title {
-            font-size: 16px; font-weight: 800; color: var(--ink);
-            margin-bottom: 4px;
-        }
-        .action-sheet-sub {
-            font-size: 12px; color: var(--muted);
-        }
-        .action-sheet-options {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            margin-bottom: 14px;
-        }
-        .action-sheet-item {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            padding: 14px 16px;
-            border-radius: var(--r-md);
-            background: var(--surface);
-            border: 1.5px solid var(--line-soft);
-            cursor: pointer;
-            transition: background 0.15s, transform 0.05s, border-color 0.15s;
-            text-align: left;
-            width: 100%;
-        }
-        .action-sheet-item:hover {
-            background: var(--brand-soft);
-            border-color: var(--brand);
-        }
-        .action-sheet-item:active {
-            transform: scale(0.98);
-        }
-        .action-sheet-item-icon {
-            width: 44px; height: 44px;
-            border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 22px; flex-shrink: 0;
-        }
-        .action-sheet-item-icon--cam {
-            background: linear-gradient(135deg, #0284c7, #0ea5e9);
-            color: #fff;
-            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
-        }
-        .action-sheet-item-icon--lib {
-            background: linear-gradient(135deg, #8b5cf6, #a855f7);
-            color: #fff;
-            box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
-        }
-        .action-sheet-item-content {
-            flex: 1; min-width: 0;
-        }
-        .action-sheet-item-title {
-            font-size: 14px; font-weight: 800; color: var(--ink);
-            margin-bottom: 2px;
-        }
-        .action-sheet-item-desc {
-            font-size: 11.5px; color: var(--faint); line-height: 1.3;
-        }
-        .action-sheet-cancel {
-            width: 100%;
-            height: 48px;
-            border-radius: var(--r-md);
-            font-size: 14px; font-weight: 800;
-            color: var(--muted);
-            background: var(--bg);
-            border: 1px solid var(--line-soft);
-            cursor: pointer;
-            transition: background 0.15s;
-        }
-        .action-sheet-cancel:active {
-            background: var(--line-soft);
-        }
     </style>
 </head>
 
@@ -544,11 +431,10 @@
                             <div class="photo-box__content">
                                 <div class="photo-box__icon">🤳</div>
                                 <div class="photo-box__title">Ảnh 1: Cổng / Biển hiệu</div>
-                                <div class="photo-box__sub">Chụp trực tiếp có mặt trước biển hiệu</div>
+                                <div class="photo-box__sub">Selfie có mặt trước biển hiệu</div>
                             </div>
                             <span class="photo-box__badge">✓ Đã chụp cổng</span>
-                            <input type="file" id="fileSelfieCamera" accept="image/*" capture="user" style="display:none">
-                            <input type="file" id="fileSelfieGallery" accept="image/*" style="display:none">
+                            <input type="file" id="fileSelfie" accept="image/*" style="display:none">
                         </div>
 
                         <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
@@ -573,8 +459,7 @@
                         </div>
                         <div class="shelf-grid" id="shelfGrid"></div>
                     </div>
-                    <input type="file" id="fileStoreCamera" accept="image/*" capture="environment" style="display:none">
-                    <input type="file" id="fileStoreGallery" accept="image/*" multiple style="display:none">
+                    <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
                 </div>
             </form>
         </main>
@@ -606,34 +491,6 @@
             <div class="success-badge" id="successProgressText">Tiến độ hôm nay: 2 / 15 điểm</div>
             <button class="btn btn--brand" id="btnContinue" style="margin-bottom:8px">Tiếp tục check-in điểm khác</button>
             <button type="button" id="btnCloseApp" style="font-size:13px; font-weight:700; color:var(--faint); padding:6px">Đóng ứng dụng</button>
-        </div>
-    </div>
-
-    <!-- Menu Tải Ảnh Thông Minh (Bottom Action Sheet) -->
-    <div class="action-sheet-overlay" id="actionSheetOverlay">
-        <div class="action-sheet-panel">
-            <div class="action-sheet-drag"></div>
-            <div class="action-sheet-header">
-                <div class="action-sheet-title" id="actionSheetTitle">📸 Tải ảnh minh chứng</div>
-                <div class="action-sheet-sub" id="actionSheetSub">Chọn phương thức chụp ảnh hoặc lấy từ album</div>
-            </div>
-            <div class="action-sheet-options">
-                <button type="button" class="action-sheet-item" id="btnActionCamera">
-                    <div class="action-sheet-item-icon action-sheet-item-icon--cam">📸</div>
-                    <div class="action-sheet-item-content">
-                        <div class="action-sheet-item-title">Chụp ảnh trực tiếp</div>
-                        <div class="action-sheet-item-desc" id="actionCameraDesc">Mở máy ảnh điện thoại để chụp ngay tại chỗ</div>
-                    </div>
-                </button>
-                <button type="button" class="action-sheet-item" id="btnActionGallery">
-                    <div class="action-sheet-item-icon action-sheet-item-icon--lib">🖼️</div>
-                    <div class="action-sheet-item-content">
-                        <div class="action-sheet-item-title">Chọn từ Thư viện ảnh</div>
-                        <div class="action-sheet-item-desc" id="actionGalleryDesc">Tải ảnh có sẵn từ bộ sưu tập của máy</div>
-                    </div>
-                </button>
-            </div>
-            <button type="button" class="action-sheet-cancel" id="btnActionCancel">Hủy bỏ</button>
         </div>
     </div>
 
@@ -683,134 +540,51 @@
         function validateForm() {
             const nameOk = storeNameInput.value.trim().length >= 2;
             const addressOk = storeAddressInput.value.trim().length >= 2;
-            const photosOk = selfieBlob !== null && storeBlobs.length >= 1;
+            const photosOk = selfieBlob !== null && storeBlob !== null;
             btnSubmit.disabled = !(nameOk && addressOk && photosOk);
         }
 
         storeNameInput.addEventListener('input', () => { hideError(); validateForm(); });
         storeAddressInput.addEventListener('input', () => { hideError(); validateForm(); });
 
-        // =======================================================
-        // MENU TẢI ẢNH THÔNG MINH (ACTION SHEET: CAMERA & THƯ VIỆN)
-        // =======================================================
-        let actionSheetTarget = 'selfie'; // 'selfie' | 'store'
-        const actionSheetOverlay = document.getElementById('actionSheetOverlay');
-        const actionSheetTitle = document.getElementById('actionSheetTitle');
-        const actionSheetSub = document.getElementById('actionSheetSub');
-        const actionCameraDesc = document.getElementById('actionCameraDesc');
-        const actionGalleryDesc = document.getElementById('actionGalleryDesc');
-        const btnActionCamera = document.getElementById('btnActionCamera');
-        const btnActionGallery = document.getElementById('btnActionGallery');
-        const btnActionCancel = document.getElementById('btnActionCancel');
-
-        const fileSelfieCamera = document.getElementById('fileSelfieCamera');
-        const fileSelfieGallery = document.getElementById('fileSelfieGallery');
-        const fileStoreCamera = document.getElementById('fileStoreCamera');
-        const fileStoreGallery = document.getElementById('fileStoreGallery');
-
-        function openActionSheet(target) {
-            actionSheetTarget = target;
-            if (target === 'selfie') {
-                actionSheetTitle.textContent = '🤳 Tải ảnh Selfie Cổng / Biển hiệu';
-                actionSheetSub.textContent = 'Chụp ảnh có mặt trước biển hiệu điểm bán';
-                actionCameraDesc.textContent = 'Mở camera trước chụp trực tiếp tại cổng';
-                actionGalleryDesc.textContent = 'Chọn ảnh selfie có sẵn từ bộ sưu tập';
-            } else {
-                actionSheetTitle.textContent = '🛒 Tải ảnh Quầy Kệ Bên Trong';
-                actionSheetSub.textContent = 'Chụp ảnh quầy hàng, sản phẩm hoặc kệ trưng bày';
-                actionCameraDesc.textContent = 'Mở camera sau chụp quầy kệ tại cửa hàng';
-                actionGalleryDesc.textContent = 'Chọn 1 hoặc nhiều ảnh quầy từ thư viện';
-            }
-            actionSheetOverlay.classList.add('show');
-        }
-
-        function closeActionSheet() {
-            actionSheetOverlay.classList.remove('show');
-        }
-
-        actionSheetOverlay.addEventListener('click', (e) => {
-            if (e.target === actionSheetOverlay) {
-                closeActionSheet();
-            }
-        });
-        btnActionCancel.addEventListener('click', closeActionSheet);
-
-        btnActionCamera.addEventListener('click', () => {
-            closeActionSheet();
-            if (actionSheetTarget === 'selfie') {
-                fileSelfieCamera.click();
-            } else {
-                fileStoreCamera.click();
-            }
-        });
-
-        btnActionGallery.addEventListener('click', () => {
-            closeActionSheet();
-            if (actionSheetTarget === 'selfie') {
-                fileSelfieGallery.click();
-            } else {
-                fileStoreGallery.click();
-            }
-        });
-
-        // =======================================================
-        // XỬ LÝ ẢNH 1: SELFIE CỔNG
-        // =======================================================
+        // Xử lý chọn Ảnh 1: Selfie cổng
         const boxSelfie = document.getElementById('boxSelfie');
+        const fileSelfie = document.getElementById('fileSelfie');
         const previewSelfie = document.getElementById('previewSelfie');
         const btnRemoveSelfie = document.getElementById('btnRemoveSelfie');
 
         boxSelfie.addEventListener('click', (e) => {
             if (e.target === btnRemoveSelfie) return;
-            openActionSheet('selfie');
+            fileSelfie.click();
         });
 
-        function handleSelfieFile(file) {
+        fileSelfie.addEventListener('change', (e) => {
+            const file = e.target.files[0];
             if (!file) return;
-            if (previewSelfie.src && previewSelfie.src.startsWith('blob:')) {
-                try { URL.revokeObjectURL(previewSelfie.src); } catch (_) {}
-            }
             selfieBlob = file;
             const url = URL.createObjectURL(file);
             previewSelfie.src = url;
             boxSelfie.classList.add('has-file');
             hideError();
             validateForm();
-        }
-
-        fileSelfieCamera.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) handleSelfieFile(file);
-            e.target.value = '';
-        });
-
-        fileSelfieGallery.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (file) handleSelfieFile(file);
-            e.target.value = '';
         });
 
         btnRemoveSelfie.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (previewSelfie.src && previewSelfie.src.startsWith('blob:')) {
-                try { URL.revokeObjectURL(previewSelfie.src); } catch (_) {}
-            }
             selfieBlob = null;
-            fileSelfieCamera.value = '';
-            fileSelfieGallery.value = '';
+            fileSelfie.value = '';
             previewSelfie.src = '';
             boxSelfie.classList.remove('has-file');
             validateForm();
         });
 
-        // =======================================================
-        // XỬ LÝ ẢNH 2+: QUẦY KỆ ĐA ẢNH
-        // =======================================================
+        // Xử lý chọn Ảnh 2+: Quầy kệ đa ảnh
         let storeBlobs = [];
         const boxStoreInitial = document.getElementById('boxStoreInitial');
         const shelfGalleryBox = document.getElementById('shelfGalleryBox');
         const shelfCountBadge = document.getElementById('shelfCountBadge');
         const shelfGrid = document.getElementById('shelfGrid');
+        const fileStore = document.getElementById('fileStore');
 
         function renderShelfGallery() {
             if (storeBlobs.length === 0) {
@@ -845,7 +619,7 @@
                     <div class="shelf-card--add-text">Thêm ảnh<br>quầy kệ</div>
                 `;
                 addCard.addEventListener('click', () => {
-                    openActionSheet('store');
+                    fileStore.click();
                 });
                 shelfGrid.appendChild(addCard);
             }
@@ -862,11 +636,13 @@
         }
 
         boxStoreInitial.addEventListener('click', () => {
-            openActionSheet('store');
+            fileStore.click();
         });
 
-        function handleStoreFiles(files) {
-            if (!files || !files.length) return;
+        fileStore.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files || []);
+            if (!files.length) return;
+
             files.forEach(file => {
                 const url = URL.createObjectURL(file);
                 storeBlobs.push({
@@ -875,20 +651,10 @@
                     url
                 });
             });
+
+            fileStore.value = '';
             hideError();
             renderShelfGallery();
-        }
-
-        fileStoreCamera.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files || []);
-            if (files.length) handleStoreFiles(files);
-            e.target.value = '';
-        });
-
-        fileStoreGallery.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files || []);
-            if (files.length) handleStoreFiles(files);
-            e.target.value = '';
         });
 
         function updateProgressUI(todayCount, target = 15) {
