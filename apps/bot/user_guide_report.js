@@ -4,8 +4,8 @@ export const REPORT_BOT_HELP_HTML = `
 👤 <b>DÀNH CHO NHÂN VIÊN:</b>
 
 1️⃣ <b>Đăng ký tài khoản:</b>
-• Gõ lệnh: <code>/setup Họ và Tên</code> (Vd: <code>/setup Nguyễn Văn A</code>)
-• Hoặc bấm nút <b>[👤 Đăng Ký Tài Khoản]</b> dưới bảng tin.
+• Bấm nút <b>[👤 Đăng Ký Tài Khoản]</b> dưới bảng tin.
+• Nhập họ tên và vị trí trực tiếp trong Mini App, sau đó bấm <b>ĐĂNG KÝ NGAY</b>.
 
 2️⃣ <b>Đăng ký & Xem Lịch Tuần:</b>
 • Gõ lệnh: <code>/lich_tuan</code> hoặc bấm <b>[📅 Lịch Tuần]</b> để chọn ca làm việc.

@@ -14,6 +14,7 @@ services:
     volumes:
       - /home/giang-adsup/mount/postgres_data:/var/lib/postgresql/data
       - ./scripts/db_init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./packages/database/migrations/v19_warehouse_service_orders.sql:/docker-entrypoint-initdb.d/z_warehouse_v19.sql:ro
     # Port 5432 không cần expose ra ngoài — các service dùng nội bộ Docker network
     # Nếu muốn kết nối từ host bằng pgAdmin/DBeaver, đổi thành "5433:5432"
     healthcheck:
@@ -34,7 +35,7 @@ services:
     container_name: kpi_api
     restart: unless-stopped
     env_file:
-      - /home/giang-adsup/mount/.env
+      - ${APP_ENV_FILE:-/home/giang-adsup/mount/.env}
     environment:
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-kpi_secret_2024}@postgres:5432/telegram_kpi
       API_PORT: 3000
@@ -59,7 +60,7 @@ services:
     container_name: kpi_bot
     restart: unless-stopped
     env_file:
-      - /home/giang-adsup/mount/.env
+      - ${APP_ENV_FILE:-/home/giang-adsup/mount/.env}
     environment:
       DATABASE_URL: postgresql://postgres:${DB_PASSWORD:-kpi_secret_2024}@postgres:5432/telegram_kpi
       BOT_PORT: 3002
@@ -69,6 +70,8 @@ services:
       # Mount file Google Service Account nếu dùng Google Sheets
       - /home/giang-adsup/mount/service_account.json:/app/service_account.json:ro
       - /home/giang-adsup/mount/logs:/app/logs
+      # Outbox chỉ xóa ảnh sau khi Drive, Telegram và Sheet đã đồng bộ thành công.
+      - /home/giang-adsup/mount/uploads:/app/apps/bot/public/uploads
     depends_on:
       postgres:
         condition: service_healthy

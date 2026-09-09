@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nhập Đơn Giá Sản Phẩm</title>
+
+  <!--
+    Shell của Mini App "Nhập đơn giá sản phẩm".
+
+    Giao diện là template riêng do chủ hệ thống thiết kế (theme.css tự chứa,
+    KHÔNG dùng chung shared-ui/theme-tokens.css của 3 Mini App kho khác) — giữ
+    nguyên theo yêu cầu, không đổi màu/bố cục. Logic tương tác nằm trong
+    warehouse/pricing/{app.js, data/, ui/}, chia đúng theo tầng của các Mini
+    App kho hiện có: app.js (điều phối) → data/ (gọi API) → ui/ (gắn hành vi
+    vào markup).
+
+    Chỉ Admin hoặc nhân sự có quyền MANAGE_PRICING mới thao tác được — kiểm
+    tra thật ở server (`GET /api/warehouse/pricing/access`), không phải cờ
+    JS gán cứng.
+  -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/mini-app/_v__ASSET_V__/warehouse/pricing/theme.css">
+</head>
+<body>
+
+  <div class="app">
+    <header class="header">
+      <div class="header-row">
+        <div>
+          <div class="title">Nhập đơn giá sản phẩm</div>
+          <div class="subtitle">Chọn sản phẩm và nhập giá bán mới</div>
+        </div>
+        <button class="close-btn" id="closeBtn" aria-label="Đóng">&times;</button>
+      </div>
+    </header>
+
+    <div class="content show" id="screenPricing">
+      <section class="user-card">
+        <div class="avatar">?</div>
+        <div class="user-info">
+          <div class="user-name" id="userName">Đang tải...</div>
+          <div class="user-role" id="userRole">-</div>
+        </div>
+        <span class="permission">✓ Được cấp quyền</span>
+      </section>
+
+      <div class="steps">
+        <div class="step active" id="stepOne">
+          <span class="step-number">1</span>
+          Chọn sản phẩm
+        </div>
+        <div class="step" id="stepTwo">
+          <span class="step-number">2</span>
+          Nhập giá mới
+        </div>
+        <div class="step" id="stepThree">
+          <span class="step-number">3</span>
+          Xác nhận lưu
+        </div>
+      </div>
+
+      <div class="error-box" id="errorBox" role="alert">
+        <span>⚠️</span>
+        <span id="errorText"></span>
+      </div>
+
+      <section class="card">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">1. Chọn sản phẩm</div>
+            <div class="card-hint">Tìm theo tên hoặc barcode</div>
+          </div>
+        </div>
+
+        <div class="search-wrap">
+          <span class="search-icon">🔎</span>
+          <input
+            class="search-input"
+            id="productSearch"
+            type="search"
+            autocomplete="off"
+            placeholder="Nhập tên hoặc barcode sản phẩm"
+          >
+          <button class="clear-btn" id="clearSearch" aria-label="Xóa">×</button>
+        </div>
+
+        <div class="helper">
+          Bạn có thể nhập một phần tên sản phẩm hoặc quét mã barcode.
+        </div>
+
+        <div class="search-results" id="searchResults"></div>
+
+        <div class="selected-box" id="selectedBox">
+          <div class="product-icon" id="selectedIcon">📦</div>
+          <div class="selected-main">
+            <div class="selected-label">Đã chọn</div>
+            <div class="selected-name" id="selectedName">-</div>
+            <div class="selected-code" id="selectedCode">-</div>
+          </div>
+          <button class="change-btn" id="changeProductBtn">Đổi</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">2. Nhập giá mới</div>
+            <div class="card-hint" id="priceUnitHint">Đơn vị VNĐ</div>
+          </div>
+        </div>
+
+        <div class="price-current">
+          <span class="price-current-label">Giá hiện tại</span>
+          <div>
+            <div class="price-current-value" id="currentPrice">—</div>
+            <div class="price-current-time" id="currentPriceTime">
+              Chưa chọn sản phẩm
+            </div>
+          </div>
+        </div>
+
+        <label class="field-label" for="newPrice">
+          Giá mới <span class="required">*</span> <span id="priceUnitLabel" class="unit-label"></span>
+        </label>
+
+        <div class="price-input-wrap">
+          <input
+            class="price-input"
+            id="newPrice"
+            type="text"
+            inputmode="numeric"
+            autocomplete="off"
+            placeholder="0"
+            disabled
+          >
+          <span class="currency" id="currencySuffix">đ</span>
+        </div>
+
+        <div class="difference" id="difference"></div>
+
+        <button class="add-cart-btn" id="addToCartBtn" disabled>
+          ＋ Thêm vào danh sách chờ gửi
+        </button>
+      </section>
+
+      <section class="card" id="cartCard" style="display:none">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">Danh sách chờ gửi</div>
+            <div class="card-hint" id="cartHint">0 sản phẩm</div>
+          </div>
+          <button class="history-toggle" id="clearCartBtn">Xóa hết</button>
+        </div>
+        <div id="cartList"></div>
+      </section>
+
+      <section class="auto-info">
+        <div class="auto-title">Hệ thống sẽ tự động thực hiện sau khi lưu</div>
+        <div class="auto-list">
+          <div class="auto-item">
+            <span class="auto-check">✓</span>
+            <span>Lưu giá mới và giữ nguyên toàn bộ giá cũ trong lịch sử.</span>
+          </div>
+          <div class="auto-item">
+            <span class="auto-check">✓</span>
+            <span>Điền giá cho các đơn xuất đã duyệt nhưng đang thiếu đơn giá.</span>
+          </div>
+          <div class="auto-item">
+            <span class="auto-check">✓</span>
+            <span>Tính lại tổng tiền và cập nhật đúng dòng trên Google Sheet.</span>
+          </div>
+          <div class="auto-item">
+            <span class="auto-check">✓</span>
+            <span>Thêm một dòng mới vào tab "Đơn giá sản phẩm".</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="card" style="margin-top:12px">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">Lịch sử thay đổi giá</div>
+            <div class="card-hint">Người nhập, giá và thời gian</div>
+          </div>
+          <button class="history-toggle" id="historyToggle">
+            Xem lịch sử
+          </button>
+        </div>
+
+        <div class="history-content" id="historyContent">
+          <div class="history-empty">
+            Chọn sản phẩm để xem lịch sử giá.
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="content" id="screenProducts">
+      <section class="card orders-header-card">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">Giá sản phẩm</div>
+            <div class="card-hint" id="productsCountHint">Toàn bộ danh mục</div>
+          </div>
+          <button class="history-toggle" id="productsRefreshBtn">↻ Làm mới</button>
+        </div>
+
+        <div class="search-wrap" style="margin-top:10px">
+          <span class="search-icon">🔎</span>
+          <input
+            class="search-input"
+            id="productsSearch"
+            type="search"
+            autocomplete="off"
+            placeholder="Tìm theo tên hoặc barcode"
+          >
+        </div>
+      </section>
+
+      <div class="error-box" id="productsError" role="alert">
+        <span>⚠️</span>
+        <span id="productsErrorText"></span>
+      </div>
+
+      <div id="productsList"></div>
+
+      <div class="orders-empty" id="productsEmpty">
+        Không tìm thấy sản phẩm nào.
+      </div>
+    </div>
+
+    <div class="content" id="screenOrders">
+      <section class="card orders-header-card">
+        <div class="card-title-row">
+          <div>
+            <div class="card-title">Tổng tiền các đơn</div>
+            <div class="card-hint">Các đơn xuất đã duyệt của nhóm</div>
+          </div>
+          <button class="history-toggle" id="ordersRefreshBtn">↻ Làm mới</button>
+        </div>
+      </section>
+
+      <div class="error-box" id="ordersError" role="alert">
+        <span>⚠️</span>
+        <span id="ordersErrorText"></span>
+      </div>
+
+      <div id="ordersList"></div>
+
+      <div class="orders-empty" id="ordersEmpty">
+        Chưa có đơn xuất nào được duyệt.
+      </div>
+    </div>
+
+    <footer class="footer show" id="pricingFooter">
+      <button class="submit-btn" id="submitBtn" disabled>
+        Gửi tất cả (0)
+      </button>
+    </footer>
+
+    <nav class="bottom-nav">
+      <button class="nav-item active" id="navPricing">
+        <span class="nav-icon">💰</span>
+        <span class="nav-label">Nhập đơn giá</span>
+      </button>
+      <button class="nav-item" id="navProducts">
+        <span class="nav-icon">🏷️</span>
+        <span class="nav-label">Giá sản phẩm</span>
+      </button>
+      <button class="nav-item" id="navOrders">
+        <span class="nav-icon">📋</span>
+        <span class="nav-label">Tổng tiền các đơn</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Confirmation -->
+  <div class="overlay" id="confirmOverlay">
+    <div class="confirm-card">
+      <div class="confirm-icon">💰</div>
+      <div class="confirm-title" id="confirmTitle">Xác nhận lưu giá mới?</div>
+      <div class="confirm-desc" id="confirmDesc">
+        Giá hiện tại không bị xóa. Hệ thống sẽ thêm bản ghi giá mới cho từng sản phẩm và lưu người thực hiện.
+      </div>
+
+      <div class="confirm-summary" id="confirmSummary"></div>
+
+      <div class="confirm-actions">
+        <button class="secondary-btn" id="cancelConfirmBtn">Quay lại</button>
+        <button class="primary-btn" id="confirmSaveBtn">Xác nhận lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Processing -->
+  <div class="processing" id="processing">
+    <div class="processing-card">
+      <div class="spinner"></div>
+      <div class="processing-title">Đang lưu đơn giá</div>
+      <div class="processing-text" id="processingText">
+        Đang ghi nhận giá mới...
+      </div>
+      <div class="processing-progress">
+        <div class="processing-fill" id="processingFill"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success -->
+  <div class="success-screen" id="successScreen">
+    <div class="success-icon" id="successIcon">✓</div>
+    <div class="success-title" id="successTitle">Lưu đơn giá thành công!</div>
+    <div class="success-desc" id="successDesc">
+      Giá mới đã có hiệu lực. Giá cũ được giữ lại để bạn có thể tra cứu bất cứ lúc nào.
+    </div>
+
+    <div class="result-card" id="resultCard"></div>
+
+    <div class="success-list">
+      <div class="success-item">✓ Đã lưu thêm một phiên bản giá mới cho từng sản phẩm</div>
+      <div class="success-item" id="patchedResult">✓ Đã kiểm tra đơn xuất thiếu giá</div>
+      <div class="success-item">✓ Đã đồng bộ Google Sheet thành công</div>
+    </div>
+
+    <button class="finish-btn" id="finishBtn">Hoàn thành</button>
+  </div>
+
+  <!-- Permission blocker -->
+  <div class="permission-blocker" id="permissionBlocker">
+    <div>
+      <div class="blocker-icon">🔒</div>
+      <div class="blocker-title">Không có quyền truy cập</div>
+      <div class="blocker-desc">
+        Chức năng này chỉ dành cho Admin hoặc kế toán có quyền quản lý đơn giá. Vui lòng liên hệ quản trị viên nếu bạn cần sử dụng.
+      </div>
+      <button class="blocker-btn" id="closePermissionBtn">Đóng</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script type="module" src="/mini-app/_v__ASSET_V__/warehouse/pricing/app.js"></script>
+
+  <noscript>
+    <div class="screen-center">
+      <div class="strong">Cần bật JavaScript để dùng chức năng nhập đơn giá.</div>
+    </div>
+  </noscript>
+</body>
+</html>

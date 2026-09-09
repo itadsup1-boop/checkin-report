@@ -300,20 +300,21 @@ while ($waited -lt $maxWait) {
 if ($cloudflareUrl) {
     Write-Ok "Cloudflare URL: $cloudflareUrl"
 
-    # Cap nhat MINI_APP_URL trong .env
-    $envContent = Get-Content $ENV_FILE -Raw
-    if ($envContent -match 'MINI_APP_URL=') {
-        $envContent = $envContent -replace 'MINI_APP_URL=.*', "MINI_APP_URL=$cloudflareUrl"
-    } else {
-        $envContent = $envContent.TrimEnd() + "`nMINI_APP_URL=$cloudflareUrl`n"
-    }
-    # Ghi lai file (khong them BOM, giu line ending goc)
-    [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
-    Write-Ok 'MINI_APP_URL da duoc cap nhat trong .env.'
+    # [VÔ HIỆU HOÁ BỞI AI] Không ghi đè URL nếu bạn đã có domain riêng
+    # $envContent = Get-Content $ENV_FILE -Raw
+    # if ($envContent -match 'MINI_APP_URL=') {
+    #     $envContent = $envContent -replace 'MINI_APP_URL=.*', "MINI_APP_URL=$cloudflareUrl"
+    # } else {
+    #     $envContent = $envContent.TrimEnd() + "`nMINI_APP_URL=$cloudflareUrl`n"
+    # }
+    # [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
+    # Write-Ok 'MINI_APP_URL da duoc cap nhat trong .env.'
+    
+    Write-Ok 'Giữ nguyên MINI_APP_URL cũ trong .env (sử dụng domain thật của bạn).'
 
     # Restart PM2 de bot nhan URL moi (chi restart kpi-api va timekeep-bot)
     $null = & pm2 restart kpi-api timekeep-bot --update-env 2>&1
-    Write-Ok 'PM2 da duoc restart voi env moi.'
+    Write-Ok 'PM2 da duoc restart voi env hien tai.'
 } else {
     Write-Warn "Khong lay duoc Cloudflare URL sau $maxWait giay."
     Write-Info "Kiem tra log: Get-Content cf_err.log -Tail 20"
