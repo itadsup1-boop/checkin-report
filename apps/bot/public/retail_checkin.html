@@ -6,365 +6,12 @@
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
     <title>Check-in Tuyến Điểm Bán Thị Trường</title>
 
+    <!-- Design Tokens & Theme -->
     <link rel="stylesheet" href="/mini-app/shared-ui/theme-tokens.css">
+    <link rel="stylesheet" href="/mini-app/retail/theme.css">
+
+    <!-- Telegram WebApp SDK -->
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-
-    <style>
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        html, body { height: 100%; }
-
-        body {
-            margin: 0;
-            background: var(--bg);
-            color: var(--ink);
-            font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-            font-size: 15px;
-            line-height: 1.45;
-            -webkit-font-smoothing: antialiased;
-        }
-
-        button, input { font: inherit; color: inherit; }
-        button { cursor: pointer; border: 0; background: none; }
-
-        .app {
-            max-width: 480px;
-            margin: 0 auto;
-            min-height: 100vh;
-            min-height: 100dvh;
-            display: flex;
-            flex-direction: column;
-            position: relative;
-        }
-
-        /* ---------- Thanh trên ---------- */
-        .topbar {
-            position: sticky; top: 0; z-index: 20;
-            background: var(--card-blur);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid var(--line-soft);
-            padding: 12px 16px;
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-
-        .avatar {
-            width: 40px; height: 40px; flex-shrink: 0;
-            border-radius: var(--r-full);
-            background: linear-gradient(135deg, var(--brand), var(--brand-dark));
-            color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-weight: 800; font-size: 16px;
-            box-shadow: var(--shadow-raised);
-        }
-
-        .topbar__info { flex: 1; min-width: 0; }
-        .topbar__name { font-size: 14px; font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .topbar__role { font-size: 11px; color: var(--brand-dark); font-weight: 700; margin-top: 1px; }
-
-        .topbar__clock { text-align: right; flex-shrink: 0; }
-        .topbar__time { font-size: 15px; font-weight: 800; color: var(--ink); font-variant-numeric: tabular-nums; }
-        .topbar__date { font-size: 10px; color: var(--faint); font-weight: 600; }
-
-        /* ---------- Thân ---------- */
-        .body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 16px 16px 32px; }
-
-        /* Thẻ tiến độ KPI */
-        .kpi-card {
-            background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%);
-            color: #ffffff;
-            border-radius: var(--r-lg);
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 4px 14px rgba(2, 132, 199, 0.25);
-            position: relative;
-            overflow: hidden;
-        }
-
-        .kpi-card::after {
-            content: '';
-            position: absolute; right: -20px; top: -20px;
-            width: 100px; height: 100px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.1);
-            pointer-events: none;
-        }
-
-        .kpi-card__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-        .kpi-card__title { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.9; }
-        .kpi-card__status { font-size: 11px; font-weight: 700; background: rgba(255, 255, 255, 0.2); padding: 3px 8px; border-radius: var(--r-full); }
-
-        .kpi-card__score { font-size: 30px; font-weight: 900; line-height: 1.1; margin-bottom: 6px; }
-        .kpi-card__score span { font-size: 16px; font-weight: 700; opacity: 0.8; }
-
-        .kpi-bar { height: 8px; background: rgba(0, 0, 0, 0.15); border-radius: 4px; overflow: hidden; margin-bottom: 8px; }
-        .kpi-bar__fill { height: 100%; background: #fff; width: 0%; transition: width 0.4s ease; border-radius: 4px; }
-
-        .kpi-card__note { font-size: 11.5px; opacity: 0.9; line-height: 1.4; }
-
-        /* Form */
-        .field { margin-bottom: 16px; }
-        .field__label {
-            font-size: 13px; font-weight: 800; color: var(--ink);
-            margin-bottom: 7px;
-            display: flex; align-items: center; gap: 5px;
-        }
-        .field__required { color: var(--bad); }
-
-        .field-input {
-            width: 100%;
-            padding: 12px 14px;
-            border: 1.5px solid var(--line-soft);
-            border-radius: var(--r-md);
-            font-size: 14px;
-            background: var(--card);
-            color: var(--ink);
-            outline: none;
-            transition: border-color 0.15s;
-        }
-        .field-input:focus { border-color: var(--brand); }
-
-        /* Khối chụp ảnh */
-        .photo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 8px; }
-
-        .photo-box {
-            position: relative;
-            aspect-ratio: 1;
-            border: 2px dashed var(--line);
-            border-radius: var(--r-lg);
-            background: var(--card);
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            text-align: center;
-            padding: 10px;
-            cursor: pointer;
-            overflow: hidden;
-            transition: border-color 0.15s, background 0.15s;
-        }
-
-        .photo-box:hover { border-color: var(--brand); background: var(--brand-soft); }
-        .photo-box.has-file { border-style: solid; border-color: var(--brand); padding: 0; }
-
-        .photo-box__icon { font-size: 28px; margin-bottom: 6px; }
-        .photo-box__title { font-size: 11.5px; font-weight: 800; color: var(--ink); line-height: 1.3; margin-bottom: 4px; }
-        .photo-box__sub { font-size: 9.5px; color: var(--faint); line-height: 1.2; }
-
-        .photo-box__preview {
-            width: 100%; height: 100%;
-            object-fit: cover;
-            display: none;
-        }
-        .photo-box.has-file .photo-box__preview { display: block; }
-        .photo-box.has-file .photo-box__content { display: none; }
-
-        .photo-box__badge {
-            position: absolute; bottom: 6px; left: 6px; right: 6px;
-            background: rgba(15, 23, 42, 0.75);
-            backdrop-filter: blur(4px);
-            color: #fff;
-            font-size: 9px; font-weight: 700;
-            padding: 3px 6px;
-            border-radius: 4px;
-            text-align: center;
-            display: none;
-        }
-        .photo-box.has-file .photo-box__badge { display: block; }
-
-        .photo-box__remove {
-            position: absolute; top: 6px; right: 6px;
-            width: 24px; height: 24px;
-            border-radius: 50%;
-            background: var(--bad);
-            color: #fff;
-            display: none;
-            align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 800;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.25);
-            z-index: 10;
-        }
-        .photo-box.has-file .photo-box__remove { display: flex; }
-
-        /* Khu vực nhiều ảnh quầy kệ */
-        .shelf-gallery-box {
-            background: var(--surface);
-            border: 1.5px dashed var(--line);
-            border-radius: var(--r-md);
-            padding: 12px;
-            display: none;
-            flex-direction: column;
-            gap: 10px;
-            margin-top: 10px;
-        }
-        .shelf-gallery-box.show { display: flex; }
-        .shelf-gallery-header {
-            display: flex; align-items: center; justify-content: space-between;
-            gap: 8px;
-        }
-        .shelf-gallery-title {
-            font-size: 12px; font-weight: 800; color: var(--ink);
-            display: flex; align-items: center; gap: 6px;
-        }
-        .shelf-gallery-count {
-            background: var(--brand-soft); color: var(--brand);
-            font-size: 11px; font-weight: 800;
-            padding: 2px 8px; border-radius: 99px;
-        }
-        .shelf-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
-        }
-        .shelf-card {
-            position: relative;
-            width: 100%; aspect-ratio: 1;
-            border-radius: 8px;
-            overflow: hidden;
-            border: 1px solid var(--line-soft);
-            background: #0f172a;
-            box-shadow: var(--shadow-sm);
-        }
-        .shelf-card img {
-            width: 100%; height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .shelf-card__badge {
-            position: absolute; bottom: 4px; left: 4px;
-            background: rgba(15, 23, 42, 0.75);
-            backdrop-filter: blur(4px);
-            color: #fff;
-            font-size: 9px; font-weight: 700;
-            padding: 2px 5px; border-radius: 4px;
-        }
-        .shelf-card__remove {
-            position: absolute; top: 4px; right: 4px;
-            width: 22px; height: 22px;
-            border-radius: 50%;
-            background: var(--bad);
-            color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 13px; font-weight: 800;
-            border: none; cursor: pointer;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            z-index: 5;
-        }
-        .shelf-card--add {
-            border: 1.5px dashed var(--line);
-            background: var(--bg);
-            display: flex; flex-direction: column;
-            align-items: center; justify-content: center;
-            cursor: pointer; color: var(--muted);
-            transition: all 0.15s;
-            text-align: center;
-            padding: 4px;
-        }
-        .shelf-card--add:hover {
-            border-color: var(--brand);
-            background: var(--brand-soft);
-            color: var(--brand);
-        }
-        .shelf-card--add-icon { font-size: 22px; margin-bottom: 2px; }
-        .shelf-card--add-text { font-size: 10px; font-weight: 800; line-height: 1.2; }
-
-        /* Banner lỗi */
-        .banner {
-            display: none;
-            background: var(--bad-soft);
-            border: 1px solid var(--bad-line);
-            border-radius: var(--r-md);
-            padding: 12px 14px;
-            color: var(--bad-dark);
-            font-size: 12.5px; line-height: 1.5;
-            align-items: flex-start; gap: 8px;
-            margin-bottom: 16px;
-        }
-        .banner.show { display: flex; }
-
-        /* Chân trang cố định */
-        .footbar {
-            position: sticky; bottom: 0; z-index: 20;
-            padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
-            border-top: 1px solid var(--line-soft);
-            background: var(--surface);
-        }
-
-        .btn {
-            width: 100%; height: 50px;
-            border-radius: var(--r-md);
-            font-size: 15px; font-weight: 800;
-            display: flex; align-items: center; justify-content: center; gap: 8px;
-            box-shadow: var(--shadow-raised);
-            transition: opacity 0.15s, transform 0.05s;
-        }
-        .btn:active { transform: scale(0.98); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
-
-        .btn--brand { background: var(--brand); color: #fff; }
-        .btn--brand:hover:not(:disabled) { background: var(--brand-dark); }
-
-        /* Blocker ngoài Telegram */
-        .tg-blocker {
-            display: none; position: fixed; inset: 0; z-index: 100;
-            background: var(--bg); padding: 32px 24px;
-            flex-direction: column; align-items: center; justify-content: center;
-            text-align: center;
-        }
-        .tg-blocker.show { display: flex; }
-        .tg-blocker__icon { font-size: 54px; margin-bottom: 16px; }
-        .tg-blocker__title { font-size: 19px; font-weight: 800; margin-bottom: 8px; }
-        .tg-blocker__desc { font-size: 13.5px; color: var(--muted); line-height: 1.6; max-width: 320px; }
-
-        /* Màn hình thành công */
-        .success-overlay {
-            position: fixed; inset: 0; z-index: 90;
-            background: rgba(15, 23, 42, 0.85);
-            backdrop-filter: blur(8px);
-            display: none; flex-direction: column;
-            align-items: center; justify-content: center;
-            padding: 24px; text-align: center; color: #fff;
-        }
-        .success-overlay.show { display: flex; }
-
-        .success-card {
-            background: var(--card); color: var(--ink);
-            width: 100%; max-width: 360px;
-            border-radius: var(--r-lg);
-            padding: 24px 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
-            text-align: center;
-        }
-
-        .success-icon {
-            width: 60px; height: 60px;
-            border-radius: 50%;
-            background: #10b981; color: #fff;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 32px; font-weight: 900;
-            margin: 0 auto 14px;
-            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4);
-        }
-
-        .success-title { font-size: 18px; font-weight: 900; color: var(--ink); margin-bottom: 6px; }
-        .success-store { font-size: 14px; font-weight: 700; color: var(--brand-dark); margin-bottom: 4px; }
-        .success-address { font-size: 12px; color: var(--faint); margin-bottom: 16px; line-height: 1.4; }
-
-        .success-badge {
-            background: var(--brand-soft);
-            border: 1px solid var(--brand-ring);
-            padding: 10px 14px; border-radius: var(--r-md);
-            font-size: 13px; font-weight: 800; color: var(--brand-dark);
-            margin-bottom: 20px;
-        }
-
-        .spinner {
-            width: 18px; height: 18px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-    </style>
 </head>
 
 <body>
@@ -382,87 +29,188 @@
             </div>
         </header>
 
+        <!-- Thanh chuyển Tab -->
+        <nav class="tabs-bar">
+            <button type="button" class="tab-btn active" id="tabBtnCheckin" onclick="switchTab('checkin')">
+                <span>📸 Check-in Mới</span>
+            </button>
+            <button type="button" class="tab-btn" id="tabBtnHistory" onclick="switchTab('history')">
+                <span>📋 Lịch Sử</span>
+            </button>
+        </nav>
+
         <!-- Thân trang -->
         <main class="body">
-            <!-- Thẻ tiến độ KPI -->
-            <section class="kpi-card" id="kpiCard">
-                <div class="kpi-card__head">
-                    <span class="kpi-card__title">🎯 Chỉ tiêu trong ngày</span>
-                    <span class="kpi-card__status" id="kpiStatusBadge">Đang thực hiện</span>
-                </div>
-                <div class="kpi-card__score" id="kpiScoreText">0 <span>/ 15 điểm</span></div>
-                <div class="kpi-bar">
-                    <div class="kpi-bar__fill" id="kpiBarFill"></div>
-                </div>
-                <div class="kpi-card__note" id="kpiNoteText">Còn thiếu 15 điểm để hoàn thành KPI hôm nay.</div>
-            </section>
+            <!-- TAB 1: FORM CHECK-IN MỚI -->
+            <div id="viewCheckin" class="tab-view active">
+                <!-- Thẻ tiến độ KPI -->
+                <section class="kpi-card" id="kpiCard">
+                    <div class="kpi-card__head">
+                        <span class="kpi-card__title">🎯 Chỉ tiêu trong ngày</span>
+                        <span class="kpi-card__status" id="kpiStatusBadge">Đang thực hiện</span>
+                    </div>
+                    <div class="kpi-card__score" id="kpiScoreText">0 <span>/ 15 điểm</span></div>
+                    <div class="kpi-bar">
+                        <div class="kpi-bar__fill" id="kpiBarFill"></div>
+                    </div>
+                    <div class="kpi-card__note" id="kpiNoteText">Còn thiếu 15 điểm để hoàn thành KPI hôm nay.</div>
+                </section>
 
-            <!-- Banner cảnh báo lỗi -->
-            <div class="banner" id="errorBanner">
-                <span id="errorIcon">⚠️</span>
-                <span id="errorText">Có lỗi xảy ra</span>
+                <!-- Banner cảnh báo lỗi / quy định -->
+                <div class="banner" id="errorBanner">
+                    <div class="banner__icon-wrap">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="banner__content">
+                        <div class="banner__title" id="errorTitle">Không thể thực hiện</div>
+                        <div class="banner__desc" id="errorText">Có lỗi xảy ra</div>
+                    </div>
+                </div>
+
+                <!-- Form Check-in -->
+                <form id="checkinForm" onsubmit="return false;">
+                    <div class="field">
+                        <label class="field__label" for="storeName">
+                            🏪 Tên điểm bán / Cửa hàng <span class="field__required">*</span>
+                        </label>
+                        <input type="text" class="field-input" id="storeName" placeholder="Ví dụ: Tạp hóa Lan Anh, WinMart+..." autocomplete="off">
+                    </div>
+
+                    <div class="field">
+                        <label class="field__label" for="storeAddress">
+                            📬 Địa chỉ chi tiết <span class="field__required">*</span>
+                        </label>
+                        <input type="text" class="field-input" id="storeAddress" placeholder="Ví dụ: 123 Nguyễn Văn Tuyết, Đống Đa..." autocomplete="off">
+                    </div>
+
+                    <!-- Thẻ Định vị GPS -->
+                    <div class="field">
+                        <label class="field__label">
+                            📍 Vị trí thực tế (GPS)
+                        </label>
+                        <div class="gps-card" id="gpsCard">
+                            <div class="gps-card__header">
+                                <div class="gps-card__title">
+                                    <span class="gps-card__icon">🛰️</span>
+                                    <span>Định vị toạ độ điểm bán</span>
+                                </div>
+                                <span class="gps-badge" id="gpsStatusBadge">Chờ định vị</span>
+                            </div>
+                            <div class="gps-card__body">
+                                <div class="gps-card__coords" id="gpsCoordsText">Đang sẵn sàng kết nối GPS...</div>
+                                <div class="gps-card__actions">
+                                    <button type="button" class="gps-btn" id="btnRefreshGps" title="Lấy lại toạ độ GPS">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                                        </svg>
+                                        <span id="btnRefreshGpsText">Lấy vị trí</span>
+                                    </button>
+                                    <a href="#" target="_blank" rel="noopener noreferrer" class="gps-link" id="linkGoogleMaps" style="display:none">
+                                        <span>🗺️ Xem trên Bản đồ</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field__label">
+                            📸 Minh chứng hình ảnh <span class="field__required">* (Tối thiểu 1 ảnh)</span>
+                        </label>
+                        <div class="photo-grid" id="mainPhotoGrid">
+                            <!-- Ô ảnh 1: Selfie trước cổng -->
+                            <div class="photo-box" id="boxSelfie">
+                                <button type="button" class="photo-box__remove" id="btnRemoveSelfie" title="Xóa ảnh">×</button>
+                                <img class="photo-box__preview" id="previewSelfie" alt="Selfie">
+                                <div class="photo-box__content">
+                                    <div class="photo-box__icon">🤳</div>
+                                    <div class="photo-box__title">Ảnh 1: Cổng / Biển hiệu</div>
+                                    <div class="photo-box__sub">Selfie có mặt trước biển hiệu</div>
+                                </div>
+                                <span class="photo-box__badge">✓ Đã chụp cổng</span>
+                                <input type="file" id="fileSelfie" accept="image/*" style="display:none">
+                            </div>
+
+                            <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
+                            <div class="photo-box" id="boxStoreInitial">
+                                <div class="photo-box__content">
+                                    <div class="photo-box__icon">🛒</div>
+                                    <div class="photo-box__title">Ảnh 2+: Quầy kệ bên trong</div>
+                                    <div class="photo-box__sub">Chạm để chụp ảnh quầy kệ</div>
+                                </div>
+                                <span class="photo-box__badge" style="background:var(--brand)">+ Chụp quầy</span>
+                            </div>
+                        </div>
+
+                        <!-- Khu vực danh sách nhiều ảnh quầy kệ -->
+                        <div class="shelf-gallery-box" id="shelfGalleryBox">
+                            <div class="shelf-gallery-header">
+                                <div class="shelf-gallery-title">
+                                    <span>🛒 Ảnh quầy kệ đã chụp</span>
+                                    <span class="shelf-gallery-count" id="shelfCountBadge">0 ảnh</span>
+                                </div>
+                                <div style="font-size:10.5px; color:var(--muted)">Có thể chụp thêm nhiều góc</div>
+                            </div>
+                            <div class="shelf-grid" id="shelfGrid"></div>
+                        </div>
+                        <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
+                    </div>
+                </form>
             </div>
 
-            <!-- Form Check-in -->
-            <form id="checkinForm" onsubmit="return false;">
-                <div class="field">
-                    <label class="field__label" for="storeName">
-                        🏪 Tên điểm bán / Cửa hàng <span class="field__required">*</span>
-                    </label>
-                    <input type="text" class="field-input" id="storeName" placeholder="Ví dụ: Tạp hóa Lan Anh, WinMart+..." autocomplete="off">
-                </div>
-
-                <div class="field">
-                    <label class="field__label" for="storeAddress">
-                        📬 Địa chỉ chi tiết <span class="field__required">*</span>
-                    </label>
-                    <input type="text" class="field-input" id="storeAddress" placeholder="Ví dụ: 123 Nguyễn Văn Tuyết, Đống Đa..." autocomplete="off">
-                </div>
-
-                <div class="field">
-                    <label class="field__label">
-                        📸 Minh chứng hình ảnh <span class="field__required">* (Tối thiểu 2 ảnh: 1 selfie + ≥ 1 quầy kệ)</span>
-                    </label>
-                    <div class="photo-grid" id="mainPhotoGrid">
-                        <!-- Ô ảnh 1: Selfie trước cổng -->
-                        <div class="photo-box" id="boxSelfie">
-                            <button type="button" class="photo-box__remove" id="btnRemoveSelfie" title="Xóa ảnh">×</button>
-                            <img class="photo-box__preview" id="previewSelfie" alt="Selfie">
-                            <div class="photo-box__content">
-                                <div class="photo-box__icon">🤳</div>
-                                <div class="photo-box__title">Ảnh 1: Cổng / Biển hiệu</div>
-                                <div class="photo-box__sub">Selfie có mặt trước biển hiệu</div>
-                            </div>
-                            <span class="photo-box__badge">✓ Đã chụp cổng</span>
-                            <input type="file" id="fileSelfie" accept="image/*" style="display:none">
-                        </div>
-
-                        <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
-                        <div class="photo-box" id="boxStoreInitial">
-                            <div class="photo-box__content">
-                                <div class="photo-box__icon">🛒</div>
-                                <div class="photo-box__title">Ảnh 2+: Quầy kệ bên trong</div>
-                                <div class="photo-box__sub">Chạm để chụp ảnh quầy kệ</div>
-                            </div>
-                            <span class="photo-box__badge" style="background:var(--brand)">+ Chụp quầy</span>
-                        </div>
+            <!-- TAB 2: LỊCH SỬ & DANH SÁCH ĐIỂM BÁN THEO NGÀY -->
+            <div id="viewHistory" class="tab-view" style="display:none">
+                <!-- Thanh điều hướng ngày -->
+                <div class="history-date-nav">
+                    <button type="button" class="date-nav-btn" id="btnPrevDate" title="Xem ngày hôm trước">◀</button>
+                    <div class="date-picker-box" title="Bấm để chọn ngày bất kỳ">
+                        <span style="font-size:15px">📅</span>
+                        <span class="date-display-label" id="historyDateLabel">--/--/----</span>
+                        <input type="date" class="date-native-input" id="historyDateInput">
                     </div>
-
-                    <!-- Khu vực danh sách nhiều ảnh quầy kệ -->
-                    <div class="shelf-gallery-box" id="shelfGalleryBox">
-                        <div class="shelf-gallery-header">
-                            <div class="shelf-gallery-title">
-                                <span>🛒 Ảnh quầy kệ đã chụp</span>
-                                <span class="shelf-gallery-count" id="shelfCountBadge">0 ảnh</span>
-                            </div>
-                            <div style="font-size:10.5px; color:var(--muted)">Có thể chụp thêm nhiều góc</div>
-                        </div>
-                        <div class="shelf-grid" id="shelfGrid"></div>
-                    </div>
-                    <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
+                    <button type="button" class="date-nav-btn" id="btnNextDate" title="Xem ngày hôm sau">▶</button>
+                    <button type="button" class="date-today-btn" id="btnToday">Hôm nay</button>
                 </div>
-            </form>
+
+                <!-- Thẻ tóm tắt KPI ngày được chọn -->
+                <section class="history-summary-card" id="historySummaryCard">
+                    <div class="history-summary-card__head">
+                        <span class="history-summary-card__title" id="historyCardDateTitle">🎯 Tiến độ ngày</span>
+                        <span class="history-summary-card__badge" id="historyStatusBadge">Đang kiểm tra...</span>
+                    </div>
+                    <div class="history-summary-card__score" id="historyScoreText">0 <span>/ 15 điểm</span></div>
+                    <div class="kpi-bar">
+                        <div class="kpi-bar__fill" id="historyBarFill" style="background:#38bdf8"></div>
+                    </div>
+                    <div class="history-summary-card__note" id="historyNoteText">Đang tải dữ liệu kiểm tra...</div>
+                </section>
+
+                <!-- Danh sách điểm bán -->
+                <div class="history-list-header">
+                    <div class="history-list-title">
+                        <span>🏪 Các điểm bán đã check-in</span>
+                        <span class="history-list-count" id="historyListCount">0 điểm</span>
+                    </div>
+                    <button type="button" id="btnRefreshHistory" style="font-size:12px; font-weight:800; color:var(--brand-dark); display:flex; align-items:center; gap:4px">
+                        🔄 Tải lại
+                    </button>
+                </div>
+
+                <!-- Container danh sách điểm bán -->
+                <div id="historyStoreList"></div>
+            </div>
         </main>
+
+        <!-- Lightbox Modal phóng to ảnh -->
+        <div class="lightbox-modal" id="lightboxModal">
+            <button type="button" class="lightbox-close-btn" id="btnCloseLightbox" title="Đóng">×</button>
+            <img class="lightbox-image" id="lightboxImage" src="" alt="Ảnh chi tiết">
+            <div class="lightbox-title" id="lightboxTitle">Ảnh điểm bán</div>
+        </div>
 
         <!-- Nút gửi ở chân trang -->
         <footer class="footbar">
@@ -494,325 +242,8 @@
         </div>
     </div>
 
-    <script>
-        let tg = null;
-        try {
-            if (window.Telegram && window.Telegram.WebApp) {
-                tg = window.Telegram.WebApp;
-                tg.expand();
-                tg.ready();
-            }
-        } catch (e) {
-            console.error('Lỗi khởi tạo Telegram WebApp:', e);
-        }
-
-        let telegramId = '';
-        let telegramGroupId = '';
-        let selfieBlob = null;
-        let storeBlob = null;
-
-        // Đồng hồ thời gian thực
-        function updateClock() {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-            const dateStr = now.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            document.getElementById('liveClock').textContent = timeStr;
-            document.getElementById('liveDate').textContent = dateStr;
-        }
-        setInterval(updateClock, 1000);
-        updateClock();
-
-        const storeNameInput = document.getElementById('storeName');
-        const storeAddressInput = document.getElementById('storeAddress');
-        const btnSubmit = document.getElementById('btnSubmit');
-        const errorBanner = document.getElementById('errorBanner');
-        const errorText = document.getElementById('errorText');
-
-        function showError(msg) {
-            errorText.textContent = msg;
-            errorBanner.classList.add('show');
-            errorBanner.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }
-        function hideError() {
-            errorBanner.classList.remove('show');
-        }
-
-        function validateForm() {
-            const nameOk = storeNameInput.value.trim().length >= 2;
-            const addressOk = storeAddressInput.value.trim().length >= 2;
-            const photosOk = selfieBlob !== null && storeBlob !== null;
-            btnSubmit.disabled = !(nameOk && addressOk && photosOk);
-        }
-
-        storeNameInput.addEventListener('input', () => { hideError(); validateForm(); });
-        storeAddressInput.addEventListener('input', () => { hideError(); validateForm(); });
-
-        // Xử lý chọn Ảnh 1: Selfie cổng
-        const boxSelfie = document.getElementById('boxSelfie');
-        const fileSelfie = document.getElementById('fileSelfie');
-        const previewSelfie = document.getElementById('previewSelfie');
-        const btnRemoveSelfie = document.getElementById('btnRemoveSelfie');
-
-        boxSelfie.addEventListener('click', (e) => {
-            if (e.target === btnRemoveSelfie) return;
-            fileSelfie.click();
-        });
-
-        fileSelfie.addEventListener('change', (e) => {
-            const file = e.target.files[0];
-            if (!file) return;
-            selfieBlob = file;
-            const url = URL.createObjectURL(file);
-            previewSelfie.src = url;
-            boxSelfie.classList.add('has-file');
-            hideError();
-            validateForm();
-        });
-
-        btnRemoveSelfie.addEventListener('click', (e) => {
-            e.stopPropagation();
-            selfieBlob = null;
-            fileSelfie.value = '';
-            previewSelfie.src = '';
-            boxSelfie.classList.remove('has-file');
-            validateForm();
-        });
-
-        // Xử lý chọn Ảnh 2+: Quầy kệ đa ảnh
-        let storeBlobs = [];
-        const boxStoreInitial = document.getElementById('boxStoreInitial');
-        const shelfGalleryBox = document.getElementById('shelfGalleryBox');
-        const shelfCountBadge = document.getElementById('shelfCountBadge');
-        const shelfGrid = document.getElementById('shelfGrid');
-        const fileStore = document.getElementById('fileStore');
-
-        function renderShelfGallery() {
-            if (storeBlobs.length === 0) {
-                boxStoreInitial.style.display = 'flex';
-                shelfGalleryBox.classList.remove('show');
-            } else {
-                boxStoreInitial.style.display = 'none';
-                shelfGalleryBox.classList.add('show');
-                shelfCountBadge.textContent = `${storeBlobs.length} ảnh`;
-
-                shelfGrid.innerHTML = '';
-                storeBlobs.forEach((item, index) => {
-                    const card = document.createElement('div');
-                    card.className = 'shelf-card';
-                    card.innerHTML = `
-                        <button type="button" class="shelf-card__remove" title="Xóa ảnh này" data-id="${item.id}">×</button>
-                        <img src="${item.url}" alt="Quầy kệ ${index + 1}">
-                        <span class="shelf-card__badge">Quầy #${index + 1}</span>
-                    `;
-                    card.querySelector('.shelf-card__remove').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        removeShelfPhoto(item.id);
-                    });
-                    shelfGrid.appendChild(card);
-                });
-
-                // Thêm ô bấm "+ Thêm ảnh" ngay trong lưới ảnh
-                const addCard = document.createElement('div');
-                addCard.className = 'shelf-card shelf-card--add';
-                addCard.innerHTML = `
-                    <div class="shelf-card--add-icon">➕</div>
-                    <div class="shelf-card--add-text">Thêm ảnh<br>quầy kệ</div>
-                `;
-                addCard.addEventListener('click', () => {
-                    fileStore.click();
-                });
-                shelfGrid.appendChild(addCard);
-            }
-            validateForm();
-        }
-
-        function removeShelfPhoto(id) {
-            const idx = storeBlobs.findIndex(b => b.id === id);
-            if (idx !== -1) {
-                try { URL.revokeObjectURL(storeBlobs[idx].url); } catch (_) {}
-                storeBlobs.splice(idx, 1);
-                renderShelfGallery();
-            }
-        }
-
-        boxStoreInitial.addEventListener('click', () => {
-            fileStore.click();
-        });
-
-        fileStore.addEventListener('change', (e) => {
-            const files = Array.from(e.target.files || []);
-            if (!files.length) return;
-
-            files.forEach(file => {
-                const url = URL.createObjectURL(file);
-                storeBlobs.push({
-                    id: Date.now() + Math.random(),
-                    file,
-                    url
-                });
-            });
-
-            fileStore.value = '';
-            hideError();
-            renderShelfGallery();
-        });
-
-        function updateProgressUI(todayCount, target = 15) {
-            const scoreText = document.getElementById('kpiScoreText');
-            const fill = document.getElementById('kpiBarFill');
-            const note = document.getElementById('kpiNoteText');
-            const badge = document.getElementById('kpiStatusBadge');
-
-            scoreText.innerHTML = `${todayCount} <span>/ ${target} điểm</span>`;
-            const pct = Math.min(100, Math.round((todayCount / target) * 100));
-            fill.style.width = `${pct}%`;
-
-            if (todayCount >= target) {
-                badge.textContent = '🎉 Đã đạt KPI';
-                badge.style.background = '#10b981';
-                note.textContent = 'Chúc mừng bạn đã hoàn thành chỉ tiêu 15 điểm hôm nay!';
-            } else {
-                const remain = target - todayCount;
-                badge.textContent = 'Đang thực hiện';
-                note.textContent = `Còn thiếu ${remain} điểm nữa để hoàn thành KPI hôm nay.`;
-            }
-        }
-
-        // Khởi tạo và nạp dữ liệu tiến độ
-        async function bootstrap() {
-            if (tg && tg.initDataUnsafe && tg.initDataUnsafe.user) {
-                const u = tg.initDataUnsafe.user;
-                telegramId = String(u.id);
-                document.getElementById('userName').textContent = u.first_name + (u.last_name ? ' ' + u.last_name : '');
-                const initials = (u.first_name || 'NV').slice(0, 2).toUpperCase();
-                document.getElementById('userAvatar').textContent = initials;
-            }
-
-            const urlParams = new URLSearchParams(window.location.search);
-            const startParam = (tg && tg.initDataUnsafe ? tg.initDataUnsafe.start_param : null) || urlParams.get('payload') || urlParams.get('startapp') || urlParams.get('tgWebAppStartParam') || '';
-            if (startParam) {
-                const parts = startParam.split('_');
-                if (parts.length >= 2) telegramGroupId = parts[1];
-            }
-            if (!telegramGroupId) {
-                telegramGroupId = urlParams.get('chat_id') || urlParams.get('telegram_group_id') || '';
-            }
-
-            if (!telegramId) {
-                // Thử lấy từ query params nếu test qua web
-                telegramId = urlParams.get('telegram_id') || '';
-            }
-
-            if (!telegramId || !telegramGroupId) {
-                document.getElementById('tgBlocker').classList.add('show');
-                return;
-            }
-
-            try {
-                const res = await fetch(`/api/retail-checkin/bootstrap?telegram_id=${telegramId}&chat_id=${telegramGroupId}`);
-                const data = await res.json();
-                if (data.ok) {
-                    if (data.employee && data.employee.fullName) {
-                        document.getElementById('userName').textContent = data.employee.fullName;
-                    }
-                    if (data.progress) {
-                        updateProgressUI(data.progress.todayCount, data.progress.target);
-                    }
-                } else if (!data.isRegistered) {
-                    showError('Tài khoản của bạn chưa được Admin duyệt hồ sơ hoặc chưa đăng ký.');
-                    btnSubmit.disabled = true;
-                }
-            } catch (err) {
-                console.warn('Không tải được bootstrap:', err);
-            }
-        }
-
-        document.addEventListener('DOMContentLoaded', bootstrap);
-
-        // Gửi Check-in
-        btnSubmit.addEventListener('click', async function () {
-            if (this.disabled) return;
-
-            const name = storeNameInput.value.trim();
-            const address = storeAddressInput.value.trim();
-
-            if (!name || !address || !selfieBlob || storeBlobs.length < 1) {
-                showError('Vui lòng điền đầy đủ tên điểm bán, địa chỉ, chụp 1 ảnh selfie cổng và ít nhất 1 ảnh quầy kệ!');
-                return;
-            }
-
-            hideError();
-            this.disabled = true;
-            const originalContent = this.innerHTML;
-            this.innerHTML = '<div class="spinner"></div> Đang gửi check-in...';
-
-            const formData = new FormData();
-            formData.append('telegram_id', telegramId);
-            formData.append('chat_id', telegramGroupId);
-            formData.append('store_name', name);
-            formData.append('store_address', address);
-            formData.append('photo_selfie', selfieBlob, 'selfie.jpg');
-            storeBlobs.forEach((item, idx) => {
-                formData.append('photo_store', item.file, `store_${idx + 1}.jpg`);
-            });
-
-            try {
-                const res = await fetch('/api/retail-checkin/submit', {
-                    method: 'POST',
-                    headers: {
-                        'x-telegram-init-data': tg && tg.initData ? tg.initData : ''
-                    },
-                    body: formData
-                });
-
-                const data = await res.json();
-
-                if (data.ok && data.success) {
-                    // Cập nhật thẻ KPI
-                    if (data.progress) {
-                        updateProgressUI(data.progress.todayCount, data.progress.target);
-                    }
-
-                    // Hiện Modal Thành Công
-                    document.getElementById('successStoreName').textContent = name;
-                    document.getElementById('successStoreAddress').textContent = address;
-                    document.getElementById('successProgressText').textContent =
-                        `🎯 Tiến độ hôm nay: ${data.progress.todayCount} / ${data.progress.target} điểm`;
-                    document.getElementById('successOverlay').classList.add('show');
-                } else {
-                    showError(data.message || 'Đã có lỗi xảy ra khi gửi check-in!');
-                    this.disabled = false;
-                    this.innerHTML = originalContent;
-                    validateForm();
-                }
-            } catch (err) {
-                console.error(err);
-                showError('Lỗi kết nối máy chủ! Vui lòng kiểm tra lại mạng.');
-                this.disabled = false;
-                this.innerHTML = originalContent;
-                validateForm();
-            }
-        });
-
-        // Nút tiếp tục sau khi check-in thành công
-        document.getElementById('btnContinue').addEventListener('click', () => {
-            document.getElementById('successOverlay').classList.remove('show');
-            // Reset form cho điểm bán tiếp theo
-            storeNameInput.value = '';
-            storeAddressInput.value = '';
-            btnRemoveSelfie.click();
-            storeBlobs.forEach(b => { try { URL.revokeObjectURL(b.url); } catch (_) {} });
-            storeBlobs = [];
-            renderShelfGallery();
-            btnSubmit.innerHTML = '<span>Xác nhận Check-in</span>';
-            btnSubmit.disabled = true;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        });
-
-        document.getElementById('btnCloseApp').addEventListener('click', () => {
-            if (tg) tg.close();
-        });
-    </script>
+    <!-- Client Logic -->
+    <script src="/mini-app/retail/app.js"></script>
 </body>
 
 </html>

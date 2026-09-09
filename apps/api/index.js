@@ -14,7 +14,9 @@ import {
     pauseEmployeeMembershipsInAllGroups,
     registerEmployeeInKpiGroup
 } from '../../packages/shared/kpiMembership.js';
+import moment from 'moment';
 import { registerWarehouseAdminRoutes } from '../../domains/warehouse/index.js';
+import { registerRetailAdminModule } from '../../domains/retail-checkin/index.js';
 import { registerTimekeepRegistrationReview } from '../../domains/timekeep/index.js';
 import { registerStaffProfileModule } from '../../domains/staff-profile/index.js';
 import { registerCompanyHolidayAdminModule } from '../../domains/company-holiday/index.js';
@@ -89,6 +91,7 @@ app.use('/api/export', adminAuth.authenticateAdmin, adminAuth.requireGeneralAdmi
 // =====================================
 
 registerWarehouseAdminRoutes({ app, pool });
+registerRetailAdminModule({ app, pool, moment });
 registerTimekeepRegistrationReview({
     app,
     pool,

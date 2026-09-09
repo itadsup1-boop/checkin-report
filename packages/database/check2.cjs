@@ -1,1 +1,0 @@
-const { Client } = require('pg'); const c = new Client({ connectionString: process.env.DATABASE_URL }); c.connect().then(()=>c.query('SELECT full_name FROM employees WHERE need_report = false')).then(r=>{console.log(r.rows); c.end()});

@@ -7,9 +7,14 @@ import { createRetailSheetSync } from './infrastructure/google-sheet/retail-shee
 import { createProcessStoreCheckin } from './application/process-store-checkin.js';
 import { createSummarizeDailyKpi } from './application/summarize-daily-kpi.js';
 import { createSendProgressReminders } from './application/send-progress-reminders.js';
+import { createGetRetailOverview } from './application/get-retail-overview.js';
+import { createGetRetailMonthlyOverview } from './application/get-retail-monthly-overview.js';
+import { createGetMemberRetailHistory } from './application/get-member-retail-history.js';
+import { createUpdateMemberRetailKpi } from './application/update-member-retail-kpi.js';
 import { registerRetailTelegramHandler } from './interfaces/telegram/register-retail-handler.js';
 import { registerRetailCron } from './interfaces/cron/register-retail-cron.js';
 import { registerRetailMiniappRoutes } from './interfaces/miniapp-api/register-retail-miniapp-routes.js';
+import { registerRetailAdminRoutes } from './interfaces/admin-api/register-retail-admin-routes.js';
 
 export function registerRetailCheckinModule({
     botApp,
@@ -19,6 +24,8 @@ export function registerRetailCheckinModule({
     moment,
     crypto,
     fs,
+    uploadToDrive,
+    getOrCreateRetailFolderHierarchy,
     retailUploadDir,
     authenticateTelegramMiniApp,
     getGroupRole,
@@ -30,13 +37,17 @@ export function registerRetailCheckinModule({
     const processStoreCheckin = createProcessStoreCheckin({
         repository,
         sheetSync,
-        moment
+        moment,
+        bot,
+        uploadToDrive,
+        getOrCreateRetailFolderHierarchy
     });
 
     const summarizeDailyKpi = createSummarizeDailyKpi({
         repository,
         bot,
-        moment
+        moment,
+        sheetSync
     });
 
     const sendProgressReminders = createSendProgressReminders({
@@ -48,7 +59,11 @@ export function registerRetailCheckinModule({
     // Đăng ký Telegram listener
     registerRetailTelegramHandler({
         bot,
+        repository,
+        moment,
         processStoreCheckin,
+        sendProgressReminders,
+        summarizeDailyKpi,
         getGroupRole,
         crypto
     });
@@ -63,6 +78,8 @@ export function registerRetailCheckinModule({
             moment,
             crypto,
             fs,
+            uploadToDrive,
+            getOrCreateRetailFolderHierarchy,
             retailUploadDir,
             authenticateTelegramMiniApp
         });
@@ -73,7 +90,8 @@ export function registerRetailCheckinModule({
         registerRetailCron({
             cron,
             sendProgressReminders,
-            summarizeDailyKpi
+            summarizeDailyKpi,
+            repository
         });
     }
 
@@ -86,3 +104,31 @@ export function registerRetailCheckinModule({
         sendProgressReminders
     };
 }
+
+export function registerRetailAdminModule({ app, pool, moment }) {
+    const repository = createRetailRepository({ pool });
+    const getRetailOverview = createGetRetailOverview({ repository, moment });
+    const getRetailMonthlyOverview = createGetRetailMonthlyOverview({ repository, moment });
+    const getMemberRetailHistory = createGetMemberRetailHistory({ repository });
+    const updateMemberRetailKpi = createUpdateMemberRetailKpi({ repository });
+
+    registerRetailAdminRoutes({
+        app,
+        getRetailOverview,
+        getRetailMonthlyOverview,
+        getMemberRetailHistory,
+        updateMemberRetailKpi,
+        repository
+    });
+
+    console.log('[Retail Admin Module] Đã đăng ký thành công các route Admin cho Check-in Thị Trường.');
+
+    return {
+        repository,
+        getRetailOverview,
+        getRetailMonthlyOverview,
+        getMemberRetailHistory,
+        updateMemberRetailKpi
+    };
+}
+

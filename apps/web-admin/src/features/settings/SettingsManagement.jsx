@@ -32,7 +32,10 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
     penalty_under_15: group.penalty_under_15 ?? 20000,
     penalty_under_90: group.penalty_under_90 ?? 2000,
     penalty_over_90: group.penalty_over_90 ?? 200000,
-    schedule_registration_open: group.schedule_registration_open !== false
+    schedule_registration_open: group.schedule_registration_open !== false,
+    retail_shift_start: normalizeTime(group.retail_shift_start, '08:00'),
+    retail_shift_end: normalizeTime(group.retail_shift_end, '18:00'),
+    retail_kpi_target: group.retail_kpi_target ?? 15
   }));
 
   const role = form.bot_role;
@@ -41,6 +44,7 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
   const showDriveFolder = !role || ['customer', 'warehouse', 'retail_checkin'].includes(role);
   const showPricingSheet = role === 'warehouse';
   const showTimekeep = !role || role === 'timekeep';
+  const showRetailConfig = role === 'retail_checkin';
 
   const update = (field, value) => {
     let cleanValue = value;
@@ -67,7 +71,10 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
         penalty_under_15: Number(form.penalty_under_15) || 0,
         penalty_under_90: Number(form.penalty_under_90) || 0,
         penalty_over_90: Number(form.penalty_over_90) || 0,
-        auto_reminder_enabled: true
+        auto_reminder_enabled: true,
+        retail_shift_start: `${form.retail_shift_start}:00`,
+        retail_shift_end: `${form.retail_shift_end}:00`,
+        retail_kpi_target: Number(form.retail_kpi_target) || 15
       });
     } finally {
       setSaving(false);
@@ -128,6 +135,20 @@ function GroupSettingsCard({ group, onUpdate, onDelete }) {
             Sheet riêng, tách biệt hoàn toàn với "ID Google Sheet báo cáo kho" ở trên — chỉ chia sẻ file này trên Google Drive cho đúng người được xem giá.
           </span>
         </label>}
+
+        {showRetailConfig && <>
+          <label className={labelClass}>Giờ bắt đầu ca
+            <input type="time" value={form.retail_shift_start} onChange={e => update('retail_shift_start', e.target.value)} className={inputClass} />
+          </label>
+          <label className={labelClass}>Giờ kết thúc ca
+            <input type="time" value={form.retail_shift_end} onChange={e => update('retail_shift_end', e.target.value)} className={inputClass} />
+            <span className="mt-1 block text-[11px] font-normal text-slate-400">Lịch nhắc tự động tính từ giờ này (−2h, −1h, −30p, −10p, +1p).</span>
+          </label>
+          <label className={labelClass}>KPI tối đa / ngày (số điểm)
+            <input type="number" min="1" step="1" value={form.retail_kpi_target} onChange={e => update('retail_kpi_target', e.target.value)} className={inputClass} />
+            <span className="mt-1 block text-[11px] font-normal text-slate-400">Nhân viên cần đạt đủ số này trong ngày.</span>
+          </label>
+        </>}
 
         {showTimekeep && <>
           <label className={labelClass}>Giờ bắt đầu ca sớm

@@ -5,7 +5,7 @@ import {
     verifyAdminPassword
 } from '../../packages/shared/admin-auth-crypto.js';
 import { createAdminAuthRepository } from '../../packages/database/admin-auth-repository.js';
-import { WAREHOUSE_ACCOUNTANT_ROLE } from './admin-account-policy.js';
+import { WAREHOUSE_ACCOUNTANT_ROLE, RETAIL_MANAGER_ROLE } from './admin-account-policy.js';
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const LOGIN_MAX_FAILURES = 5;
@@ -129,6 +129,7 @@ export function createAdminAuth({ pool }) {
                 role: session.role,
                 isSuperAdmin: session.role === 'SUPER_ADMIN',
                 isWarehouseAccountant: session.role === WAREHOUSE_ACCOUNTANT_ROLE,
+                isRetailManager: session.role === RETAIL_MANAGER_ROLE,
                 allowedGroupIds: allowedGroupIds.map(String),
                 tokenHash: hashAdminSessionToken(token)
             };
@@ -154,22 +155,44 @@ export function createAdminAuth({ pool }) {
         });
     }
 
+    function denyRetailManagerAccount(res) {
+        return res.status(403).json({
+            success: false,
+            message: 'Tài khoản Quản lý thị trường chỉ được sử dụng chức năng Check-in thị trường.'
+        });
+    }
+
     function restrictWarehouseAccountToWarehouse(req, res, next) {
-        if (req.admin?.role !== WAREHOUSE_ACCOUNTANT_ROLE) return next();
-        const pathname = String(req.originalUrl || req.url || '').split('?')[0];
-        const allowed = pathname === '/api/admin/session'
-            || pathname === '/api/admin/logout'
-            || pathname.startsWith('/api/admin/warehouse/');
-        return allowed ? next() : denyWarehouseAccount(res);
+        if (req.admin?.role === WAREHOUSE_ACCOUNTANT_ROLE) {
+            const pathname = String(req.originalUrl || req.url || '').split('?')[0];
+            const allowed = pathname === '/api/admin/session'
+                || pathname === '/api/admin/logout'
+                || pathname.startsWith('/api/admin/warehouse/');
+            return allowed ? next() : denyWarehouseAccount(res);
+        }
+        if (req.admin?.role === RETAIL_MANAGER_ROLE) {
+            const pathname = String(req.originalUrl || req.url || '').split('?')[0];
+            const allowed = pathname === '/api/admin/session'
+                || pathname === '/api/admin/logout'
+                || pathname.startsWith('/api/admin/retail/');
+            return allowed ? next() : denyRetailManagerAccount(res);
+        }
+        return next();
     }
 
     function restrictWarehouseAccountGroupAccess(req, res, next) {
-        if (req.admin?.role !== WAREHOUSE_ACCOUNTANT_ROLE || req.method === 'GET') return next();
-        return denyWarehouseAccount(res);
+        if (req.admin?.role === WAREHOUSE_ACCOUNTANT_ROLE && req.method !== 'GET') {
+            return denyWarehouseAccount(res);
+        }
+        if (req.admin?.role === RETAIL_MANAGER_ROLE && req.method !== 'GET') {
+            return denyRetailManagerAccount(res);
+        }
+        return next();
     }
 
     function requireGeneralAdmin(req, res, next) {
         if (req.admin?.role === WAREHOUSE_ACCOUNTANT_ROLE) return denyWarehouseAccount(res);
+        if (req.admin?.role === RETAIL_MANAGER_ROLE) return denyRetailManagerAccount(res);
         return next();
     }
 

@@ -93,6 +93,7 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
 
             for (const group of groups) {
                 const groupId = group.telegram_group_id;
+                if (groupId === '-5321152019' || group.schedule_registration_open === false) continue;
                 const scheduleUrl = generateScheduleLink(groupId, botUsername);
                 const unregisteredStaff = await repository.findUnregisteredStaff(groupId, nextWeekDates[0], nextWeekDates[6]);
 

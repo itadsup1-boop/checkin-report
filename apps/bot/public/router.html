@@ -66,6 +66,8 @@
                 targetPage = 'register.html';
             } else if (startParam.startsWith('retailcheckin')) {
                 targetPage = 'retail_checkin.html';
+            } else if (startParam.startsWith('retailhistory')) {
+                targetPage = 'retail_checkin.html';
             } else if (startParam.startsWith('scheduleclient')) {
                 targetPage = 'schedule_client.html';
             } else if (startParam.startsWith('makeupclient')) {
@@ -96,7 +98,9 @@
             }
 
             // Chuyển hướng sang trang đích và truyền lại payload qua query string, ĐỒNG THỜI giữ nguyên hash của Telegram
-            const tabParam = startParam.startsWith('makeupclient') ? '&tab=makeup' : '';
+            const tabParam = startParam.startsWith('makeupclient') ? '&tab=makeup' 
+                : startParam.startsWith('retailhistory') ? '&tab=history' 
+                : '';
             window.location.href = `${targetPage}?payload=${startParam}${tabParam}${window.location.hash}`;
         });
     </script>

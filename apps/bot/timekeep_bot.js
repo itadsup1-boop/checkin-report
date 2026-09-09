@@ -18,7 +18,7 @@ import { setupWizard } from './setupWizard.js';
 import { requireGroupRole, sendMessageToRoleGroup, sendMediaGroupToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
 import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
 import { syncAllTimekeepSheets } from './syncTimekeepSheets.js';
-import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder } from './googleDrive.js';
+import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder, getOrCreateRetailFolderHierarchy } from './googleDrive.js';
 import { getCustomerDocForGroup, getDocById } from './sheetManager.js';
 import multer from 'multer';
 import { KPI_GROUP_ROLES, registerEmployeeInKpiGroup } from '../../packages/shared/kpiMembership.js';
@@ -177,10 +177,12 @@ registerStartCommands({ bot, pool, requireGroupRole, timekeepHelpHtml: TIMEKEEP_
 // Giữ nguyên thứ tự handler cũ: KPI đăng ký trước Customer/Warehouse.
 startBotRuntime({ bot, botApp, pool, isCompanyHoliday: companyHolidayModule.isCompanyHoliday });
 
+// registerWarehouseModule({ ... }) được lắp ghép trong registerBusinessModules
 registerBusinessModules({
     botApp, bot, pool, cron, moment, fs, baseDir: __dirname, authenticateTelegramMiniApp,
     uploadCustomerMedia, getOrCreateCustomerFolder, uploadToDrive, getCustomerDocForGroup,
-    createWarehouseFolder, getDocById, sendMessageToRoleGroup, sendMediaGroupToRoleGroup
+    createWarehouseFolder, getDocById, sendMessageToRoleGroup, sendMediaGroupToRoleGroup,
+    getOrCreateRetailFolderHierarchy
 });
 
 // Enable graceful stop

@@ -9,8 +9,9 @@ export const RETAIL_CONFIG = {
     SHIFT_END: '18:00',
     LUNCH_START: '12:00',
     LUNCH_END: '13:30',
-    MIN_PHOTOS_REQUIRED: 2,
-    MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS: 120, // Tối thiểu 2 phút giữa 2 điểm bán để chống spam
+    CUTOFF_TIME: '20:00', // Chốt sổ 20:00 tối: sau 20:00 không nhận thêm bất kỳ check-in nào trong ngày
+    MIN_PHOTOS_REQUIRED: 1,
+    MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS: 0, // Đã tắt theo yêu cầu (cho phép gửi liên tục không giới hạn thời gian chờ)
     GROUP_ROLE: 'retail_checkin'
 };
 
@@ -33,16 +34,17 @@ export function parseCheckinCaption(rawText) {
     const storeName = rawStore.replace(/^[\[\(\{]/, '').replace(/[\]\)\}]$/, '').trim();
     const storeAddress = rawAddress.replace(/^[\[\(\{]/, '').replace(/[\]\)\}]$/, '').trim();
 
-    if (storeName.length < 2) return null;
+    // Cả tên điểm bán và địa chỉ chi tiết đều bắt buộc phải có
+    if (storeName.length < 2 || storeAddress.length < 2) return null;
 
     return {
         storeName,
-        storeAddress: storeAddress || 'Chưa có địa chỉ chi tiết'
+        storeAddress
     };
 }
 
 /**
- * Kiểm tra số lượng ảnh minh chứng (bắt buộc ≥ 2 ảnh)
+ * Kiểm tra số lượng ảnh minh chứng (bắt buộc ≥ 1 ảnh)
  * @param {number} photoCount 
  * @returns {{ valid: boolean, message?: string }}
  */
@@ -50,7 +52,7 @@ export function validateCheckinPhotos(photoCount) {
     if (!photoCount || photoCount < RETAIL_CONFIG.MIN_PHOTOS_REQUIRED) {
         return {
             valid: false,
-            message: `⚠️ <b>Thiếu ảnh minh chứng!</b>\nMỗi lượt check-in bắt buộc tối thiểu <b>02 ảnh</b>:\n• 01 ảnh selfie rõ mặt trước biển hiệu/cổng điểm bán\n• 01 ảnh chụp quầy kệ/sản phẩm bên trong cửa hàng.`
+            message: `⚠️ <b>Thiếu ảnh minh chứng!</b>\nMỗi lượt check-in bắt buộc gửi kèm ít nhất <b>01 ảnh</b> minh chứng tại điểm bán.`
         };
     }
     return { valid: true };
@@ -59,13 +61,23 @@ export function validateCheckinPhotos(photoCount) {
 /**
  * Kiểm tra khung giờ gửi báo cáo
  * @param {object} momentInstance (Moment object đã set UTC+7)
- * @returns {{ isWorkingHour: boolean, isLunchBreak: boolean, message?: string }}
+ * @param {string} shiftStart
+ * @param {string} shiftEnd
+ * @param {boolean} allowSunday
+ * @param {string} cutoffTime
+ * @returns {{ isWorkingHour: boolean, isOvertime?: boolean, isEarly?: boolean, isLunchBreak: boolean, isCutoff?: boolean, message?: string }}
  */
-export function validateWorkingHours(momentInstance) {
+export function validateWorkingHours(
+    momentInstance,
+    shiftStart = RETAIL_CONFIG.SHIFT_START,
+    shiftEnd = RETAIL_CONFIG.SHIFT_END,
+    allowSunday = (process.env.ALLOW_SUNDAY_RETAIL_CHECKIN === 'true'),
+    cutoffTime = RETAIL_CONFIG.CUTOFF_TIME
+) {
     const timeStr = momentInstance.format('HH:mm');
     const dayOfWeek = momentInstance.isoWeekday(); // 1 = Monday, 7 = Sunday
 
-    if (dayOfWeek === 7) {
+    if (dayOfWeek === 7 && !allowSunday) {
         return {
             isWorkingHour: false,
             isLunchBreak: false,
@@ -73,17 +85,30 @@ export function validateWorkingHours(momentInstance) {
         };
     }
 
-    if (timeStr < RETAIL_CONFIG.SHIFT_START || timeStr > RETAIL_CONFIG.SHIFT_END) {
+    const cutoff = (cutoffTime || RETAIL_CONFIG.CUTOFF_TIME || '20:00').slice(0, 5);
+    // Sau 20:00: Chốt sổ hoàn toàn, không ghi nhận thêm
+    if (timeStr >= cutoff) {
         return {
             isWorkingHour: false,
+            isCutoff: true,
+            isOvertime: true,
             isLunchBreak: false,
-            message: `Ngoài khung giờ làm việc (${RETAIL_CONFIG.SHIFT_START} - ${RETAIL_CONFIG.SHIFT_END}).`
+            message: `⚠️ <b>Đã quá giờ nhận báo cáo (${cutoff})!</b>\nHệ thống đã chốt sổ lúc ${cutoff}, không ghi nhận thêm bất kỳ lượt check-in nào trong ngày hôm nay.`
         };
     }
 
+    const start = (shiftStart || RETAIL_CONFIG.SHIFT_START).slice(0, 5);
+    const end = (shiftEnd || RETAIL_CONFIG.SHIFT_END).slice(0, 5);
+
+    // Quá giờ làm việc nhưng trước 20:00: vẫn cho phép gửi báo cáo và ghi nhận (ngoài giờ)
+    const isOvertime = timeStr > end;
+    const isEarly = timeStr < start;
     const isLunch = timeStr >= RETAIL_CONFIG.LUNCH_START && timeStr <= RETAIL_CONFIG.LUNCH_END;
+
     return {
         isWorkingHour: true,
+        isOvertime,
+        isEarly,
         isLunchBreak: isLunch,
         message: isLunch ? 'Đang trong giờ nghỉ trưa (12:00 - 13:30).' : null
     };
@@ -94,13 +119,13 @@ export function validateWorkingHours(momentInstance) {
  * @param {number} currentValidCount 
  * @returns {{ completed: boolean, remaining: number, progressText: string }}
  */
-export function calculateKpiProgress(currentValidCount) {
-    const target = RETAIL_CONFIG.TARGET_POINTS_PER_DAY;
-    const completed = currentValidCount >= target;
-    const remaining = Math.max(0, target - currentValidCount);
+export function calculateKpiProgress(currentValidCount, target = RETAIL_CONFIG.TARGET_POINTS_PER_DAY) {
+    const effectiveTarget = Number(target) || RETAIL_CONFIG.TARGET_POINTS_PER_DAY;
+    const completed = currentValidCount >= effectiveTarget;
+    const remaining = Math.max(0, effectiveTarget - currentValidCount);
     return {
         completed,
         remaining,
-        progressText: `${currentValidCount}/${target}`
+        progressText: `${currentValidCount}/${effectiveTarget}`
     };
 }

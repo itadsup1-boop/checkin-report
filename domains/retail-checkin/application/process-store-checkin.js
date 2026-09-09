@@ -9,18 +9,22 @@ import {
 import {
     buildCheckinSuccessMessage,
     buildCheckinErrorMessage,
-    buildSpamIntervalWarningMessage,
-    buildDuplicatePhotoWarningMessage
+    buildSpamIntervalWarningMessage
 } from '../domain/retail-messages.js';
 
-export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
+export function createProcessStoreCheckin({ repository, sheetSync, moment, bot, uploadToDrive, getOrCreateRetailFolderHierarchy }) {
     return async function processStoreCheckin({
         telegramId,
         telegramGroupId,
         caption,
         photos = [],
-        photoHashes = []
+        photoHashes = [],
+        latitude = null,
+        longitude = null,
+        locationAccuracy = null,
+        googleMapsUrl = null
     }) {
+        const computedMapsUrl = googleMapsUrl || (latitude && longitude ? `https://maps.google.com/?q=${latitude},${longitude}` : null);
         const now = moment().utcOffset(7);
         const dateStr = now.format('YYYY-MM-DD');
         const timeStr = now.format('HH:mm:ss');
@@ -44,6 +48,30 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
             };
         }
 
+        // 2b. Kiểm tra ngày làm việc (T2 - T7) và khung giờ làm việc
+        const hourCheck = validateWorkingHours(now, group.shift_start_time, group.shift_end_time);
+        if (!hourCheck.isWorkingHour) {
+            await repository.insertCheckin({
+                groupId: group.id,
+                employeeId: employee.id,
+                storeName: 'Ngoài giờ / Ngày nghỉ',
+                storeAddress: caption || '',
+                checkinTime: now.toISOString(),
+                checkinDate: dateStr,
+                isValid: false,
+                rejectReason: hourCheck.message
+            });
+
+            return {
+                success: false,
+                replyText: buildCheckinErrorMessage({
+                    employeeName: employee.full_name,
+                    reason: hourCheck.message,
+                    formatHelp: false
+                })
+            };
+        }
+
         // 3. Kiểm tra số lượng ảnh
         const photoCheck = validateCheckinPhotos(photos.length);
         if (!photoCheck.valid) {
@@ -55,14 +83,14 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
                 checkinTime: now.toISOString(),
                 checkinDate: dateStr,
                 isValid: false,
-                rejectReason: 'Thiếu ảnh minh chứng (cần ít nhất 2 ảnh)'
+                rejectReason: 'Thiếu ảnh minh chứng (cần ít nhất 1 ảnh)'
             });
 
             return {
                 success: false,
                 replyText: buildCheckinErrorMessage({
                     employeeName: employee.full_name,
-                    reason: 'Mỗi lượt check-in bắt buộc gửi kèm ít nhất <b>02 ảnh</b> (01 ảnh selfie tại cổng/biển hiệu + 01 ảnh quầy sản phẩm bên trong).'
+                    reason: 'Mỗi lượt check-in bắt buộc gửi kèm ít nhất <b>01 ảnh</b> minh chứng điểm bán.'
                 })
             };
         }
@@ -90,41 +118,83 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
             };
         }
 
-        // 5. Kiểm tra khoảng cách gửi liên tiếp (chống spam/gửi dồn)
-        const lastCheckin = await repository.findLastCheckin(employee.id);
-        if (lastCheckin) {
-            const lastTime = moment(lastCheckin.checkin_time).utcOffset(7);
-            const diffSeconds = now.diff(lastTime, 'seconds');
-            if (diffSeconds < RETAIL_CONFIG.MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS) {
-                const waitRemaining = RETAIL_CONFIG.MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS - diffSeconds;
-                return {
-                    success: false,
-                    replyText: buildSpamIntervalWarningMessage({
-                        employeeName: employee.full_name,
-                        waitSeconds: waitRemaining
-                    })
-                };
+        // 5. Kiểm tra khoảng cách gửi liên tiếp (chống spam/gửi dồn) - Bỏ qua nếu cấu hình <= 0
+        if (RETAIL_CONFIG.MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS > 0) {
+            const lastCheckin = await repository.findLastCheckin(employee.id);
+            if (lastCheckin) {
+                const lastTime = moment(lastCheckin.checkin_time).utcOffset(7);
+                const diffSeconds = now.diff(lastTime, 'seconds');
+                if (diffSeconds < RETAIL_CONFIG.MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS) {
+                    const waitRemaining = RETAIL_CONFIG.MIN_INTERVAL_BETWEEN_CHECKINS_SECONDS - diffSeconds;
+                    return {
+                        success: false,
+                        replyText: buildSpamIntervalWarningMessage({
+                            employeeName: employee.full_name,
+                            waitSeconds: waitRemaining
+                        })
+                    };
+                }
             }
         }
 
-        // 6. Kiểm tra trùng lặp ảnh cũ
-        if (photoHashes.length > 0) {
-            const recentHashes = await repository.findRecentPhotoHashes(employee.id, 30);
-            const hasDuplicate = photoHashes.some(h => recentHashes.has(h));
-            if (hasDuplicate) {
-                return {
-                    success: false,
-                    replyText: buildDuplicatePhotoWarningMessage({
-                        employeeName: employee.full_name
-                    })
-                };
+        // 6. Kiểm tra trùng lặp ảnh cũ: Đã tắt theo yêu cầu
+
+        // 7. Ghi nhận lượt check-in hợp lệ & Tải ảnh lên Google Drive nếu có cấu hình thư mục
+        const driveFolderId = group.customer_drive_folder_id || group.warehouse_drive_folder_id || process.env.RETAIL_CHECKIN_DRIVE_FOLDER_ID;
+        let selfieDriveUrl = null;
+        let storeDriveUrls = [];
+
+        let dailyDriveFolderUrl = null;
+        if (uploadToDrive && driveFolderId && bot?.telegram && photos.length > 0) {
+            try {
+                let targetFolderId = driveFolderId;
+                if (typeof getOrCreateRetailFolderHierarchy === 'function') {
+                    try {
+                        const empFolder = await getOrCreateRetailFolderHierarchy(
+                            driveFolderId,
+                            now.format('DD-MM-YYYY'),
+                            employee.full_name
+                        );
+                        if (empFolder?.id) {
+                            targetFolderId = empFolder.id;
+                        }
+                        if (empFolder?.webViewLink) {
+                            dailyDriveFolderUrl = empFolder.webViewLink;
+                        }
+                    } catch (fErr) {
+                        console.error('[Retail Drive Hierarchy Error in Chat]:', fErr.message);
+                    }
+                }
+
+                for (let i = 0; i < photos.length; i++) {
+                    const p = photos[i];
+                    if (!p?.file_id) continue;
+                    const link = await bot.telegram.getFileLink(p.file_id);
+                    const res = await fetch(link.href);
+                    if (res.ok) {
+                        const buffer = Buffer.from(await res.arrayBuffer());
+                        const prefix = i === 0 ? 'Selfie' : `QuayKe_${i}`;
+                        const fileName = `${prefix}_${employee.full_name}_${dateStr}_${Date.now()}.jpg`;
+                        const uploaded = await uploadToDrive(buffer, fileName, 'image/jpeg', targetFolderId);
+                        if (uploaded?.webViewLink) {
+                            if (i === 0) {
+                                selfieDriveUrl = uploaded.webViewLink;
+                            } else {
+                                storeDriveUrls.push(uploaded.webViewLink);
+                            }
+                        }
+                    }
+                }
+            } catch (driveErr) {
+                console.error('[Retail Drive Upload Error in Chat]:', driveErr.message);
             }
         }
 
-        // 7. Ghi nhận lượt check-in hợp lệ vào Database
-        const selfieUrl = photos[0]?.file_id || null;
-        const storePhotoUrl = photos[1]?.file_id || null;
-        const mediaUrls = photos.map(p => p.file_id);
+        const selfieUrl = selfieDriveUrl || photos[0]?.file_id || null;
+        const storePhotoUrl = storeDriveUrls.length > 0 ? storeDriveUrls.join(', ') : (photos[1]?.file_id || null);
+        const mediaUrls = (selfieDriveUrl || storeDriveUrls.length > 0)
+            ? [selfieDriveUrl, ...storeDriveUrls].filter(Boolean)
+            : photos.map(p => p.file_id);
 
         await repository.insertCheckin({
             groupId: group.id,
@@ -138,19 +208,25 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
             checkinDate: dateStr,
             isValid: true,
             rejectReason: null,
-            photoHashes
+            photoHashes,
+            driveFolderUrl: dailyDriveFolderUrl,
+            latitude,
+            longitude,
+            locationAccuracy,
+            googleMapsUrl: computedMapsUrl
         });
 
         // 8. Đếm số lượng điểm bán hợp lệ hôm nay & cập nhật tiến độ KPI
+        const kpiTarget = Number(group.daily_kpi_target) || RETAIL_CONFIG.TARGET_POINTS_PER_DAY;
         const validCount = await repository.countDailyValidCheckins(employee.id, dateStr, group.id);
-        const progress = calculateKpiProgress(validCount);
+        const progress = calculateKpiProgress(validCount, kpiTarget);
 
         await repository.upsertDailySummary({
             groupId: group.id,
             employeeId: employee.id,
             recordDate: dateStr,
             validPointsCount: validCount,
-            targetPoints: RETAIL_CONFIG.TARGET_POINTS_PER_DAY,
+            targetPoints: kpiTarget,
             isCompleted: progress.completed,
             status: progress.completed ? 'COMPLETED' : 'INCOMPLETE'
         });
@@ -165,7 +241,12 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
             progressStr: progress.progressText,
             selfieUrl,
             storePhotoUrl,
-            isValid: true
+            isValid: true,
+            isOvertime: hourCheck?.isOvertime || false,
+            latitude,
+            longitude,
+            locationAccuracy,
+            googleMapsUrl: computedMapsUrl
         }).catch(err => {
             console.error('[Retail Checkin Sheet Sync Error]:', err);
         });
@@ -179,7 +260,7 @@ export function createProcessStoreCheckin({ repository, sheetSync, moment }) {
                 storeAddress: parsed.storeAddress,
                 timeStr: displayDateTime,
                 currentPoints: validCount,
-                targetPoints: RETAIL_CONFIG.TARGET_POINTS_PER_DAY,
+                targetPoints: kpiTarget,
                 remainingPoints: progress.remaining,
                 completed: progress.completed
             })

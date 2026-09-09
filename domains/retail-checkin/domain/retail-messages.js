@@ -43,7 +43,7 @@ export function buildCheckinErrorMessage({ employeeName, reason, formatHelp = tr
         msg += `💡 <b>Cú pháp chuẩn yêu cầu:</b>\n` +
                `<code>[Tên điểm bán] - [Địa chỉ chi tiết]</code>\n` +
                `<i>(Ví dụ: Tạp hóa Minh Phát - 123 Nguyễn Trãi)</i>\n` +
-               `Kèm tối thiểu <b>02 ảnh</b>: 1 ảnh selfie cổng + 1 ảnh sản phẩm bên trong.`;
+               `Kèm ảnh chụp minh chứng tại điểm bán.`;
     }
 
     return msg;
@@ -67,44 +67,94 @@ export function buildDuplicatePhotoWarningMessage({ employeeName }) {
     );
 }
 
-export function buildDailySummaryMessage({ dateStr, results }) {
-    let text = `📊 <b>TỔNG KẾT KPI ĐI TUYẾN NGÀY ${dateStr} (CHỐT 18:00)</b>\n\n`;
+export function buildDailySummaryMessage({ dateStr, results, targetPoints = 15 }) {
+    let text = `🔴 <b>BÁO CÁO CHỐT SỔ KPI ĐI TUYẾN NGÀY ${dateStr} (CHỐT 20:00)</b>\n\n` +
+               `⏰ <i>Đã đến 20:00 — Hệ thống chính thức chốt sổ và ngừng tiếp nhận báo cáo điểm bán hôm nay.</i>\n\n`;
 
     const completedList = results.filter(r => r.isCompleted);
     const incompleteList = results.filter(r => !r.isCompleted);
 
-    text += `🏆 <b>HOÀN THÀNH CHỈ TIÊU (${completedList.length} nhân sự):</b>\n`;
+    text += `⚠️ <b>DANH SÁCH CHƯA ĐỦ CHỈ TIÊU (${incompleteList.length} nhân sự):</b>\n`;
+    if (incompleteList.length > 0) {
+        incompleteList.forEach((item, index) => {
+            const missing = Math.max(0, targetPoints - item.validPoints);
+            text += `${index + 1}. ${item.employeeName}: ${item.validPoints}/${targetPoints} điểm (Thiếu ${missing}) ❌ — <b>CHƯA ĐỦ</b>\n`;
+        });
+    } else {
+        text += `<i>(Tuyệt vời! Toàn bộ nhân sự đều hoàn thành đủ chỉ tiêu hôm nay 🎉)</i>\n`;
+    }
+
+    text += `\n🏆 <b>DANH SÁCH ĐÃ GỬI ĐỦ CHỈ TIÊU (${completedList.length} nhân sự):</b>\n`;
     if (completedList.length > 0) {
         completedList.forEach((item, index) => {
-            text += `${index + 1}. ${item.employeeName}: <b>${item.validPoints}/15 điểm</b> ✅\n`;
+            text += `${index + 1}. ${item.employeeName}: <b>${item.validPoints}/${targetPoints} điểm</b> ✅ — <b>GỬI ĐỦ</b>\n`;
         });
     } else {
         text += `<i>(Chưa có nhân sự nào hoàn thành)</i>\n`;
     }
 
-    text += `\n⚠️ <b>CHƯA ĐỦ CHỈ TIÊU (${incompleteList.length} nhân sự):</b>\n`;
-    if (incompleteList.length > 0) {
-        incompleteList.forEach((item, index) => {
-            const missing = Math.max(0, 15 - item.validPoints);
-            text += `${index + 1}. ${item.employeeName}: ${item.validPoints}/15 điểm (Thiếu ${missing}) ❌\n`;
-        });
-    } else {
-        text += `<i>(Tất cả nhân sự đều đã hoàn thành xuất sắc!)</i>\n`;
-    }
-
-    text += `\n<i>Báo cáo đã được lưu trữ tự động vào cơ sở dữ liệu và bảng tính quản lý.</i>`;
+    text += `\n📌 <i>Dữ liệu chốt sổ đã được cập nhật tự động vào Cơ sở dữ liệu và Google Sheet.</i>`;
     return text;
 }
 
-export function buildAfternoonProgressReminderMessage({ dateStr, reminders }) {
-    let text = `⏰ <b>NHẮC NHỞ TIẾN ĐỘ ĐIỂM BÁN (16:00 - ${dateStr})</b>\n\n` +
-               `Thời gian làm việc còn <b>02 tiếng</b> nữa (kết thúc lúc 18:00).\n` +
-               `Danh sách các bạn cần đẩy nhanh tiến độ hoàn thành 15 điểm:\n\n`;
+export function buildFinalClosingMessage({ dateStr, reminders, targetPoints = 15 }) {
+    let text = `🔴 <b>CHỐT SỔ KPI NGÀY ${dateStr} — 18:01</b>\n\n` +
+               `Ca làm việc đã kết thúc. Danh sách nhân sự <b>CHƯA HOÀN THÀNH chỉ tiêu</b> hôm nay:\n\n`;
 
     reminders.forEach((r, idx) => {
-        text += `${idx + 1}. ${r.employeeName}: Đã đạt <b>${r.validPoints}/15</b> (Còn thiếu ${15 - r.validPoints} điểm)\n`;
+        const missing = Math.max(0, targetPoints - r.validPoints);
+        text += `${idx + 1}. ${r.employeeName}: <b>${r.validPoints}/${targetPoints} điểm</b> — Thiếu <b>${missing} điểm</b> ❌\n`;
+    });
+
+    text += `\n<i>Dữ liệu đã được ghi nhận. Quản lý vui lòng kiểm tra và xử lý theo quy định.</i>`;
+    return text;
+}
+
+export function buildAfternoonProgressReminderMessage({ dateStr, reminders, targetPoints = 15 }) {
+    let text = `⏰ <b>NHẮC NHỞ TIẾN ĐỘ ĐIỂM BÁN (16:00 - ${dateStr})</b>\n\n` +
+               `Thời gian làm việc còn <b>02 tiếng</b> nữa (kết thúc lúc 18:00).\n` +
+               `Danh sách các bạn cần đẩy nhanh tiến độ hoàn thành ${targetPoints} điểm:\n\n`;
+
+    reminders.forEach((r, idx) => {
+        text += `${idx + 1}. ${r.employeeName}: Đã đạt <b>${r.validPoints}/${targetPoints}</b> (Còn thiếu ${targetPoints - r.validPoints} điểm)\n`;
     });
 
     text += `\n💪 <i>Các bạn cố gắng hoàn thành chỉ tiêu để tính đủ công ngày nhé!</i>`;
     return text;
 }
+
+export function buildOneHourProgressReminderMessage({ dateStr, currentTime, shiftEndTime, progressList = [], targetPoints = 15 }) {
+    const incomplete = progressList.filter(p => !p.isCompleted);
+    const completed = progressList.filter(p => p.isCompleted);
+
+    let text = `⏰ <b>THỐNG KÊ TIẾN ĐỘ CHECK-IN (CÒN 1 TIẾNG HẾT GIỜ LÀM)</b>\n\n` +
+               `📅 <b>Ngày:</b> ${dateStr}\n` +
+               (currentTime ? `⏰ <b>Thời gian:</b> ${currentTime} <i>(Giờ hết ca: ${shiftEndTime || '18:00'})</i>\n` : '') +
+               `🎯 <b>Chỉ tiêu tối thiểu:</b> ${targetPoints} điểm bán/ngày\n\n`;
+
+    if (incomplete.length > 0) {
+        text += `⚠️ <b>CHƯA ĐỦ ĐIỂM (${incomplete.length} bạn cần gửi thêm):</b>\n`;
+        incomplete.forEach((item, index) => {
+            const missing = Math.max(0, targetPoints - item.validPoints);
+            text += `${index + 1}. <b>${item.employeeName}</b>: Đã gửi <b>${item.validPoints}/${targetPoints} điểm</b> (Còn thiếu: <b>${missing} điểm</b> chưa gửi ⏳)\n`;
+        });
+        text += `\n`;
+    }
+
+    if (completed.length > 0) {
+        text += `✅ <b>ĐÃ ĐẠT CHỈ TIÊU (${completed.length} bạn):</b>\n`;
+        completed.forEach((item) => {
+            text += `• <b>${item.employeeName}</b>: <b>${item.validPoints}/${targetPoints} điểm</b> (Đạt 100%) 🎉\n`;
+        });
+        text += `\n`;
+    }
+
+    if (incomplete.length > 0) {
+        text += `💪 <i>Thời gian làm việc chỉ còn đúng <b>01 tiếng</b>. Các bạn vui lòng khẩn trương hoàn thành các điểm bán còn thiếu trước khi kết thúc ca làm việc!</i>`;
+    } else {
+        text += `🎉 <i>Tuyệt vời! Toàn bộ nhân sự trong nhóm đều đã hoàn thành đủ chỉ tiêu KPI hôm nay!</i>`;
+    }
+
+    return text;
+}
+

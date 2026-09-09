@@ -29,13 +29,19 @@ export default function TelegramToolsPage() {
     setGroups((await axios.get(`${API}/accounts/${id}/groups`)).data);
   }, []);
   useEffect(() => {
-    load().catch((x) => setMessage(x.response?.data?.message || x.message));
+    const timer = window.setTimeout(() => {
+      load().catch((x) => setMessage(x.response?.data?.message || x.message));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [load]);
   useEffect(() => {
-    loadGroups(accountId).catch((x) =>
-      setMessage(x.response?.data?.message || x.message),
-    );
-    setSelected([]);
+    const timer = window.setTimeout(() => {
+      loadGroups(accountId).catch((x) =>
+        setMessage(x.response?.data?.message || x.message),
+      );
+      setSelected([]);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [accountId, loadGroups]);
   const sync = async () => {
     setMessage("Đang đồng bộ…");

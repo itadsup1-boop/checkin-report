@@ -67,7 +67,6 @@ export function registerReportCallbacks({
     });
 
     kpiComposer.action('CHECK_UPDATE_REPORT', async ctx => {
-        ctx.answerCbQuery();
         const telegramId = ctx.from.id.toString();
         const groupId = ctx.chat.id.toString();
         const today = new Date().toISOString().split('T')[0];
@@ -75,7 +74,7 @@ export function registerReportCallbacks({
         try {
             const employee = await reportRepository.findEmployeeByTelegramId(telegramId);
             if (!employee || employee.is_active === false) {
-                return ctx.reply('⚠️ Tài khoản của bạn đã bị vô hiệu hóa trong hệ thống. Vui lòng liên hệ Admin nếu muốn bật lại.');
+                return ctx.answerCbQuery('⚠️ Tài khoản của bạn chưa đăng ký hoặc đã bị vô hiệu hóa trong hệ thống!', { show_alert: true });
             }
 
             let hasReport = Boolean(await reportRepository.findPendingWaitingPhotos(telegramId, groupId));
@@ -86,6 +85,7 @@ export function registerReportCallbacks({
             }
 
             if (hasReport) {
+                await ctx.answerCbQuery('✅ Đã tìm thấy báo cáo hôm nay!');
                 const botUsername = ctx.botInfo.username;
                 const shortName = process.env.TELEGRAM_MINI_APP_SHORT_NAME || 'app';
                 const ts = Date.now();
@@ -103,10 +103,11 @@ export function registerReportCallbacks({
                 });
             }
 
-            return ctx.reply('❌ Hôm nay bạn chưa nộp báo cáo nào!\n👉 Vui lòng bấm nút [📝 Điền Form Báo Cáo] ở Menu để nộp mới.');
+            // Nếu chưa nộp: Hiển thị popup alert trên màn hình người bấm thay vì gửi tin nhắn vào nhóm
+            return ctx.answerCbQuery('❌ Hôm nay bạn chưa nộp báo cáo nào!\n👉 Vui lòng bấm nút [📝 Điền Báo Cáo KPI (Form)] ở Menu để nộp mới.', { show_alert: true });
         } catch (err) {
             console.error('Lỗi CHECK_UPDATE_REPORT:', err);
-            return ctx.reply('❌ Lỗi hệ thống khi kiểm tra báo cáo.');
+            return ctx.answerCbQuery('❌ Lỗi hệ thống khi kiểm tra báo cáo.', { show_alert: true });
         }
     });
 }

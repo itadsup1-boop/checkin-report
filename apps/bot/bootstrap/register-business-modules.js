@@ -8,7 +8,8 @@ import { getGroupRole } from '../role_guard.js';
 export function registerBusinessModules({
     botApp, bot, pool, cron, moment, fs, baseDir, authenticateTelegramMiniApp,
     uploadCustomerMedia, getOrCreateCustomerFolder, uploadToDrive, getCustomerDocForGroup,
-    createWarehouseFolder, getDocById, sendMessageToRoleGroup, sendMediaGroupToRoleGroup
+    createWarehouseFolder, getDocById, sendMessageToRoleGroup, sendMediaGroupToRoleGroup,
+    getOrCreateRetailFolderHierarchy
 }) {
     const escapeHtml = (str) => {
         if (!str) return '';
@@ -67,6 +68,8 @@ export function registerBusinessModules({
         moment,
         crypto,
         fs,
+        uploadToDrive,
+        getOrCreateRetailFolderHierarchy,
         retailUploadDir: path.join(baseDir, 'public/uploads/retail'),
         authenticateTelegramMiniApp,
         getGroupRole,

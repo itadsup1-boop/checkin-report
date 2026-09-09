@@ -4,6 +4,7 @@ import { UserPlus, Shield, Trash2, Edit, X, CheckSquare, Square } from 'lucide-r
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 const WAREHOUSE_ACCOUNTANT_ROLE = 'WAREHOUSE_ACCOUNTANT';
+const RETAIL_MANAGER_ROLE = 'RETAIL_MANAGER';
 
 export default function AdminManagement({ groups = [] }) {
   const [admins, setAdmins] = useState([]);
@@ -21,6 +22,8 @@ export default function AdminManagement({ groups = [] }) {
   });
   const assignableGroups = formData.role === WAREHOUSE_ACCOUNTANT_ROLE
     ? groups.filter(group => group.bot_role === 'warehouse')
+    : formData.role === RETAIL_MANAGER_ROLE
+    ? groups.filter(group => group.bot_role === 'retail_checkin')
     : groups;
 
   const fetchAdmins = useCallback(async () => {
@@ -93,6 +96,10 @@ export default function AdminManagement({ groups = [] }) {
     e.preventDefault();
     if (formData.role === WAREHOUSE_ACCOUNTANT_ROLE && !formData.assigned_groups.length) {
       alert('Kế toán kho phải được gán ít nhất một nhóm Quản lý kho.');
+      return;
+    }
+    if (formData.role === RETAIL_MANAGER_ROLE && !formData.assigned_groups.length) {
+      alert('Quản lý thị trường phải được gán ít nhất một nhóm Check in thị trường.');
       return;
     }
     try {
@@ -198,6 +205,14 @@ export default function AdminManagement({ groups = [] }) {
                         {isSuper ? (
                           <span className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 text-blue-400 rounded-full text-xs font-semibold">
                             Super Admin
+                          </span>
+                        ) : admin.role === WAREHOUSE_ACCOUNTANT_ROLE ? (
+                          <span className="px-3 py-1 bg-amber-500/10 border border-amber-500/30 text-amber-600 rounded-full text-xs font-semibold">
+                            Kế toán kho
+                          </span>
+                        ) : admin.role === RETAIL_MANAGER_ROLE ? (
+                          <span className="px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 rounded-full text-xs font-semibold">
+                            Quản lý thị trường
                           </span>
                         ) : (
                           <span className="px-3 py-1 bg-purple-500/10 border border-purple-500/30 text-purple-400 rounded-full text-xs font-semibold">
@@ -327,34 +342,36 @@ export default function AdminManagement({ groups = [] }) {
                 <label className="block text-xs font-semibold text-slate-500 mb-1">Vai trò</label>
                 <select
                   value={formData.role}
-                  onChange={e => setFormData({ ...formData, role: e.target.value })}
+                  onChange={e => setFormData({ ...formData, role: e.target.value, assigned_groups: [] })}
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm text-slate-900 focus:outline-none focus:border-blue-500"
                 >
                   <option value="ADMIN">Admin (Quản lý nhóm được gán)</option>
                   <option value="SUPER_ADMIN">Super Admin (Toàn quyền hệ thống)</option>
+                  <option value={WAREHOUSE_ACCOUNTANT_ROLE}>Kế toán kho (Quản lý kho)</option>
+                  <option value={RETAIL_MANAGER_ROLE}>Quản lý thị trường (Check in thị trường)</option>
                 </select>
               </div>
 
-              {formData.role === 'ADMIN' && (
+              {formData.role !== 'SUPER_ADMIN' && (
                 <div className="space-y-2 pt-2">
                   <div className="flex justify-between items-center">
                     <label className="text-xs font-semibold text-slate-600">
-                      Chọn các Nhóm Telegram được gán quản lý ({formData.assigned_groups.length}/{groups.length}):
+                      Chọn các Nhóm Telegram được gán quản lý ({formData.assigned_groups.length}/{assignableGroups.length}):
                     </label>
                     <button
                       type="button"
                       onClick={handleSelectAllGroups}
                       className="text-xs text-blue-400 hover:underline"
                     >
-                      {formData.assigned_groups.length === groups.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
+                      {formData.assigned_groups.length === assignableGroups.length ? 'Bỏ chọn tất cả' : 'Chọn tất cả'}
                     </button>
                   </div>
 
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-48 overflow-y-auto space-y-1.5">
-                    {groups.length === 0 ? (
-                      <p className="text-xs text-slate-500 text-center py-2">Không tìm thấy nhóm Telegram nào</p>
+                    {assignableGroups.length === 0 ? (
+                      <p className="text-xs text-slate-500 text-center py-2">Không tìm thấy nhóm Telegram phù hợp với vai trò này</p>
                     ) : (
-                      groups.map(group => {
+                      assignableGroups.map(group => {
                         const isChecked = formData.assigned_groups.includes(group.telegram_group_id);
                         return (
                           <label

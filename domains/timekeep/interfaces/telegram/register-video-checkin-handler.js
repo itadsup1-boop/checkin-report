@@ -5,6 +5,7 @@
  */
 export function registerVideoCheckinHandler({ bot, checkinRepository, findEmployeeContext, syncSheets, moment }) {
     const recentUserVideos = new Map();
+    const recentUserTexts = new Map();
     const VIDEO_CACHE_TTL = 2 * 60 * 1000; // 2 phút
 
     bot.on(['video', 'video_note', 'text', 'edited_message'], async (ctx, next) => {
@@ -21,10 +22,16 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
             let videoObj = msg.video || msg.video_note;
             let isReplyCheck = false;
             let isCachedCheck = false;
+            let isCachedTextCheck = false;
             let isEditedCheck = !!ctx.editedMessage;
 
             if (videoObj) {
-                recentUserVideos.set(telegramId, { videoObj, timestamp: Date.now() });
+                recentUserVideos.set(telegramId, { videoObj, timestamp: Date.now(), msgDate: msg.date });
+            }
+
+            const textOrCaption = (msg.caption || msg.text || '').trim();
+            if (textOrCaption.toLowerCase().includes('check')) {
+                recentUserTexts.set(telegramId, { text: textOrCaption, timestamp: Date.now(), msgDate: msg.date });
             }
 
             if (!videoObj && msg.reply_to_message) {
@@ -45,8 +52,16 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
 
             if (!videoObj) return next();
 
-            const textOrCaption = (msg.caption || msg.text || '').trim();
-            if (!textOrCaption.toLowerCase().includes('check')) return next();
+            let hasCheck = textOrCaption.toLowerCase().includes('check');
+            if (!hasCheck) {
+                const cachedText = recentUserTexts.get(telegramId);
+                if (cachedText && (Date.now() - cachedText.timestamp) <= VIDEO_CACHE_TTL) {
+                    hasCheck = true;
+                    isCachedTextCheck = true;
+                }
+            }
+
+            if (!hasCheck) return next();
 
             const user = await findEmployeeContext(telegramId, telegramGroupId);
             if (!user) {
@@ -63,6 +78,8 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
             } else if (isCachedCheck) {
                 const cached = recentUserVideos.get(telegramId);
                 if (cached) msgDate = Math.floor(cached.timestamp / 1000);
+            } else if (isCachedTextCheck) {
+                msgDate = msg.date || Math.floor(Date.now() / 1000);
             }
 
             const msgMoment = moment.unix(msgDate).utcOffset(7);
@@ -75,11 +92,13 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
             syncSheets().catch(e => console.error('Sheet sync error:', e));
 
             recentUserVideos.delete(telegramId);
+            recentUserTexts.delete(telegramId);
 
             const timestampStr = msgMoment.format('HH:mm:ss - DD/MM/YYYY');
             let replyNote = '';
             if (isReplyCheck) replyNote = ' (Xác nhận từ video được trả lời)';
             else if (isCachedCheck) replyNote = ' (Xác nhận từ video gửi trước đó)';
+            else if (isCachedTextCheck) replyNote = ' (Xác nhận từ tin nhắn check-in gửi trước đó)';
             else if (isEditedCheck) replyNote = ' (Xác nhận qua chỉnh sửa caption)';
 
             await ctx.reply(

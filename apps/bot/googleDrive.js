@@ -140,6 +140,85 @@ export async function createWarehouseFolder(parentFolderId, folderName) {
     }
 }
 
+const retailFolderCache = new Map();
+
+/**
+ * Tìm hoặc tạo cấu trúc thư mục trên Google Drive cho check-in điểm bán:
+ * [Root Folder]
+ *   └── Ngày DD-MM-YYYY
+ *        └── [Tên nhân viên]
+ *             └── (Các ảnh check-in)
+ *
+ * @param {string} parentFolderId - ID thư mục tổng (root)
+ * @param {string} dateFormatted - Ngày định dạng DD-MM-YYYY (ví dụ: '06-09-2026')
+ * @param {string} employeeName - Tên nhân viên (ví dụ: 'Nguyễn Văn A')
+ * @returns {Promise<{id: string, webViewLink?: string}>}
+ */
+export async function getOrCreateRetailFolderHierarchy(parentFolderId, dateFormatted, employeeName) {
+    try {
+        const drive = getDriveClient();
+        const rootId = parentFolderId || FOLDER_ID;
+        const dateFolderName = `Ngày ${dateFormatted}`;
+        const cleanEmpName = (employeeName || 'Nhân viên').trim();
+
+        const cacheKey = `${rootId}::${dateFolderName}::${cleanEmpName}`;
+        if (retailFolderCache.has(cacheKey)) {
+            return retailFolderCache.get(cacheKey);
+        }
+
+        async function findOrCreateSubfolder(parentId, folderName) {
+            const escapedName = folderName.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+            const search = await drive.files.list({
+                q: `mimeType='application/vnd.google-apps.folder' and name='${escapedName}' and '${parentId}' in parents and trashed=false`,
+                fields: 'files(id, name, webViewLink)',
+            });
+
+            if (search.data.files && search.data.files.length > 0) {
+                return search.data.files[0];
+            }
+
+            console.log(`[Drive Retail] Tạo thư mục mới: "${folderName}" trong parent: ${parentId}`);
+            const created = await drive.files.create({
+                requestBody: {
+                    name: folderName,
+                    mimeType: 'application/vnd.google-apps.folder',
+                    parents: [parentId],
+                },
+                fields: 'id, webViewLink',
+            });
+
+            try {
+                await drive.permissions.create({
+                    fileId: created.data.id,
+                    requestBody: {
+                        role: 'reader',
+                        type: 'anyone',
+                    },
+                });
+            } catch (pErr) {
+                console.warn(`[Drive Retail] Không thể set permission cho thư mục ${folderName}:`, pErr.message);
+            }
+
+            return created.data;
+        }
+
+        // 1. Tìm hoặc tạo folder ngày: "Ngày DD-MM-YYYY" bên trong rootId
+        const dateFolder = await findOrCreateSubfolder(rootId, dateFolderName);
+
+        // 2. Tìm hoặc tạo folder nhân viên: "[Tên nhân viên]" bên trong dateFolder.id
+        const employeeFolder = await findOrCreateSubfolder(dateFolder.id, cleanEmpName);
+
+        if (retailFolderCache.size > 1000) {
+            retailFolderCache.clear();
+        }
+        retailFolderCache.set(cacheKey, employeeFolder);
+        return employeeFolder;
+    } catch (error) {
+        console.error('Lỗi tạo/tìm cấu trúc thư mục Drive phân cấp ngày/nhân viên:', error);
+        throw error;
+    }
+}
+
 export async function deleteOldPhotos() {
     try {
         const drive = getDriveClient();

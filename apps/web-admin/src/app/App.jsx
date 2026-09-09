@@ -14,7 +14,8 @@ import {
   UserCheck,
   Users,
   X,
-  ShieldCheck
+  ShieldCheck,
+  Store
 } from 'lucide-react';
 import LoginScreen from '../features/auth/LoginScreen.jsx';
 import StaffManagement from '../features/staff/StaffManagement.jsx';
@@ -27,6 +28,7 @@ import AdminManagement from '../features/admin/AdminManagement.jsx';
 import WarehouseManagement from '../features/warehouse/WarehouseManagement.jsx';
 import SettingsManagement from '../features/settings/SettingsManagement.jsx';
 import CompanyHolidayManagement from '../features/holidays/CompanyHolidayManagement.jsx';
+import RetailManagement from '../features/retail/RetailManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -41,6 +43,7 @@ const TABS = [
   { id: 'dashboard', path: '/dashboard', label: 'Tổng quan', icon: LayoutDashboard },
   { id: 'staff', path: '/nhan-su', label: 'Nhân sự', icon: UserCheck },
   { id: 'checkins', path: '/diem-danh', label: 'Check in', icon: ClipboardCheck },
+  { id: 'retail', path: '/thi-truong', label: 'Check-in thị trường', icon: Store },
   { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
   { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
   { id: 'holidays', path: '/ngay-nghi-cong-ty', label: 'Ngày nghỉ công ty', icon: CalendarDays },
@@ -178,7 +181,10 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
 
   const isSuperAdmin = user?.role === 'SUPER_ADMIN';
   const isWarehouseAccountant = user?.role === 'WAREHOUSE_ACCOUNTANT';
-  const homePath = isWarehouseAccountant ? '/kho/san-pham' : PATH_BY_ID.dashboard;
+  const isRetailManager = user?.role === 'RETAIL_MANAGER';
+  const homePath = isWarehouseAccountant
+    ? '/kho/san-pham'
+    : (isRetailManager ? '/thi-truong' : PATH_BY_ID.dashboard);
   const displayGroups = useMemo(() => {
     const assignedGroupIds = user?.assigned_groups || [];
     return isSuperAdmin
@@ -194,12 +200,17 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
       setMobileSidebarOpen(false);
       return;
     }
+    if (isRetailManager) {
+      navigate('/thi-truong');
+      setMobileSidebarOpen(false);
+      return;
+    }
     const path = PATH_BY_ID[tab] || PATH_BY_ID.dashboard;
     // Mang theo nhóm đang lọc để đổi màn hình không mất bộ lọc.
     const query = searchParams.toString();
     navigate(query ? `${path}?${query}` : path);
     setMobileSidebarOpen(false);
-  }, [isWarehouseAccountant, navigate, searchParams]);
+  }, [isWarehouseAccountant, isRetailManager, navigate, searchParams]);
 
   const updateGroupSettings = async (telegramGroupId, settings) => {
     try {
@@ -226,10 +237,15 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
 
   // Luôn hiển thị mục Kho để người dùng không hiểu nhầm rằng chức năng bị thiếu.
   // Quyền truy cập thật vẫn được kiểm tra ở route và phía API.
-  const navItems = isWarehouseAccountant
-    ? TABS.filter(tab => tab.id === 'warehouse')
-    : TABS.filter(tab => !tab.needsSuperAdmin || isSuperAdmin);
-  const canAccessGeneralAdmin = !isWarehouseAccountant;
+  let navItems;
+  if (isWarehouseAccountant) {
+    navItems = TABS.filter(tab => tab.id === 'warehouse');
+  } else if (isRetailManager) {
+    navItems = TABS.filter(tab => tab.id === 'retail');
+  } else {
+    navItems = TABS.filter(tab => !tab.needsSuperAdmin || isSuperAdmin);
+  }
+  const canAccessGeneralAdmin = !isWarehouseAccountant && !isRetailManager;
 
   /**
    * Chặn vào màn hình không đủ quyền bằng đường dẫn trực tiếp.
@@ -247,6 +263,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
       user={user}
       isSuperAdmin={isSuperAdmin}
       isWarehouseAccountant={isWarehouseAccountant}
+      isRetailManager={isRetailManager}
       navItems={navItems}
       displayGroups={displayGroups}
       selectedGroupId={selectedGroupId}
@@ -267,6 +284,16 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
         <Route path="/nhan-su" element={guard(canAccessGeneralAdmin) ?? <StaffManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/nhan-su/:employeeId" element={guard(canAccessGeneralAdmin) ?? <EmployeeDetailPage selectedGroupId={selectedGroupId} />} />
         <Route path="/diem-danh" element={guard(canAccessGeneralAdmin) ?? <CheckinManagement selectedGroupId={selectedGroupId} />} />
+        <Route
+          path="/thi-truong"
+          element={guard(canAccessGeneralAdmin || isRetailManager || isSuperAdmin) ?? (
+            <RetailManagement
+              selectedGroupId={selectedGroupId}
+              groups={displayGroups.filter(group => group.bot_role === 'retail_checkin')}
+              user={user}
+            />
+          )}
+        />
         <Route path="/lich-lam-viec" element={guard(canAccessGeneralAdmin) ?? <ScheduleManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/nghi-phep" element={guard(canAccessGeneralAdmin) ?? <LeaveManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/ngay-nghi-cong-ty" element={guard(canAccessGeneralAdmin) ?? <CompanyHolidayManagement isSuperAdmin={isSuperAdmin} />} />
@@ -288,7 +315,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
 }
 
 function AdminLayout({
-  user, isSuperAdmin, isWarehouseAccountant, navItems, displayGroups, selectedGroupId, onSelectGroup,
+  user, isSuperAdmin, isWarehouseAccountant, isRetailManager, navItems, displayGroups, selectedGroupId, onSelectGroup,
   onNavigate, onLogout, mobileSidebarOpen, setMobileSidebarOpen, toast
 }) {
   const activeTab = useActiveTabId();
@@ -297,8 +324,8 @@ function AdminLayout({
     <div className="flex h-screen bg-slate-100 font-sans text-slate-900">
       {mobileSidebarOpen && <button type="button" aria-label="Đóng menu" onClick={() => setMobileSidebarOpen(false)} className="fixed inset-0 z-30 bg-slate-900/50 md:hidden" />}
 
-      <aside className={`fixed inset-y-0 left-0 z-40 flex h-screen w-72 flex-col bg-slate-950 text-white transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        <div className="flex h-20 items-center justify-between gap-3 border-b border-slate-800 px-6">
+      <aside className={`fixed inset-y-0 left-0 z-40 flex h-[100dvh] max-h-screen w-72 flex-col bg-slate-950 text-white transition-transform duration-200 md:sticky md:top-0 md:translate-x-0 ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
+        <div className="flex h-20 items-center justify-between gap-3 border-b border-slate-800 px-6 shrink-0">
           <div className="flex items-center gap-3">
             <div className="rounded-xl bg-blue-600 p-2.5"><ShieldCheck className="h-6 w-6" /></div>
             <div>
@@ -314,8 +341,8 @@ function AdminLayout({
           {navItems.map(item => <NavItem key={item.id} {...item} active={activeTab === item.id} onClick={() => onNavigate(item.id)} />)}
         </nav>
 
-        <div className="border-t border-slate-800 p-4">
-          <button type="button" onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 py-2.5 text-sm font-medium text-rose-400 hover:bg-rose-500/20">
+        <div className="border-t border-slate-800 p-4 pb-8 md:pb-4 shrink-0 bg-slate-950">
+          <button type="button" onClick={onLogout} className="flex w-full items-center justify-center gap-2 rounded-xl border border-rose-500/20 bg-rose-500/10 py-2.5 text-sm font-medium text-rose-400 hover:bg-rose-500/20 active:scale-[0.98] transition">
             <LogOut className="h-4 w-4" />Đăng xuất
           </button>
         </div>
@@ -333,12 +360,21 @@ function AdminLayout({
               </select>
             </div>}
           </div>
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <div className="hidden text-right sm:block">
               <p className="text-sm font-semibold text-slate-800">{user?.full_name || user?.username || 'Admin'}</p>
-              <p className="text-xs font-medium text-blue-600">{isSuperAdmin ? 'Super Admin' : (isWarehouseAccountant ? 'Kế toán kho' : 'Admin')}</p>
+              <p className="text-xs font-medium text-blue-600">{isSuperAdmin ? 'Super Admin' : (isWarehouseAccountant ? 'Kế toán kho' : (isRetailManager ? 'Quản lý thị trường' : 'Admin'))}</p>
             </div>
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{user?.username?.slice(0, 2)?.toUpperCase() || 'AD'}</div>
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">{user?.username?.slice(0, 2)?.toUpperCase() || 'AD'}</div>
+            <button
+              type="button"
+              onClick={onLogout}
+              className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-xl border border-rose-200 bg-rose-50 text-rose-600 hover:bg-rose-100 active:scale-95 transition shadow-2xs"
+              title="Đăng xuất"
+              aria-label="Đăng xuất"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </header>
 

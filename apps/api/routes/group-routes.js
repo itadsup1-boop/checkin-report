@@ -21,9 +21,13 @@ export function registerGroupRoutes({ app, pool }) {
                        COALESCE(tkg.warehouse_service_order_enabled, FALSE) AS warehouse_service_order_enabled,
                        gs.remind_time_1, gs.auto_reminder_enabled, gs.photo_deadline_minutes,
                        gs.penalty_missing_kpi, gs.penalty_per_photo, gs.penalty_missing_report,
-                       gs.shift_1_time, gs.shift_2_time
+                       gs.shift_1_time, gs.shift_2_time,
+                       rc.shift_start_time AS retail_shift_start,
+                       rc.shift_end_time   AS retail_shift_end,
+                       rc.daily_kpi_target AS retail_kpi_target
                 FROM telegram_groups tkg
                 LEFT JOIN group_settings gs ON tkg.telegram_group_id = gs.telegram_group_id
+                LEFT JOIN retail_checkin_config rc ON tkg.telegram_group_id = rc.telegram_group_id
                 WHERE (tkg.is_deleted = false OR tkg.is_deleted IS NULL)
             `;
             if (!req.admin.isSuperAdmin) {
@@ -71,7 +75,10 @@ export function registerGroupRoutes({ app, pool }) {
                 penalty_per_photo,
                 penalty_missing_report,
                 kpi_sheet_id,
-                customer_sheet_id
+                customer_sheet_id,
+                retail_shift_start,
+                retail_shift_end,
+                retail_kpi_target
             } = req.body;
     
             const cleanKpiSheetId = extractSheetId(kpi_sheet_id);
@@ -127,6 +134,25 @@ export function registerGroupRoutes({ app, pool }) {
                     ]
                 );
             }
+            // Upsert retail_checkin_config nếu nhóm có role retail_checkin
+            if (bot_role === 'retail_checkin' && (retail_shift_start || retail_shift_end || retail_kpi_target)) {
+                await pool.query(
+                    `INSERT INTO retail_checkin_config (telegram_group_id, shift_start_time, shift_end_time, daily_kpi_target)
+                     VALUES ($1, $2, $3, $4)
+                     ON CONFLICT (telegram_group_id) DO UPDATE SET
+                         shift_start_time = COALESCE(EXCLUDED.shift_start_time, retail_checkin_config.shift_start_time),
+                         shift_end_time   = COALESCE(EXCLUDED.shift_end_time,   retail_checkin_config.shift_end_time),
+                         daily_kpi_target = COALESCE(EXCLUDED.daily_kpi_target, retail_checkin_config.daily_kpi_target),
+                         updated_at = NOW()`,
+                    [
+                        telegram_group_id,
+                        retail_shift_start || null,
+                        retail_shift_end   || null,
+                        retail_kpi_target  ? Number(retail_kpi_target) : null
+                    ]
+                );
+            }
+
             res.json({ success: true });
         } catch (error) {
             res.status(500).json({ error: error.message });

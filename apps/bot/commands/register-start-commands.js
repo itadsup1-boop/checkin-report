@@ -169,6 +169,7 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                     );
                 } else if (botRole === 'retail_checkin') {
                     const retailCheckinUrl = createWebAppUrl('retailcheckin', 'retail_checkin.html');
+                    const retailHistoryUrl = createWebAppUrl('retailhistory', 'retail_checkin.html');
                     await ctx.reply(
                         `📍 <b>HỆ THỐNG CHECK-IN ĐIỂM BÁN THỊ TRƯỜNG</b>\n\n` +
                         `🎯 <b>Chỉ tiêu:</b> Tối thiểu 15 điểm bán / ngày.\n` +
@@ -177,6 +178,7 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                         `• <b>Cách 1 (Khuyên dùng):</b> Bấm nút <b>📸 Check-in Điểm Bán</b> bên dưới để chụp ảnh & theo dõi tiến độ KPI trực tiếp.\n` +
                         `• <b>Cách 2:</b> Gửi trực tiếp <b>2 ảnh</b> vào nhóm kèm cú pháp:\n` +
                         `   <code>[Tên điểm bán] - [Địa chỉ chi tiết]</code>\n\n` +
+                        `🔍 <b>Kiểm tra:</b> Bấm nút <b>📋 Lịch Sử</b> để xem số lượng và danh sách các điểm đã check-in theo từng ngày.\n\n` +
                         `👇 <i>Chọn chức năng bên dưới:</i>`,
                         {
                             parse_mode: 'HTML',
@@ -184,6 +186,9 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                                 inline_keyboard: [
                                     [
                                         { text: '📸 Check-in Điểm Bán', url: retailCheckinUrl }
+                                    ],
+                                    [
+                                        { text: '📋 Lịch Sử', url: retailHistoryUrl }
                                     ],
                                     [
                                         { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
@@ -373,22 +378,29 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                             }
                         }
                     );
-                } else if (startPayload && startPayload.startsWith('retailcheckin_')) {
+                } else if (startPayload && (startPayload.startsWith('retailcheckin_') || startPayload.startsWith('retailhistory_'))) {
+                    const isHistory = startPayload.startsWith('retailhistory_');
                     const payloadParts = startPayload.split('_');
                     const groupId = payloadParts[1];
                     const ts = payloadParts[2];
                     const sig = payloadParts[3];
-                    const formUrl = `${miniAppUrl}/mini-app/retail_checkin.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=retailcheckin`;
+                    const formUrl = `${miniAppUrl}/mini-app/retail_checkin.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=${isHistory ? 'retailhistory' : 'retailcheckin'}${isHistory ? '&tab=history' : ''}`;
 
                     await ctx.reply(
-                        `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-                        `Vui lòng nhấn nút <b>📸 Check-in Điểm Bán</b> dưới đây để mở form chụp ảnh và cập nhật tiến độ KPI:`,
+                        isHistory
+                            ? `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                              `Vui lòng nhấn nút <b>📋 Lịch Sử</b> dưới đây để kiểm tra số lượng và danh sách các điểm bán đã gửi:`
+                            : `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                              `Vui lòng nhấn nút <b>📸 Check-in Điểm Bán</b> dưới đây để mở form chụp ảnh và cập nhật tiến độ KPI:`,
                         {
                             parse_mode: 'HTML',
                             reply_markup: {
                                 inline_keyboard: [
                                     [
-                                        { text: '📸 Check-in Điểm Bán', web_app: { url: formUrl } }
+                                        {
+                                            text: isHistory ? '📋 Lịch Sử' : '📸 Check-in Điểm Bán',
+                                            web_app: { url: formUrl }
+                                        }
                                     ]
                                 ]
                             }

@@ -4,9 +4,13 @@
 export function createSundayReminderRepository({ pool }) {
     async function findActiveTimekeepGroups() {
         const result = await pool.query(`
-            SELECT id, telegram_group_id, group_name
+            SELECT id, telegram_group_id, group_name, schedule_registration_open
             FROM telegram_groups
-            WHERE bot_role = 'timekeep' AND is_active = true AND COALESCE(is_deleted, false) = false
+            WHERE bot_role = 'timekeep' 
+              AND is_active = true 
+              AND COALESCE(is_deleted, false) = false
+              AND COALESCE(schedule_registration_open, false) = true
+              AND telegram_group_id != '-5321152019'
         `);
         return result.rows;
     }
