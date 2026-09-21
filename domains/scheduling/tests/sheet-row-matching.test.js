@@ -46,3 +46,44 @@ test('không dùng nhầm row index cũ nếu dòng đó thuộc khách khác', 
 
     assert.equal(findCustomerSheetRow([wrongIndexedRow, correctRow], expected, 20), correctRow);
 });
+
+test('writeAppointmentRow tự động điền Loại khách là Khách cũ và chuẩn hoá header', async () => {
+    const { createAppointmentSheetSync } = await import('../infrastructure/google-sheet/appointment-sheet-sync.js');
+    let savedMasterData = null;
+    let setHeaders = null;
+    const mockSheet = {
+        getRows: async () => [],
+        setHeaderRow: async headers => { setHeaders = headers; },
+        addRow: async data => {
+            savedMasterData = data;
+            return { rowNumber: 10 };
+        }
+    };
+    const mockDoc = {
+        loadInfo: async () => {},
+        sheetsByTitle: {
+            'TỔNG HỢP KHÁCH HÀNG': mockSheet,
+            'NV A': mockSheet
+        }
+    };
+    const sync = createAppointmentSheetSync({
+        getCustomerDocForGroup: async () => mockDoc,
+        getGroupRole: async () => 'report',
+        moment: () => {}
+    });
+
+    await sync.writeAppointmentRow('-1001', 'NV A', {
+        'Ngày': '18/09/2026',
+        'Nhân Viên': 'NV A',
+        'Khách Hàng': 'Khách A',
+        'SĐT': '0901',
+        'Thời Gian': '10:00 18/09/2026'
+    });
+
+    assert.equal(savedMasterData['Loại khách'], 'Khách cũ');
+    assert.deepEqual(setHeaders, [
+        'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'Loại khách', 'SĐT', 'Dịch Vụ', 'Buổi Làm',
+        'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền', 'Ảnh Chứng Thực'
+    ]);
+});
+

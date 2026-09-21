@@ -8,7 +8,7 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
     const recentUserTexts = new Map();
     const VIDEO_CACHE_TTL = 2 * 60 * 1000; // 2 phút
 
-    bot.on(['video', 'video_note', 'text', 'edited_message'], async (ctx, next) => {
+    bot.on(['video', 'video_note', 'animation', 'text', 'edited_message'], async (ctx, next) => {
         try {
             if (!ctx.chat || !['group', 'supergroup'].includes(ctx.chat.type)) {
                 return next();
@@ -19,7 +19,7 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
 
             const telegramId = msg.from.id.toString();
             const telegramGroupId = ctx.chat.id.toString();
-            let videoObj = msg.video || msg.video_note;
+            let videoObj = msg.video || msg.video_note || msg.animation;
             let isReplyCheck = false;
             let isCachedCheck = false;
             let isCachedTextCheck = false;
@@ -37,7 +37,7 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
             if (!videoObj && msg.reply_to_message) {
                 const repliedMsg = msg.reply_to_message;
                 if (repliedMsg.from && repliedMsg.from.id.toString() === telegramId) {
-                    videoObj = repliedMsg.video || repliedMsg.video_note;
+                    videoObj = repliedMsg.video || repliedMsg.video_note || repliedMsg.animation;
                     if (videoObj) isReplyCheck = true;
                 }
             }

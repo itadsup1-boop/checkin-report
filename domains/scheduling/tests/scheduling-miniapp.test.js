@@ -176,7 +176,7 @@ test('xác thực dùng đúng cơ chế của lịch khách, không mượn c�
 });
 
 test('thư mục scheduling được bot phục vụ và có token phiên bản', () => {
-    const bot = fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url)), 'utf8');
+    const bot = fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/bootstrap/configure-bot-http.js', import.meta.url)), 'utf8');
     assert.match(bot, /'scheduling'/, 'thiếu scheduling trong warehouseAssetDirs');
     assert.match(bot, /schedule_client\.html': path\.join/, 'shell chưa được đăng ký để chèn token');
 });

@@ -18,7 +18,7 @@ import {
     validateMakeupInput, assertOriginalAppointmentUsable
 } from '../domain/makeup-rules.js';
 
-export function createMakeupRequestService({ pool, repository, imageStore, notifier, moment }) {
+export function createMakeupRequestService({ pool, repository, imageStore, notifier, moment, syncToSheet }) {
     /**
      * @param {object} params
      * @param {string} params.telegramId đã xác thực từ initData
@@ -91,6 +91,39 @@ export function createMakeupRequestService({ pool, repository, imageStore, notif
                 proofUrl
             });
 
+            // Tự động duyệt đơn báo bù công tour
+            let appointmentId = body.original_appointment_id;
+            const requestData = {
+                id: requestId,
+                telegram_id: telegramId,
+                telegram_group_id: body.groupId,
+                employee_name: employeeName,
+                request_type: body.request_type,
+                original_appointment_id: body.original_appointment_id,
+                work_date: workDate,
+                appointment_time: body.appointment_time,
+                customer_name: body.customer_name,
+                customer_phone: phone,
+                service: body.service,
+                sessions: body.sessions,
+                session_type: body.session_type || 'Bán',
+                revenue: body.revenue,
+                reason: body.reason,
+                proof_image: proofUrl
+            };
+
+            if (body.request_type === REQUEST_TYPES.EXISTING) {
+                await repository.completeExistingAppointment(client, requestData);
+            } else {
+                appointmentId = await repository.insertApprovedAppointment(client, requestData);
+            }
+
+            await repository.markApproved(client, {
+                requestId,
+                reviewer: 'Hệ thống (Tự động duyệt)',
+                appointmentId
+            });
+
             await client.query('COMMIT');
         } catch (error) {
             await client.query('ROLLBACK').catch(() => { /* kết nối có thể đã đứt */ });
@@ -100,42 +133,38 @@ export function createMakeupRequestService({ pool, repository, imageStore, notif
             client.release();
         }
 
-        return notifyApprovers({
-            requestId, buffer, groupId: body.groupId,
-            request: {
-                employeeName,
-                appointmentTime: body.appointment_time,
-                customerName: body.customer_name,
-                phone,
-                service: body.service,
-                sessions: body.sessions,
-                sessionType: body.session_type,
-                revenue: body.revenue,
-                reason: body.reason,
-                requestType: body.request_type
-            }
-        });
-    }
-
-    /**
-     * Gửi tin duyệt. Gửi hỏng KHÔNG làm hỏng yêu cầu — dữ liệu đã lưu rồi, chỉ
-     * đánh dấu để bot gửi lại, và vẫn trả success để nhân viên không gửi lại lần hai.
-     */
-    async function notifyApprovers({ requestId, buffer, groupId, request }) {
-        try {
-            const sent = await notifier.send({ groupId, requestId, buffer, request });
-            if (!sent) throw new Error('Gửi thông báo Telegram thất bại (trả về null)');
-
-            await repository.markStatus(requestId, 'PENDING');
-            return { message: 'Gửi yêu cầu báo bù thành công! Vui lòng chờ quản lý duyệt.' };
-        } catch (error) {
-            console.error('Lỗi khi gửi thông báo Telegram ngoài transaction:', error.message);
-            await repository.markStatus(requestId, 'NOTIFICATION_FAILED');
-            return {
-                message: 'Yêu cầu đã được lưu vào hệ thống nhưng gặp sự cố gửi thông báo Telegram. '
-                    + 'Bot sẽ tự động gửi lại sau vài phút!'
-            };
+        // Đồng bộ Sheet trong background
+        if (syncToSheet) {
+            syncToSheet(requestId).catch(error => {
+                console.error(`[SYNC ERROR] Lỗi đồng bộ Sheet cho yêu cầu ${requestId}:`, error);
+            });
         }
+
+        // Gửi thông báo đến nhóm Telegram
+        try {
+            await notifier.send({
+                groupId: body.groupId,
+                requestId,
+                buffer,
+                request: {
+                    employeeName,
+                    appointmentTime: body.appointment_time,
+                    customerName: body.customer_name,
+                    phone,
+                    service: body.service,
+                    sessions: body.sessions,
+                    sessionType: body.session_type,
+                    revenue: body.revenue,
+                    reason: body.reason,
+                    requestType: body.request_type
+                },
+                autoApproved: true
+            });
+        } catch (error) {
+            console.error('Lỗi khi gửi thông báo Telegram báo bù tự động duyệt:', error.message);
+        }
+
+        return { message: 'Gửi yêu cầu báo bù thành công! Hệ thống đã tự động duyệt công tour.' };
     }
 
     return { execute };

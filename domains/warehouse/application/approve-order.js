@@ -16,6 +16,7 @@
 
 import { WAREHOUSE_ORDER_STATUSES, WarehouseError } from '../domain/constants.js';
 import { roundQuantity } from '../domain/quantity-rules.js';
+import { LOW_STOCK_THRESHOLD } from '../domain/low-stock-alert.js';
 import { makeCode } from './_shared/codes.js';
 
 export function createApproveOrderUseCase({
@@ -88,6 +89,7 @@ export function createApproveOrderUseCase({
             });
         }
 
+        const lowStockItems = [];
         for (const allocation of availability.allocations) {
             const localBefore = allocation[order.branch];
             const otherBefore = allocation[otherBranch];
@@ -95,6 +97,25 @@ export function createApproveOrderUseCase({
             const transferDeduct = roundQuantity(allocation.required - localDeduct);
             const localAfter = roundQuantity(localBefore - localDeduct);
             const otherAfter = roundQuantity(otherBefore - transferDeduct);
+
+            if (localAfter < LOW_STOCK_THRESHOLD) {
+                lowStockItems.push({
+                    productId: allocation.product_id,
+                    productName: allocation.product_name,
+                    barcode: allocation.barcode || null,
+                    branch: order.branch,
+                    remaining: localAfter
+                });
+            }
+            if (transferDeduct > 0 && otherAfter < LOW_STOCK_THRESHOLD) {
+                lowStockItems.push({
+                    productId: allocation.product_id,
+                    productName: allocation.product_name,
+                    barcode: allocation.barcode || null,
+                    branch: otherBranch,
+                    remaining: otherAfter
+                });
+            }
 
             // Bước 1: trừ phần lấy được ngay tại cơ sở đang đứng.
             if (localDeduct > 0) {
@@ -171,7 +192,8 @@ export function createApproveOrderUseCase({
         await orderRepo.markApproved(client, order.id, actor);
         if (pricingRepo) await pricingRepo.recomputeOrderTotal(client, order.id);
         await outboxRepo.enqueue(client, order.id, 'ORDER_APPROVED', {
-            has_transfer: requiresTransfer
+            has_transfer: requiresTransfer,
+            low_stock_items: lowStockItems
         });
         await outboxRepo.enqueue(client, order.id, 'SYNC_ORDER_SHEET');
         return { alreadyProcessed: false, requiresTransfer };

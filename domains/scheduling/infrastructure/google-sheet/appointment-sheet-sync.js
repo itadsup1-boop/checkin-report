@@ -13,7 +13,7 @@
 import { buildCustomerSheetRowKey, findCustomerSheetRow } from '../../domain/sheet-row-matching.js';
 
 const SHEET_HEADERS = [
-    'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ', 'Buổi Làm',
+    'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'Loại khách', 'SĐT', 'Dịch Vụ', 'Buổi Làm',
     'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền', 'Ảnh Chứng Thực'
 ];
 
@@ -48,10 +48,14 @@ export function createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRol
             const rows = await sheet.getRows();
             const rowKey = buildCustomerSheetRowKey(rowData);
             let row = rows.find(item => buildCustomerSheetRowKey(item) === rowKey);
-            if (!row) return await sheet.addRow(rowData);
+            const enrichedData = {
+                ...rowData,
+                'Loại khách': rowData['Loại khách'] || 'Khách cũ'
+            };
+            if (!row) return await sheet.addRow(enrichedData);
 
             for (const header of SHEET_HEADERS) {
-                row.set(header, rowData[header] ?? '');
+                row.set(header, enrichedData[header] ?? '');
             }
             await row.save();
             return row;

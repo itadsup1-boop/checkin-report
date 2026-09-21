@@ -96,13 +96,52 @@ export function parseLateAnnouncement(text) {
         return { matched: false, minutes: null };
     }
 
+    // 1. Trường hợp đặc biệt: 'nửa tiếng', 'nửa giờ'
+    if (normalized.includes('nửa tiếng') || normalized.includes('nửa giờ')) {
+        return { matched: true, minutes: 30 };
+    }
+
+    // 2. Giờ + Phút kết hợp: e.g. '1h30', '1h30p', '1 tiếng 30 phút', '1 giờ 15 phút'
+    const comboMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h)\s*(\d+)\s*(?:phút|p|phut)?/);
+    if (comboMatch) {
+        const h = parseInt(comboMatch[1], 10);
+        const m = parseInt(comboMatch[2], 10);
+        return { matched: true, minutes: h * 60 + m };
+    }
+
+    // 3. Tiếng rưỡi / giờ rưỡi: e.g. '1 tiếng rưỡi', '2 giờ rưỡi'
+    const ruoiMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ)\s*rưỡi/);
+    if (ruoiMatch) {
+        const h = parseInt(ruoiMatch[1], 10);
+        return { matched: true, minutes: h * 60 + 30 };
+    }
+
+    // 4. Số thập phân giờ: e.g. '1.5 tiếng', '1,5h', '2.5 giờ'
+    const decimalMatch = normalized.match(/(\d+[.,]\d+)\s*(?:tiếng|giờ|h\b)/);
+    if (decimalMatch) {
+        const h = parseFloat(decimalMatch[1].replace(',', '.'));
+        return { matched: true, minutes: Math.round(h * 60) };
+    }
+
+    // 5. Số nguyên giờ/tiếng: e.g. '1 tiếng', '2 giờ', '1h'
+    const hourMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h\b)/);
+    if (hourMatch) {
+        const h = parseInt(hourMatch[1], 10);
+        return { matched: true, minutes: h * 60 };
+    }
+
+    // 6. Số nguyên phút: e.g. '15 phút', '20p', '30 min'
     const digitMatch = normalized.match(/(\d+)\s*(phút|p\b|'|min)/);
     if (digitMatch) {
         return { matched: true, minutes: parseInt(digitMatch[1], 10) };
     }
 
+    // 7. Chữ viết số: e.g. 'năm phút', 'mười lăm phút', 'một tiếng', 'hai tiếng'
     const wordKeys = Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length);
     for (const word of wordKeys) {
+        if (normalized.includes(`${word} tiếng`) || normalized.includes(`${word} giờ`)) {
+            return { matched: true, minutes: NUMBER_WORDS[word] * 60 };
+        }
         if (normalized.includes(`${word} phút`) || normalized.includes(`${word} p `)) {
             return { matched: true, minutes: NUMBER_WORDS[word] };
         }

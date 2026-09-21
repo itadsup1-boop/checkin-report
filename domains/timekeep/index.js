@@ -129,7 +129,7 @@ export function registerTimekeepModule({
         repository: schedules, findEmployeeContext, isSystemAdmin,
         syncSheets: syncAllTimekeepSheets, fs, path, moment,
         uploadDir: path.join(path.dirname(checkinUploadDir), 'proofs'),
-        bot, publicBaseUrl: process.env.MINI_APP_URL || 'https://bot.adsup.vn'
+        bot, sendMessageToRoleGroup, publicBaseUrl: process.env.MINI_APP_URL || 'https://bot.adsup.vn'
     });
     const { saveLeaveRequest } = createSaveLeaveRequest({
         pool, repository: schedules, findEmployeeContext, isSystemAdmin,

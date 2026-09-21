@@ -63,6 +63,35 @@ export function createRunShiftReminders({ repository, sendMessageToRoleGroup, bo
                         }
                     }
                 }
+
+                if (typeof repository.findApprovedLateRequestsForShift === 'function') {
+                    const approvedLate = await repository.findApprovedLateRequestsForShift({ groupUuid, date: todayStr, shiftTypes: shift.types, telegramGroupId });
+                    if (approvedLate && approvedLate.length > 0) {
+                        const overdue = approvedLate.filter(r => {
+                            const lateMinutes = Number(r.late_minutes) || 0;
+                            const overdueTime = shiftStartMoment.clone().add(lateMinutes + 2, 'minutes').format('HH:mm');
+                            return currentTimeStr === overdueTime;
+                        });
+
+                        if (overdue.length > 0) {
+                            const names = overdue.map(r => `❌ ${r.full_name} (xin muộn ${r.late_minutes || 0} phút)`).join('\n');
+                            const msg = `⏰ <b>THÔNG BÁO ĐI MUỘN QUÁ HẠN XIN PHÉP (${shift.label})</b> ⏰\n\n` +
+                                `🚫 Đã quá hạn xin đi muộn 2 phút.\n` +
+                                `Các nhân sự sau chưa điểm danh (ghi nhận đi muộn):\n\n${names}`;
+                            try {
+                                const sent = await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, { parse_mode: 'HTML' }, 'checkin_late_overdue_warning');
+                                if (sent) {
+                                    for (const employee of overdue) {
+                                        await repository.markLateWarningSent(groupUuid, employee.user_id, todayStr);
+                                        attendanceSheetDirty = true;
+                                    }
+                                }
+                            } catch (err) {
+                                console.error(`Lỗi gửi báo quá hạn đi muộn ca ${shift.num} cho nhóm ${groupName}:`, err.message);
+                            }
+                        }
+                    }
+                }
             }
         }
 

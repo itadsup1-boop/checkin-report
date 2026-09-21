@@ -1,3 +1,7 @@
+import { buildLowStockWarningMessage } from '../../domain/low-stock-alert.js';
+
+export { buildLowStockWarningMessage };
+
 export function buildPendingMessage(order, escapeHtml, transferSuggestions = [], moment) {
     const createdAt = moment(order.created_at).utcOffset(7);
     let message = `⚠️ <b>[ĐƠN XUẤT KHÁCH CHỜ DUYỆT]</b>\n\n` +
@@ -344,24 +348,44 @@ export function startWarehouseOutboxWorker({
                 } catch (error) {
                     if (!isTelegramMessageAlreadyUpdated(error)) throw error;
                 }
-                return;
+            } else if (!event.payload?.notificationSent) {
+                const sent = await sendMessageToRoleGroup(
+                    bot,
+                    order.telegram_group_id,
+                    'warehouse',
+                    buildApprovedMessage(order, escapeHtml),
+                    { parse_mode: 'HTML' },
+                    'warehouse_service_order_approved'
+                );
+                if (!sent) throw new Error('Không gửi được thông báo đơn đã duyệt');
+                await pool.query(
+                    `UPDATE tk_warehouse_outbox
+                     SET payload = payload || '{"notificationSent": true}'::jsonb
+                     WHERE id = $1`,
+                    [event.id]
+                );
             }
-            if (event.payload?.notificationSent) return;
-            const sent = await sendMessageToRoleGroup(
-                bot,
-                order.telegram_group_id,
-                'warehouse',
-                buildApprovedMessage(order, escapeHtml),
-                { parse_mode: 'HTML' },
-                'warehouse_service_order_approved'
-            );
-            if (!sent) throw new Error('Không gửi được thông báo đơn đã duyệt');
-            await pool.query(
-                `UPDATE tk_warehouse_outbox
-                 SET payload = payload || '{"notificationSent": true}'::jsonb
-                 WHERE id = $1`,
-                [event.id]
-            );
+
+            const lowStockItems = event.payload?.low_stock_items;
+            if (Array.isArray(lowStockItems) && lowStockItems.length > 0 && !event.payload?.lowStockAlertSent) {
+                const warningMsg = buildLowStockWarningMessage(lowStockItems, escapeHtml);
+                if (warningMsg) {
+                    await sendMessageToRoleGroup(
+                        bot,
+                        order.telegram_group_id,
+                        'warehouse',
+                        warningMsg,
+                        { parse_mode: 'HTML' },
+                        'warehouse_low_stock_warning'
+                    );
+                }
+                await pool.query(
+                    `UPDATE tk_warehouse_outbox
+                     SET payload = payload || '{"lowStockAlertSent": true}'::jsonb
+                     WHERE id = $1`,
+                    [event.id]
+                );
+            }
             return;
         }
 

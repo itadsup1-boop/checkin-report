@@ -230,12 +230,12 @@ export function createScheduleRepository({ pool }) {
         );
     }
 
-    async function insertScheduleChangeRequest({ groupId, userId, weekStartDate, daysJson, proofUrl }) {
+    async function insertScheduleChangeRequest({ groupId, userId, weekStartDate, daysJson, proofUrl, status = 'APPROVED', approvedBy = 'Hệ thống tự động chấp nhận' }) {
         const result = await pool.query(
-            `INSERT INTO tk_leave_requests (group_id, user_id, request_type, late_minutes, date, reason, proof_url, status)
-             VALUES ($1, $2, 'SCHEDULE_CHANGE', 0, $3, $4, $5, 'PENDING')
+            `INSERT INTO tk_leave_requests (group_id, user_id, request_type, late_minutes, date, reason, proof_url, status, approved_by, auto_accepted, effective_applied_at)
+             VALUES ($1, $2, 'SCHEDULE_CHANGE', 0, $3, $4, $5, $6, $7, true, NOW())
              RETURNING id`,
-            [groupId, userId, weekStartDate, daysJson, proofUrl]
+            [groupId, userId, weekStartDate, daysJson, proofUrl, status, approvedBy]
         );
         return result.rows[0].id;
     }

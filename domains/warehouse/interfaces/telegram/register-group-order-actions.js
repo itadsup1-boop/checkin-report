@@ -1,3 +1,5 @@
+import { buildLowStockWarningMessage, collectLowStockFromApprovedList } from '../../domain/low-stock-alert.js';
+
 export function registerGroupedWarehouseOrderActions({
     bot,
     pool,
@@ -210,6 +212,10 @@ export function registerGroupedWarehouseOrderActions({
                     quantity: tx.quantity,
                     details: detailsStr,
                     newStock: (prefStock + otherStock) - tx.quantity,
+                    prefBranch,
+                    otherBranch,
+                    prefDeduct,
+                    otherDeduct,
                     finalStockUs,
                     finalStockUk
                 });
@@ -237,8 +243,16 @@ export function registerGroupedWarehouseOrderActions({
 
             await ctx.editMessageText(message, { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } });
 
-            // CHẠY ĐỒNG BỘ SHEET TRONG BACKGROUND
+            // CHẠY ĐỒNG BỘ SHEET VÀ CẢNH BÁO TỒN KHO TRONG BACKGROUND
             (async () => {
+                try {
+                    const lowStockItems = collectLowStockFromApprovedList(approvedList);
+                    const warningMsg = buildLowStockWarningMessage(lowStockItems, escapeHtml);
+                    if (warningMsg) await bot.telegram.sendMessage(ctx.chat.id, warningMsg, { parse_mode: 'HTML' });
+                } catch (warningError) {
+                    console.error('[Warehouse Group Warning Error]:', warningError);
+                }
+
                 for (const item of txsToSync) {
                     try {
                         await syncWarehouseSheets(item.productId, item.txId);

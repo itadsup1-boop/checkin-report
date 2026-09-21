@@ -34,6 +34,7 @@ export function createSyncMakeupSheet({ retryRepository, sheetSync, moment }) {
                     'Nhân Viên': request.employee_name,
                     'Mã NV': employeeCode,
                     'Khách Hàng': request.customer_name,
+                    'Loại khách': 'Khách cũ',
                     'SĐT': request.customer_phone,
                     'Dịch Vụ': request.service,
                     'Buổi Làm': request.sessions,

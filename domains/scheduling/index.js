@@ -99,14 +99,15 @@ export function registerSchedulingModule({
 
     const notifier = createMakeupNotifier({ bot, escapeHtml, sendPhotoToRoleGroup, moment });
 
-    const makeupService = createMakeupRequestService({
-        pool, repository, imageStore, notifier, moment
-    });
-
     // Đồng bộ Sheet của lịch khách/báo bù — dùng chung cho duyệt báo bù, nợ ảnh,
     // và cron quét lại khi lỗi.
     const sheetSync = createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRole, moment });
     const { syncMakeupToGoogleSheet } = createSyncMakeupSheet({ retryRepository, sheetSync, moment });
+
+    const makeupService = createMakeupRequestService({
+        pool, repository, imageStore, notifier, moment,
+        syncToSheet: syncMakeupToGoogleSheet
+    });
     const submitProofPhoto = createSubmitProofPhoto({
         repository: proofRepository, sheetSync, moment, fs, path, uploadDir, publicBaseUrl
     });

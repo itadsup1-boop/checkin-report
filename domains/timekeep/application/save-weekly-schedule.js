@@ -32,7 +32,7 @@ function shiftDisplayName(shift) {
 
 export function createSaveWeeklySchedule({
     repository, findEmployeeContext, isSystemAdmin, syncSheets,
-    fs, path, moment, uploadDir, bot, publicBaseUrl
+    fs, path, moment, uploadDir, bot, publicBaseUrl, sendMessageToRoleGroup
 }) {
     async function saveWeeklySchedule({ telegramId, chatId, targetUserId, days, proofImage }) {
         if (!telegramId || !days || !Array.isArray(days)) {
@@ -132,10 +132,19 @@ export function createSaveWeeklySchedule({
             }
 
             if (!isManager && offDaysCount >= 2) {
-                return requestManagerApproval({
-                    repository, fs, path, moment, uploadDir, bot, publicBaseUrl,
+                // Tự động duyệt và áp dụng lịch tuần trực tiếp vào hệ thống
+                await applyScheduleDirectly({
+                    repository, fs, path, moment, uploadDir, bot, syncSheets,
+                    groupId, caller, targetUser, days, proofImage, isAdmin
+                });
+
+                // Gửi thông báo lên nhóm Telegram và lưu bản ghi đơn đã duyệt
+                await notifyScheduleChange({
+                    repository, fs, path, moment, uploadDir, bot, sendMessageToRoleGroup, publicBaseUrl,
                     groupId, targetUser, days, proofImage, chatId
                 });
+
+                return { ok: true, message: 'Đã lưu và tự động duyệt lịch tuần thành công!' };
             }
         }
 
@@ -148,13 +157,14 @@ export function createSaveWeeklySchedule({
     return { saveWeeklySchedule };
 }
 
-async function requestManagerApproval({ repository, fs, path, moment, uploadDir, bot, publicBaseUrl, groupId, targetUser, days, proofImage, chatId }) {
+async function notifyScheduleChange({ repository, fs, path, moment, uploadDir, bot, sendMessageToRoleGroup, publicBaseUrl, groupId, targetUser, days, proofImage, chatId }) {
     const proofUrl = decodeProofImage(proofImage, `proof_schedule_${targetUser.telegram_id}`, fs, path, uploadDir);
     const startOfWeekStr = moment(days[0].date).startOf('isoWeek').format('YYYY-MM-DD');
 
     await repository.cancelPendingScheduleChangeRequests(targetUser.id, startOfWeekStr);
-    const requestId = await repository.insertScheduleChangeRequest({
-        groupId, userId: targetUser.id, weekStartDate: startOfWeekStr, daysJson: JSON.stringify(days), proofUrl
+    await repository.insertScheduleChangeRequest({
+        groupId, userId: targetUser.id, weekStartDate: startOfWeekStr, daysJson: JSON.stringify(days), proofUrl,
+        status: 'APPROVED', approvedBy: 'Hệ thống tự động chấp nhận'
     });
 
     let telegramGroupId = chatId || await repository.findTelegramGroupId(groupId);
@@ -163,7 +173,7 @@ async function requestManagerApproval({ repository, fs, path, moment, uploadDir,
         const endOfWeekFormatted = moment(startOfWeekStr).endOf('isoWeek').format('DD/MM/YYYY');
         const offDaysDates = days.filter(d => d.shift_type === 'OFF').map(d => moment(d.date).format('DD/MM')).join(', ');
 
-        let msg = `🚨 <b>YÊU CẦU DUYỆT ĐĂNG KÝ LỊCH TUẦN (>= 2 NGÀY NGHỈ)</b>\n\n` +
+        let msg = `📢 <b>THÔNG BÁO ĐĂNG KÝ LỊCH TUẦN (>= 2 NGÀY NGHỈ)</b>\n\n` +
             `👤 <b>Nhân viên:</b> ${targetUser.full_name}\n` +
             `💼 <b>Vị trí:</b> ${targetUser.role}\n` +
             `📅 <b>Tuần đăng ký:</b> ${startOfWeekFormatted} - ${endOfWeekFormatted}\n` +
@@ -172,20 +182,18 @@ async function requestManagerApproval({ repository, fs, path, moment, uploadDir,
         msg += proofUrl
             ? `📸 <b>Minh chứng:</b> <a href="${publicBaseUrl}${proofUrl}">Xem ảnh đính kèm</a>\n`
             : `📸 <b>Minh chứng:</b> Không có\n`;
-        msg += `\n------------------------------------------\nVui lòng phê duyệt lịch làm việc của nhân sự này.`;
+        msg += `\n------------------------------------------\n<i>(Hệ thống đã tự động ghi nhận và áp dụng lịch tuần này)</i>`;
 
-        await bot.telegram.sendMessage(telegramGroupId, msg, {
-            parse_mode: 'HTML',
-            reply_markup: {
-                inline_keyboard: [[
-                    { text: '✅ Duyệt lịch', callback_data: `approve_leave_${requestId}` },
-                    { text: '❌ Từ chối', callback_data: `reject_leave_${requestId}` }
-                ]]
+        try {
+            if (sendMessageToRoleGroup) {
+                await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, { parse_mode: 'HTML' }, 'schedule_change_notice');
+            } else if (bot && bot.telegram) {
+                await bot.telegram.sendMessage(telegramGroupId, msg, { parse_mode: 'HTML' });
             }
-        });
+        } catch (err) {
+            console.error('[Notify Schedule Change Error]:', err.message);
+        }
     }
-
-    return { ok: true, message: 'Lịch đang chờ Quản lý duyệt do đăng ký nghỉ >= 2 ngày.' };
 }
 
 async function applyScheduleDirectly({ repository, fs, path, moment, uploadDir, bot, syncSheets, groupId, caller, targetUser, days, proofImage, isAdmin }) {

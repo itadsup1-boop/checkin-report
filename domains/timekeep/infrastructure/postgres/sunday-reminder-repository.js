@@ -15,22 +15,22 @@ export function createSundayReminderRepository({ pool }) {
         return result.rows;
     }
 
-    /** Nhân sự trong nhóm chưa có bất kỳ lịch nào cho tuần tới. */
+    /** Nhân sự trong nhóm chưa đăng ký đủ lịch cho cả 7 ngày tuần tới. */
     async function findUnregisteredStaff(telegramGroupId, fromDate, toDate) {
         const result = await pool.query(`
             SELECT e.id, e.full_name, e.telegram_id, e.telegram_username
             FROM employees e
             LEFT JOIN employee_group_memberships gm
               ON gm.employee_id = e.id AND gm.telegram_group_id = $1
+            LEFT JOIN tk_schedules s
+              ON s.user_id = e.id AND s.date >= $2::date AND s.date <= $3::date
             WHERE e.telegram_group_id = $1
               AND e.is_active = true
               AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
               AND e.full_name NOT LIKE '/%'
               AND e.full_name != 'tester'
-              AND NOT EXISTS (
-                  SELECT 1 FROM tk_schedules s
-                  WHERE s.user_id = e.id AND s.date >= $2::date AND s.date <= $3::date
-              )
+            GROUP BY e.id, e.full_name, e.telegram_id, e.telegram_username
+            HAVING COUNT(s.id) < 7
         `, [telegramGroupId, fromDate, toDate]);
         return result.rows;
     }
@@ -39,8 +39,7 @@ export function createSundayReminderRepository({ pool }) {
         await pool.query(`
             INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked, updated_by)
             VALUES ($1, $2, $3, 'CA_SANG', true, 'Hệ thống tự động')
-            ON CONFLICT (user_id, date)
-            DO UPDATE SET shift_type = 'CA_SANG', is_locked = true, updated_by = 'Hệ thống tự động', updated_at = NOW()
+            ON CONFLICT (user_id, date) DO NOTHING
         `, [groupId, userId, date]);
     }
 

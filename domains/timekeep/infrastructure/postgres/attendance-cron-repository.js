@@ -35,6 +35,11 @@ export function createAttendanceCronRepository({ pool }) {
                   WHERE ds.group_id = $1 AND ds.user_id = u.id AND ds.date = $2
                     AND (ds.reminder_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
               )
+              AND NOT EXISTS (
+                  SELECT 1 FROM tk_leave_requests lr
+                  WHERE lr.user_id = u.id AND lr.date = $2
+                    AND lr.request_type = 'LATE' AND lr.status = 'APPROVED'
+              )
             ORDER BY u.full_name ASC
         `, [groupUuid, date, shiftTypes, String(telegramGroupId)]);
         return result.rows;
@@ -55,6 +60,37 @@ export function createAttendanceCronRepository({ pool }) {
             SELECT u.id AS user_id, u.full_name
             FROM employees u
             JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
+            LEFT JOIN employee_group_memberships gm
+              ON gm.employee_id = u.id AND gm.telegram_group_id = $4
+            WHERE u.group_id = $1
+              AND COALESCE(u.is_exempt_checkin, false) = false
+              AND COALESCE(u.is_active, true) = true
+              AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'
+              AND s.shift_type = ANY($3)
+              AND NOT EXISTS (SELECT 1 FROM tk_check_ins c WHERE c.user_id = u.id AND c.date = $2)
+              AND NOT EXISTS (
+                  SELECT 1 FROM tk_attendance_daily_status ds
+                  WHERE ds.group_id = $1 AND ds.user_id = u.id AND ds.date = $2
+                    AND (ds.late_warning_sent_at IS NOT NULL OR ds.finalized_at IS NOT NULL)
+              )
+              AND NOT EXISTS (
+                  SELECT 1 FROM tk_leave_requests lr
+                  WHERE lr.user_id = u.id AND lr.date = $2
+                    AND lr.request_type = 'LATE' AND lr.status = 'APPROVED'
+              )
+            ORDER BY u.full_name ASC
+        `, [groupUuid, date, shiftTypes, String(telegramGroupId)]);
+        return result.rows;
+    }
+
+    /** Danh sách nhân sự có đơn LATE được duyệt nhưng chưa check-in để nhắc riêng theo giờ hẹn */
+    async function findApprovedLateRequestsForShift({ groupUuid, date, shiftTypes, telegramGroupId }) {
+        const result = await pool.query(`
+            SELECT u.id AS user_id, u.full_name, lr.late_minutes
+            FROM employees u
+            JOIN tk_schedules s ON u.id = s.user_id AND s.date = $2
+            JOIN tk_leave_requests lr ON lr.user_id = u.id AND lr.date = $2
+              AND lr.request_type = 'LATE' AND lr.status = 'APPROVED'
             LEFT JOIN employee_group_memberships gm
               ON gm.employee_id = u.id AND gm.telegram_group_id = $4
             WHERE u.group_id = $1
@@ -162,7 +198,7 @@ export function createAttendanceCronRepository({ pool }) {
     return {
         findTimekeepGroupsWithShiftTimes,
         findUncheckedForShift, markReminderSent,
-        findLateForShift, markLateWarningSent,
+        findLateForShift, findApprovedLateRequestsForShift, markLateWarningSent,
         findFirstCheckInsOfDay,
         findLatePenaltyCountInMonth, findExistingLatePenalty, findApprovedLateLeaveRequest,
         insertLatePenalty, upsertAttendanceResult

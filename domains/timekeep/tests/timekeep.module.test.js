@@ -119,7 +119,7 @@ test('module đăng ký đúng 2 bot.action (duyệt/từ chối nghỉ, miễn 
         '/^excuse_penalty_([0-9a-f-]{36})$/i'
     ]);
     assert.deepEqual(h.botOnHandlers.map(o => o.events), [
-        ['video', 'video_note', 'text', 'edited_message'],
+        ['video', 'video_note', 'animation', 'text', 'edited_message'],
         'text'
     ]);
 });
@@ -165,10 +165,10 @@ test('thiếu thông tin đăng ký thì chặn, thiếu nhóm báo riêng', () 
     assert.match(noGroup.message, /liên kết Đăng ký trong nhóm/);
 });
 
-test('không cho tự đăng ký vai trò Quản lý hoặc Quản lý kho', () => {
+test('không cho tự đăng ký vai trò không hợp lệ (như Admin, Giám đốc)', () => {
     const base = { telegramId: '1', fullName: 'A', telegramGroupId: '-100' };
 
-    for (const role of ['Quản lý', 'Quản lý kho']) {
+    for (const role of ['Admin', 'Giám đốc']) {
         const verdict = checkRegistrationInput({ ...base, role });
         assert.equal(verdict.ok, false, role);
         assert.match(verdict.message, /Chức vụ không hợp lệ/);

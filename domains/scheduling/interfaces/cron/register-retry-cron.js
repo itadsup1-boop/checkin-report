@@ -112,6 +112,7 @@ export function registerRetryCron({
                         'Nhân Viên': apt.employee_name,
                         'Mã NV': apt.employee_code || '',
                         'Khách Hàng': apt.customer_name,
+                        'Loại khách': 'Khách cũ',
                         'SĐT': apt.phone,
                         'Dịch Vụ': apt.service,
                         'Buổi Làm': apt.sessions,

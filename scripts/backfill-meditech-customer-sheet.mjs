@@ -9,7 +9,7 @@ const FROM_DATE = process.env.BACKFILL_FROM_DATE || '2026-08-01';
 const TO_DATE = process.env.BACKFILL_TO_DATE || '2026-09-01';
 const APPLY = process.argv.includes('--apply');
 const HEADERS = [
-    'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'SĐT', 'Dịch Vụ',
+    'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'Loại khách', 'SĐT', 'Dịch Vụ',
     'Buổi Làm', 'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền', 'Ảnh Chứng Thực'
 ];
 
@@ -48,6 +48,7 @@ function rowDataFromAppointment(appointment) {
         'Nhân Viên': appointment.employee_name,
         'Mã NV': appointment.employee_code || '',
         'Khách Hàng': appointment.customer_name,
+        'Loại khách': 'Khách cũ',
         'SĐT': appointment.phone || '',
         'Dịch Vụ': appointment.service || '',
         'Buổi Làm': appointment.sessions || '',

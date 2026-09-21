@@ -1,3 +1,5 @@
+import { buildLowStockWarningMessage, collectLowStockFromApprovedList } from '../../domain/low-stock-alert.js';
+
 export function registerSingleWarehouseOrderActions({
     bot,
     pool,
@@ -241,6 +243,23 @@ export function registerSingleWarehouseOrderActions({
                     await bot.telegram.sendMessage(ctx.chat.id, groupNotifyMsg, { parse_mode: 'HTML' });
                 } catch (groupNotifyErr) {
                     console.warn('[Notify Group Error] Không thể gửi tin nhắn thông báo mới vào nhóm:', groupNotifyErr.message);
+                }
+
+                // C. Cảnh báo tồn kho dưới 5
+                try {
+                    const lowStockItems = collectLowStockFromApprovedList([{
+                        product_name: tx.product_name,
+                        barcode: tx.barcode,
+                        prefBranch,
+                        otherBranch,
+                        otherDeduct,
+                        finalStockUs,
+                        finalStockUk
+                    }]);
+                    const warningMsg = buildLowStockWarningMessage(lowStockItems, escapeHtml);
+                    if (warningMsg) await bot.telegram.sendMessage(ctx.chat.id, warningMsg, { parse_mode: 'HTML' });
+                } catch (warningError) {
+                    console.error('[Warehouse Single Warning Error]:', warningError);
                 }
 
                 // C. Đồng bộ Sheets

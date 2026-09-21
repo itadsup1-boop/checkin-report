@@ -52,8 +52,8 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
             ? `🔔 <b>[CẢNH BÁO ĐĂNG KÝ LỊCH TUẦN MỚI]</b>\n\n` +
               `Các thành viên sau đây vui lòng nhấn nút dưới đây để hoàn tất đăng ký lịch làm việc tuần tới trước 20:00:\n\n👉 ${tagList}`
             : `🚨 <b>[CẢNH BÁO ĐĂNG KÝ LỊCH LẦN CUỐI]</b>\n\n` +
-              `⏰ <b>Chỉ còn đúng 10 phút!</b> Nếu quá 20:00 chưa hoàn tất đăng ký lịch, hệ thống sẽ tự động xếp toàn bộ ca của bạn thành <b>Ca sớm (8:30)</b> cho cả tuần sau.\n\n` +
-              `👉 Các bạn chưa đăng ký: ${tagList}`;
+              `⏰ <b>Chỉ còn đúng 10 phút!</b> Nếu quá 20:00 chưa hoàn tất đăng ký lịch, hệ thống sẽ tự động bổ sung <b>Ca sớm (8:30)</b> cho các ngày còn trống trong tuần sau.\n\n` +
+              `👉 Các bạn chưa đăng ký đủ: ${tagList}`;
 
         await bot.telegram.sendMessage(groupId, message, {
             parse_mode: 'HTML',
@@ -72,7 +72,7 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
             const namesList = unregisteredStaff.map(employee => employee.full_name).join(', ');
             const message = `🔒 <b>[HẾT HẠN ĐĂNG KÝ & TỰ ĐỘNG XẾP CA]</b>\n\n` +
                 `Hạn đăng ký lịch làm việc tuần tới đã kết thúc.\n\n` +
-                `Các thành viên chưa đăng ký đã được hệ thống tự động xếp lịch <b>Ca sớm (8:30)</b> cho cả tuần từ Thứ 2 đến Chủ Nhật:\n` +
+                `Các thành viên chưa hoàn tất đăng ký đã được hệ thống tự động bổ sung <b>Ca sớm (8:30)</b> cho những ngày còn trống:\n` +
                 `👉 <b>${namesList}</b>`;
             await bot.telegram.sendMessage(group.telegram_group_id, message, { parse_mode: 'HTML' });
         }

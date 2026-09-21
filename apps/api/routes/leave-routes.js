@@ -100,6 +100,24 @@ export function registerLeaveRoutes({
                     request: { ...request, date: formattedDate }
                 });
                 syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
+            } else if (!isAutoReject && status === 'APPROVED' && request.request_type === 'SCHEDULE_CHANGE') {
+                try {
+                    const daysToSave = JSON.parse(request.reason);
+                    for (const day of daysToSave) {
+                        const dateStr = day.date.includes('T') ? day.date.split('T')[0] : day.date;
+                        const currentProofUrl = (day.shift_type === 'OFF' && request.proof_url) ? request.proof_url : null;
+                        await pool.query(
+                            `INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked, proof_url, updated_by, updated_at)
+                             VALUES ($1, $2, $3, $4, true, $5, $6, NOW())
+                             ON CONFLICT (user_id, date) 
+                             DO UPDATE SET shift_type = $4, is_locked = true, proof_url = COALESCE($5, tk_schedules.proof_url), updated_by = $6, updated_at = NOW()`,
+                            [request.group_id, request.user_id, dateStr, day.shift_type, currentProofUrl, approved_by || 'Admin (Dashboard)']
+                        );
+                    }
+                    syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
+                } catch (err) {
+                    console.error('[Approve Schedule Change Error] Failed to parse days:', err);
+                }
             } else if (!isAutoReject && request.status === 'APPROVED' && status !== 'APPROVED' && ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'].includes(request.request_type)) {
                 // Revert schedule if the request was previously approved but now rejected/reset
                 const formattedDate = new Date(request.date).toISOString().split('T')[0];
@@ -108,6 +126,18 @@ export function registerLeaveRoutes({
                      WHERE user_id = $1 AND date = $2 AND shift_type IN ('OFF', 'CA_CHIEU', 'CA_SANG', 'HALF_DAY_PM_WORK')`,
                     [request.user_id, formattedDate]
                 );
+            } else if (!isAutoReject && request.status === 'APPROVED' && status !== 'APPROVED' && request.request_type === 'SCHEDULE_CHANGE') {
+                try {
+                    const daysToSave = JSON.parse(request.reason);
+                    const dates = daysToSave.map(d => d.date.includes('T') ? d.date.split('T')[0] : d.date);
+                    await pool.query(
+                        `DELETE FROM tk_schedules WHERE user_id = $1 AND date = ANY($2::date[])`,
+                        [request.user_id, dates]
+                    );
+                    syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
+                } catch (err) {
+                    console.error('[Revert Schedule Change Error]:', err);
+                }
             }
     
             if (isAutoReject) {
@@ -124,12 +154,17 @@ export function registerLeaveRoutes({
                     const requestTypeName = request.request_type === 'FULL_DAY' ? 'Nghỉ cả ngày 🟥' :
                         (request.request_type === 'HALF_DAY_AM' ? 'Nghỉ nửa ngày (Sáng) 🌅' :
                             (request.request_type === 'HALF_DAY_PM' ? 'Nghỉ nửa ngày (Chiều) 🌇' :
-                                `Xin đi muộn (${request.late_minutes} phút) 🟩`));
-    
+                                (request.request_type === 'SCHEDULE_CHANGE' ? 'Đăng ký lịch tuần 📅' :
+                                    `Xin đi muộn (${request.late_minutes} phút) 🟩`)));
+
                     const statusText = status === 'APPROVED' ? 'Đã được DUYỆT ✅' : (status === 'REJECTED' ? 'Bị TỪ CHỐI ❌' : 'Chuyển về CHỜ DUYỆT ⏳');
                     const adminName = approved_by || 'Admin';
-    
-                    const message = `🔔 <b>Cập nhật duyệt đơn xin nghỉ/đi muộn ngày ${displayDate}:</b>\n\n` +
+
+                    const headerText = request.request_type === 'SCHEDULE_CHANGE'
+                        ? `🔔 <b>Cập nhật duyệt đăng ký lịch tuần:</b>`
+                        : `🔔 <b>Cập nhật duyệt đơn xin nghỉ/đi muộn ngày ${displayDate}:</b>`;
+
+                    const message = `${headerText}\n\n` +
                         `📝 <b>Loại:</b> ${requestTypeName}\n` +
                         `📊 <b>Kết quả mới:</b> ${statusText}\n` +
                         `👤 <b>Người duyệt:</b> Admin ${adminName} (từ Dashboard)`;

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { parseQuantity, quantityModeLabel } from '../../domain/quantity-rules.js';
+import { buildLowStockWarningMessage, collectLowStockFromApprovedList } from '../../domain/low-stock-alert.js';
 
 export function registerWarehouseExportRoutes({
     botApp,
@@ -188,6 +189,10 @@ export function registerWarehouseExportRoutes({
                             quantity: qtyNum,
                             details: detailsStr,
                             newStock: stockUs + stockUk - qtyNum,
+                            prefBranch,
+                            otherBranch,
+                            prefDeduct,
+                            otherDeduct,
                             finalStockUs: prefBranch === 'US' ? prefStock - prefDeduct : otherStock - otherDeduct,
                             finalStockUk: prefBranch === 'UK' ? prefStock - prefDeduct : otherStock - otherDeduct
                         });
@@ -221,6 +226,16 @@ export function registerWarehouseExportRoutes({
                     } catch (telegramError) {
                         console.error('[Warehouse Telegram Error] Không gửi được thông báo xuất kho:', telegramError);
                     }
+
+                    // Cảnh báo sản phẩm sau xuất có tồn kho dưới 5
+                    try {
+                        const lowStockItems = collectLowStockFromApprovedList(approvedList);
+                        const warningMsg = buildLowStockWarningMessage(lowStockItems, escapeHtml);
+                        if (warningMsg) await bot.telegram.sendMessage(chat_id, warningMsg, { parse_mode: 'HTML' });
+                    } catch (warningError) {
+                        console.error('[Warehouse Warning Error] Không gửi được cảnh báo tồn kho thấp:', warningError);
+                    }
+
                     for (const item of txToSync) {
                         try {
                             await syncWarehouseSheets(item.productId, item.txId);

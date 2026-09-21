@@ -47,7 +47,7 @@ function EmptyState({ icon: Icon, title, description, action }) {
   );
 }
 
-function ProductUnitsModal({ product, saving, onClose, onSave }) {
+export function ProductUnitsModal({ product, saving, onClose, onSave }) {
   const [baseUnit, setBaseUnit] = useState(product?.base_unit || 'chiếc');
   const [hasConversion, setHasConversion] = useState(Boolean(product?.import_unit && Number(product?.conversion_rate) > 1));
   const [importUnit, setImportUnit] = useState(product?.import_unit || 'Lọ');
@@ -732,7 +732,7 @@ function ServiceTemplateManagement() {
                   <div>
                     <div className="text-xs font-bold uppercase tracking-wider text-blue-700">Đang chỉnh sửa</div>
                     <h2 className="mt-1 text-2xl font-bold text-slate-950">{selectedService.service_name}</h2>
-                    <p className="mt-1 text-xs text-slate-500">Đơn đã tạo trước đây không bị thay đổi.</p>
+                    <p className="mt-1 text-xs text-slate-500">Mặt hàng khi nhân viên chọn dịch vụ. Đơn đã tạo trước đây không bị thay đổi.</p>
                   </div>
                   <button
                     onClick={archiveService}
@@ -783,7 +783,7 @@ function ServiceTemplateManagement() {
                   <section className="border-t border-slate-100 pt-5">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                       <div>
-                        <h3 className="text-lg font-bold text-slate-950">Mặt hàng của dịch vụ “{selectedService.service_name}”</h3>
+                        <h3 className="text-lg font-bold text-slate-950">Sản phẩm đã chọn cho dịch vụ “{selectedService.service_name}”</h3>
                         <p className="mt-1 text-xs text-slate-500">Kéo thả để thay đổi thứ tự. Nhập số lượng dùng cho một lần làm dịch vụ.</p>
                       </div>
                       <div className="text-xs font-bold text-blue-700">Đã chọn {templateItems.length}/{products.length}</div>
@@ -831,8 +831,8 @@ function ServiceTemplateManagement() {
                               onChange={event => updateProductQuantityMode(item.product_id, event.target.value)}
                               className="w-full rounded-lg border border-slate-300 bg-white px-2 py-2.5 text-xs font-bold text-slate-700 outline-none focus:border-blue-500"
                             >
-                              <option value="INTEGER">Số nguyên (1, 2, 3…)</option>
-                              <option value="DECIMAL">Thập phân (1.2, 2.3…)</option>
+                              <option value="INTEGER">Chỉ nhập số nguyên</option>
+                              <option value="DECIMAL">Cho nhập thập phân</option>
                             </select>
                           </label>
                           <label className="flex items-center gap-2 text-xs font-bold text-slate-500 sm:block">
