@@ -2,8 +2,11 @@
  * Đồng bộ dữ liệu check-in điểm bán thị trường sang Google Sheets của nhóm.
  */
 
+import { isExcludedSheetEmployee } from '../../../../packages/shared/excluded-employees.js';
+
 const MASTER_SHEET_TITLE = 'TỔNG HỢP';
 const LEGACY_SHEET_TITLE = 'CHECK-IN TUYẾN ĐIỂM BÁN';
+
 
 export const HEADERS = [
     'Ngày',
@@ -69,6 +72,11 @@ export async function ensureGpsHeader(sheet) {
 
 export function createRetailSheetSync({ getDocForGroup }) {
     async function syncCheckin(telegramGroupId, data) {
+        if (isExcludedSheetEmployee(data?.employeeName)) {
+            console.log(`[Retail Sheet] Bỏ qua nhân sự loại trừ: ${data?.employeeName}`);
+            return;
+        }
+
         try {
             const doc = await getDocForGroup(telegramGroupId);
             if (!doc) {
@@ -80,6 +88,7 @@ export function createRetailSheetSync({ getDocForGroup }) {
             const locale = doc.locale || 'vi_VN';
 
             const rowData = {
+
                 'Ngày': data.dateStr,
                 'Thời gian': data.timeStr,
                 'Nhân viên': data.employeeName,
@@ -150,10 +159,11 @@ export function createRetailSheetSync({ getDocForGroup }) {
                 closingSheet = await doc.addSheet({ headerValues: CLOSING_HEADERS, title: CLOSING_SHEET_TITLE });
             }
 
-            const closingRows = await closingSheet.getRows();
-
             for (const item of closingList) {
+                if (isExcludedSheetEmployee(item?.employeeName)) continue;
+
                 const missing = Math.max(0, targetPoints - item.validPoints);
+
                 const isCompleted = item.validPoints >= targetPoints;
                 const ketQua = isCompleted ? 'GỬI ĐỦ' : 'THIẾU';
                 const trangThai = isCompleted ? 'ĐẠT (Hoàn thành 100%)' : `CHƯA ĐẠT (Thiếu ${missing} điểm) - Chốt 20:00`;

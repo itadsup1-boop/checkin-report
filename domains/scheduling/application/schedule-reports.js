@@ -21,7 +21,7 @@ import {
 const DAY_MS = 86400000;
 const viDate = timestamp => new Date(timestamp).toLocaleDateString('vi-VN');
 
-export function createScheduleReportService({ repository, notifier, now = () => Date.now() }) {
+export function createScheduleReportService({ repository, notifier, now = () => Date.now(), summarizeTourDaily }) {
     /** 20:02 — lịch của ngày mai. */
     async function reportTomorrow() {
         try {
@@ -30,6 +30,8 @@ export function createScheduleReportService({ repository, notifier, now = () => 
 
             const tomorrowStr = viDate(now() + DAY_MS);
             for (const g of groups) {
+                if (g.bot_role === 'report_tour') continue;
+
                 const appointments = await repository.findTomorrowOf(g.group_id);
                 await notifier.send(g.group_id, g.bot_role,
                     buildTomorrowReport(appointments, tomorrowStr), 'schedule_tomorrow_report');
@@ -47,17 +49,15 @@ export function createScheduleReportService({ repository, notifier, now = () => 
 
             const todayStr = viDate(now());
             for (const g of groups) {
+                if (g.bot_role === 'report_tour' && summarizeTourDaily) {
+                    await summarizeTourDaily(g.group_id);
+                    continue;
+                }
                 const appointments = await repository.findTodayOf(g.group_id);
                 await notifier.send(g.group_id, g.bot_role,
                     buildDailySummary(appointments, todayStr), 'schedule_daily_summary');
 
-                if (g.bot_role === 'report') {
-                    const debtMessage = buildPhotoDebtSummary(appointments, todayStr);
-                    if (debtMessage) {
-                        await notifier.send(g.group_id, 'report', debtMessage,
-                            'schedule_report_photo_debt_daily');
-                    }
-                }
+                // Nhóm report không còn yêu cầu gửi ảnh nên không gửi danh sách thiếu ảnh vào cuối ngày.
             }
         } catch (e) {
             console.error('Lỗi cron 22h đêm lịch khách:', e);
@@ -65,58 +65,11 @@ export function createScheduleReportService({ repository, notifier, now = () => 
     }
 
     /**
-     * 00:00 — chốt công tour của hôm qua.
-     *
-     * Lịch đã hủy không tính vào cả hai danh sách: không đủ công nhưng cũng
-     * không phải lỗi của nhân viên.
+     * 00:00 — nhóm report_tour đã chốt công tour trong ngày lúc 22:00,
+     * nên không gửi lại bản báo cáo lúc 00:00.
      */
     async function summarizeTourWork() {
-        try {
-            const groups = await repository.findTourGroups();
-            if (groups.length === 0) return;
-
-            const yesterdayStr = viDate(now() - DAY_MS);
-
-            for (const g of groups) {
-                const appointments = await repository.findYesterdayOf(g.group_id);
-                if (appointments.length === 0) continue;
-
-                const incompleteItems = [];
-                const validItems = [];
-                let totalRevenue = 0;
-
-                for (const item of appointments) {
-                    if (item.status === APPOINTMENT_STATUS.CANCELLED) continue;
-
-                    const missingFields = findMissingTourFields(item);
-                    if (missingFields.length > 0) {
-                        incompleteItems.push({ item, missingFields });
-                        continue;
-                    }
-
-                    const revenue = parseRevenue(item.revenue);
-                    totalRevenue += revenue;
-                    if (revenue > 0 && item.revenue !== String(revenue)) {
-                        await repository.normalizeRevenue(item.id, revenue);
-                    }
-                    validItems.push(item);
-                }
-
-                if (incompleteItems.length > 0) {
-                    await notifier.send(g.group_id, 'report_tour',
-                        buildTourIncomplete(incompleteItems, yesterdayStr), 'tour_cong_tour_incomplete');
-                }
-
-                if (validItems.length > 0) {
-                    await notifier.send(g.group_id, 'report_tour',
-                        buildTourValidSummary(validItems, totalRevenue, yesterdayStr), 'tour_cong_tour_valid_summary');
-                } else if (incompleteItems.length === 0) {
-                    await notifier.send(g.group_id, 'report_tour', TOUR_EMPTY_MESSAGE, 'tour_cong_tour_empty');
-                }
-            }
-        } catch (e) {
-            console.error('Lỗi cron 00:00 tổng hợp công tour report_tour:', e);
-        }
+        return;
     }
 
     return { reportTomorrow, reportToday, summarizeTourWork };

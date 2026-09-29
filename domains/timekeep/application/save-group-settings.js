@@ -29,6 +29,7 @@ export function createSaveGroupSettings({ repository }) {
         const values = {
             botRole: body.bot_role,
             scheduleRegistrationOpen: body.schedule_registration_open,
+            approvalSettings: body.approval_settings,
             kpiSheetId: extractSheetId(body.kpi_sheet_id),
             customerSheetId: extractSheetId(body.customer_sheet_id),
             pricingSheetId: extractSheetId(body.pricing_sheet_id),
@@ -40,6 +41,15 @@ export function createSaveGroupSettings({ repository }) {
             shift1Time: body.shift_1_time,
             shift2Time: body.shift_2_time,
             autoReminderEnabled: orDefault(body.auto_reminder_enabled, DEFAULTS.auto_reminder_enabled),
+            attendancePolicy: body.attendance_policy !== undefined ? body.attendance_policy : undefined,
+            checkoutMinTime: body.checkout_min_time !== undefined ? body.checkout_min_time : undefined,
+            checkoutDeadline: body.checkout_deadline !== undefined ? body.checkout_deadline : undefined,
+            marketingCheckinPenalty: body.marketing_checkin_penalty !== undefined ? Number(body.marketing_checkin_penalty) : undefined,
+            marketingCheckoutPenalty: body.marketing_checkout_penalty !== undefined ? Number(body.marketing_checkout_penalty) : undefined,
+            marketingCheckinDeadline: body.marketing_checkin_deadline !== undefined ? body.marketing_checkin_deadline : undefined,
+            marketingLateCutoff: body.marketing_late_cutoff !== undefined ? body.marketing_late_cutoff : undefined,
+            marketingSundayCheckinDeadline: body.marketing_sunday_checkin_deadline !== undefined ? body.marketing_sunday_checkin_deadline : undefined,
+            marketingSundayLateCutoff: body.marketing_sunday_late_cutoff !== undefined ? body.marketing_sunday_late_cutoff : undefined,
 
             remindTime1: orDefault(body.remind_time_1, DEFAULTS.remind_time_1),
             photoDeadlineMinutes: orDefault(body.photo_deadline_minutes, DEFAULTS.photo_deadline_minutes),

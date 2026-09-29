@@ -15,7 +15,8 @@ import {
   Users,
   X,
   ShieldCheck,
-  Store
+  Store,
+  PhoneCall
 } from 'lucide-react';
 import LoginScreen from '../features/auth/LoginScreen.jsx';
 import StaffManagement from '../features/staff/StaffManagement.jsx';
@@ -29,6 +30,7 @@ import WarehouseManagement from '../features/warehouse/WarehouseManagement.jsx';
 import SettingsManagement from '../features/settings/SettingsManagement.jsx';
 import CompanyHolidayManagement from '../features/holidays/CompanyHolidayManagement.jsx';
 import RetailManagement from '../features/retail/RetailManagement.jsx';
+import TelesaleManagement from '../features/telesale/TelesaleManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -44,6 +46,7 @@ const TABS = [
   { id: 'staff', path: '/nhan-su', label: 'Nhân sự', icon: UserCheck },
   { id: 'checkins', path: '/diem-danh', label: 'Check in', icon: ClipboardCheck },
   { id: 'retail', path: '/thi-truong', label: 'Check-in thị trường', icon: Store },
+  { id: 'telesale', path: '/telesale', label: 'Báo cáo Telesale', icon: PhoneCall },
   { id: 'schedules', path: '/lich-lam-viec', label: 'Lịch làm việc', icon: CalendarDays },
   { id: 'leave', path: '/nghi-phep', label: 'Nghỉ phép & Quỹ phép', icon: CalendarX },
   { id: 'holidays', path: '/ngay-nghi-cong-ty', label: 'Ngày nghỉ công ty', icon: CalendarDays },
@@ -294,6 +297,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
             />
           )}
         />
+        <Route path="/telesale" element={guard(canAccessGeneralAdmin) ?? <TelesaleManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/lich-lam-viec" element={guard(canAccessGeneralAdmin) ?? <ScheduleManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/nghi-phep" element={guard(canAccessGeneralAdmin) ?? <LeaveManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/ngay-nghi-cong-ty" element={guard(canAccessGeneralAdmin) ?? <CompanyHolidayManagement isSuperAdmin={isSuperAdmin} />} />
@@ -356,7 +360,29 @@ function AdminLayout({
               <Users className="h-4 w-4 shrink-0 text-blue-600" />
               <select value={selectedGroupId} onChange={event => onSelectGroup(event.target.value)} className="max-w-[145px] cursor-pointer truncate border-none bg-transparent text-xs font-medium text-slate-700 outline-none sm:max-w-[280px] sm:text-sm">
                 <option value="ALL">Tất cả nhóm ({displayGroups.length})</option>
-                {displayGroups.map(group => <option key={group.telegram_group_id} value={group.telegram_group_id}>{group.group_name || `Nhóm ${group.telegram_group_id}`}</option>)}
+                {displayGroups.map(group => {
+                  let roleTag = '';
+                  if (group.bot_role === 'timekeep') {
+                    roleTag = group.attendance_policy === 'MARKETING' ? ' 🏢 [Marketing]' : ' 🏥 [Phòng khám]';
+                  } else if (group.bot_role === 'warehouse') {
+                    roleTag = ' 📦 [Kho]';
+                  } else if (group.bot_role === 'retail_checkin') {
+                    roleTag = ' 🏪 [Thị trường]';
+                  } else if (group.bot_role === 'telesale') {
+                    roleTag = ' 📞 [Telesale]';
+                  } else if (group.bot_role === 'customer') {
+                    roleTag = ' 📋 [Hồ sơ KH]';
+                  } else if (group.bot_role === 'report_tour') {
+                    roleTag = ' 🚗 [Tour]';
+                  } else if (group.bot_role) {
+                    roleTag = ` [${group.bot_role}]`;
+                  }
+                  return (
+                    <option key={group.telegram_group_id} value={group.telegram_group_id}>
+                      {(group.group_name || `Nhóm ${group.telegram_group_id}`) + roleTag}
+                    </option>
+                  );
+                })}
               </select>
             </div>}
           </div>

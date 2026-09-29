@@ -37,6 +37,12 @@ import { registerAppointmentActions } from './interfaces/telegram/register-appoi
 import { registerPhotoReplyHandler } from './interfaces/telegram/register-photo-reply-handler.js';
 import { registerScheduleCrons } from './interfaces/cron/register-schedule-crons.js';
 import { registerRetryCron } from './interfaces/cron/register-retry-cron.js';
+import { createTourReportRepository } from './infrastructure/postgres/tour-report-repository.js';
+import { createTourSheetSync } from './infrastructure/google-sheet/tour-sheet-sync.js';
+import { createProcessTourReportService } from './application/process-tour-report.js';
+import { createSummarizeDailyTour } from './application/summarize-daily-tour.js';
+import { registerTourRoutes } from './interfaces/miniapp-api/tour-routes.js';
+import { registerTourReportHandler, createTourPhotoHandler } from './interfaces/telegram/register-tour-report-handler.js';
 
 /**
  * Lắp chức năng báo bù công tour vào bot.
@@ -72,6 +78,7 @@ export function registerSchedulingModule({
     escapeHtml,
     sendPhotoToRoleGroup,
     getCustomerDocForGroup,
+    getDocById = null,
     fs,
     path,
     moment,
@@ -103,6 +110,7 @@ export function registerSchedulingModule({
     // và cron quét lại khi lỗi.
     const sheetSync = createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRole, moment });
     const { syncMakeupToGoogleSheet } = createSyncMakeupSheet({ retryRepository, sheetSync, moment });
+    const tourSheetSync = getDocById ? createTourSheetSync({ getDocById, pool, moment }) : null;
 
     const makeupService = createMakeupRequestService({
         pool, repository, imageStore, notifier, moment,
@@ -124,14 +132,38 @@ export function registerSchedulingModule({
     const appointmentNotifier = createAppointmentNotifier({ bot, sendMessageToRoleGroup });
 
     const bookAppointment = createBookAppointmentService({
-        repository: appointments, notifier: appointmentNotifier, getGroupRole
+        repository: appointments, notifier: appointmentNotifier, getGroupRole, sheetSync
     });
     const manageService = createManageAppointmentService({
         repository: appointments, notifier: appointmentNotifier
     });
     const confirmService = createConfirmArrivalService({ repository: appointments });
+    /* ---------- Báo công tour KTV (role report_tour) ---------- */
+    const tourRepository = createTourReportRepository({ pool });
+    const processTourReport = createProcessTourReportService({
+        repository: tourRepository,
+        sendPhotoToRoleGroup,
+        sendMessageToRoleGroup,
+        bot,
+        moment,
+        fs,
+        path,
+        uploadDir,
+        publicBaseUrl,
+        tourSheetSync
+    });
+    const summarizeDailyTourService = createSummarizeDailyTour({
+        tourRepository,
+        appointmentReportsRepository: appointments,
+        sendMessageToRoleGroup,
+        bot,
+        moment
+    });
+
     const reportService = createScheduleReportService({
-        repository: appointments, notifier: appointmentNotifier
+        repository: appointments,
+        notifier: appointmentNotifier,
+        summarizeTourDaily: summarizeDailyTourService.summarizeDailyTour
     });
     const remindDueAppointments = createRemindDueAppointments({
         repository: appointments, completionRepository, notifier: appointmentNotifier, getGroupRole
@@ -145,6 +177,10 @@ export function registerSchedulingModule({
         botApp, authenticateTelegramMiniApp, checkPayloadLimit, repository, makeupService
     });
 
+    registerTourRoutes({
+        botApp, tourRepository, processTourReport, moment
+    });
+
     registerAppointmentRoutes({
         botApp, repository: appointments, bookAppointment, manageService
     });
@@ -156,17 +192,43 @@ export function registerSchedulingModule({
 
     // kpiComposer là tuỳ chọn: harness test đăng ký route không cần Telegraf.
     if (kpiComposer) {
+        const tourPhotoHandler = createTourPhotoHandler({
+            tourRepository,
+            tourSheetSync,
+            getGroupRole,
+            escapeHtml,
+            moment
+        });
+
         registerMakeupActions({ kpiComposer, reviewService });
         registerAppointmentActions({ kpiComposer, confirmService });
         registerPhotoReplyHandler({
-            kpiComposer, repository: proofRepository, submitProofPhoto, moment, fs, adminIds
+            kpiComposer,
+            repository: proofRepository,
+            submitProofPhoto,
+            moment,
+            fs,
+            adminIds,
+            onTourPhoto: tourPhotoHandler
+        });
+        registerTourReportHandler({
+            kpiComposer,
+            tourRepository,
+            summarizeDailyTour: summarizeDailyTourService,
+            getGroupRole,
+            escapeHtml,
+            moment
         });
     }
 
     // cron tuỳ chọn vì cùng lý do.
     const scheduledJobs = cron
         ? [
-            ...registerScheduleCrons({ cron, reportService, remindDueAppointments }),
+            ...registerScheduleCrons({
+                cron,
+                reportService,
+                remindDueAppointments
+            }),
             registerRetryCron({
                 cron, retryRepository, syncMakeupToGoogleSheet, sheetSync,
                 sendPhotoToRoleGroup, escapeHtml, bot, fs, path, moment, uploadDir
@@ -177,7 +239,8 @@ export function registerSchedulingModule({
     return Object.freeze({
         makeupService, reviewService,
         bookAppointment, manageService, confirmService, reportService,
-        remindDueAppointments, scheduledJobs
+        remindDueAppointments, scheduledJobs,
+        tourRepository, processTourReport, summarizeDailyTourService
     });
 }
 

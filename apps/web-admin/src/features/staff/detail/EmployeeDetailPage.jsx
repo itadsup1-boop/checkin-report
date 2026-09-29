@@ -67,7 +67,7 @@ export default function EmployeeDetailPage({ selectedGroupId = 'ALL' }) {
   ] : [];
 
   return <div className="space-y-5">
-    <EmployeeProfileHeader employee={data.employee} onBack={backToStaff} />
+    <EmployeeProfileHeader employee={data.employee} onBack={backToStaff} onUpdated={refresh} />
     <EmployeeGroupManagement employee={data.employee} onUpdated={refresh} />
     <MonthNavigator month={month} onChange={changeMonth} />
     <MonthlySummaryCards items={attendanceItems} />

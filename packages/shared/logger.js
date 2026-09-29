@@ -118,12 +118,17 @@ export function setupLogRotation() {
  * Overrides global console.log and console.error to write to the log file automatically
  */
 export function overrideGlobals() {
+    const serializeArg = (arg) => {
+        if (arg instanceof Error) return arg.stack || arg.message;
+        if (typeof arg === 'object') return JSON.stringify(arg);
+        return arg;
+    };
     console.log = (...args) => {
-        const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+        const msg = args.map(serializeArg).join(' ');
         writeLog('info', msg);
     };
     console.error = (...args) => {
-        const msg = args.map(arg => typeof arg === 'object' ? JSON.stringify(arg) : arg).join(' ');
+        const msg = args.map(serializeArg).join(' ');
         writeLog('error', msg);
     };
 }

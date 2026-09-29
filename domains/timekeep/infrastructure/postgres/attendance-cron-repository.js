@@ -13,6 +13,8 @@ export function createAttendanceCronRepository({ pool }) {
             WHERE g.bot_role = 'timekeep'
               AND g.is_active = true
               AND COALESCE(g.is_deleted, false) = false
+              AND COALESCE(gs.auto_reminder_enabled, true) = true
+              AND COALESCE(gs.attendance_policy, 'CLINIC') = 'CLINIC'
         `);
         return result.rows;
     }

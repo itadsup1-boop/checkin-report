@@ -1,11 +1,15 @@
+import { KPI_GROUP_ROLES } from '../../../packages/shared/kpiMembership.js';
+
 export function registerStaffRoutes({
     app,
     pool,
     getAdminAuthContext,
+    kpiGroupRoles = KPI_GROUP_ROLES,
     pausableGroupRoles,
     normalizeStaffRole,
     pauseEmployeeMembershipsInAllGroups,
-    registerEmployeeInKpiGroup
+    registerEmployeeInKpiGroup,
+    syncAllTimekeepSheets
 }) {
     app.get('/api/admin/tk-users', async (req, res) => {
         try {
@@ -61,7 +65,7 @@ export function registerStaffRoutes({
                         g.telegram_group_id = u.telegram_group_id OR EXISTS (
                             SELECT 1 FROM employee_group_memberships linked_membership
                             WHERE linked_membership.employee_id = u.id
-                              AND linked_membership.telegram_group_id = g.telegram_group_id
+                               AND linked_membership.telegram_group_id = g.telegram_group_id
                         )
                     )
                     LEFT JOIN employee_group_memberships m
@@ -86,7 +90,7 @@ export function registerStaffRoutes({
                         g.telegram_group_id = u.telegram_group_id OR EXISTS (
                             SELECT 1 FROM employee_group_memberships linked_membership
                             WHERE linked_membership.employee_id = u.id
-                              AND linked_membership.telegram_group_id = g.telegram_group_id
+                               AND linked_membership.telegram_group_id = g.telegram_group_id
                         )
                     )
                     LEFT JOIN employee_group_memberships m
@@ -124,15 +128,16 @@ export function registerStaffRoutes({
             const { full_name, role, leave_quota, is_exempt_checkin, is_active, need_report, telegram_group_id } = req.body;
             const targetGroupId = telegram_group_id || currentEmp.telegram_group_id;
     
-            // 2. Kiểm tra quyền quản lý đúng nhóm đang chỉnh sửa membership
-            if (!isSuperAdmin && (!targetGroupId || !allowedGroupIds.includes(targetGroupId))) {
+            // 2. Kiểm tra quyền quản lý đúng nhóm nếu chỉ định nhóm
+            if (!isSuperAdmin && targetGroupId && !allowedGroupIds.includes(targetGroupId)) {
                 return res.status(403).json({ error: 'Bạn không có quyền chỉnh sửa nhân sự nhóm này' });
             }
     
+            const effectiveKpiRoles = kpiGroupRoles || KPI_GROUP_ROLES;
             const groupResult = targetGroupId
                 ? await pool.query('SELECT bot_role FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1', [targetGroupId])
                 : { rows: [] };
-            const isKpiGroup = KPI_GROUP_ROLES.includes(groupResult.rows[0]?.bot_role);
+            const isKpiGroup = Boolean(targetGroupId && effectiveKpiRoles.includes(groupResult.rows[0]?.bot_role));
     
             const membershipResult = isKpiGroup
                 ? await pool.query(
@@ -145,9 +150,9 @@ export function registerStaffRoutes({
             const membership = membershipResult.rows[0];
     
             // Giữ nguyên is_active hiện tại nếu body không truyền
-            const newIsActive = is_active !== undefined ? !!is_active : (currentEmp.is_active !== false);
+            const newIsActive = is_active !== undefined ? Boolean(is_active) : (currentEmp.is_active !== false);
             const newNeedReport = need_report !== undefined
-                ? !!need_report
+                ? Boolean(need_report)
                 : (membership ? membership.need_report : currentEmp.need_report !== false);
     
             await pool.query(
@@ -155,26 +160,28 @@ export function registerStaffRoutes({
                  SET full_name = $1, role = $2, leave_quota = $3,
                      is_exempt_checkin = $4, is_active = $5,
                      need_report = CASE WHEN $6 THEN need_report ELSE $7 END
-                 WHERE id = $8`,
+                 WHERE id = $8 OR ($9::varchar IS NOT NULL AND telegram_id = $9)`,
                 [
                     full_name !== undefined ? full_name : currentEmp.full_name,
                     role !== undefined ? normalizeStaffRole(role) : currentEmp.role,
                     leave_quota !== undefined ? leave_quota : (currentEmp.leave_quota || 12),
-                    is_exempt_checkin !== undefined ? !!is_exempt_checkin : !!currentEmp.is_exempt_checkin,
+                    is_exempt_checkin !== undefined ? Boolean(is_exempt_checkin) : Boolean(currentEmp.is_exempt_checkin),
                     newIsActive,
                     isKpiGroup,
                     newNeedReport,
-                    req.params.id
+                    req.params.id,
+                    currentEmp.telegram_id ? String(currentEmp.telegram_id) : null
                 ]
             );
     
-            if (isKpiGroup) {
+            if (isKpiGroup && newIsActive && targetGroupId) {
                 await pool.query(
                     `INSERT INTO employee_group_memberships
                         (employee_id, telegram_group_id, status, need_report,
                          current_kpi_target, updated_by, updated_at)
                      VALUES ($1, $2, 'ACTIVE', $3, $4, $5, NOW())
                      ON CONFLICT (employee_id, telegram_group_id) DO UPDATE SET
+                        status = 'ACTIVE',
                         need_report = EXCLUDED.need_report,
                         updated_by = EXCLUDED.updated_by,
                         updated_at = NOW()`,
@@ -183,32 +190,50 @@ export function registerStaffRoutes({
                         targetGroupId,
                         newNeedReport,
                         membership?.current_kpi_target ?? currentEmp.current_kpi_target ?? 0,
-                        `admin:${req.admin.id}`
+                        `admin:${req.admin?.id || 'system'}`
                     ]
                 );
             }
     
-            // Vô hiệu hóa tài khoản là toàn cục: dừng ở tất cả nhóm. Khi nhân sự
-            // đăng ký lại, helper đăng ký chỉ bật đúng membership của nhóm mới.
+            // Vô hiệu hóa tài khoản là toàn cục: dừng ở tất cả nhóm.
             if (!newIsActive) {
                 await pauseEmployeeMembershipsInAllGroups(
                     pool,
                     currentEmp,
-                    `admin:${req.admin.id}`
+                    `admin:${req.admin?.id || 'system'}`
                 );
-            } else if (isKpiGroup && !newNeedReport && currentEmp.telegram_id) {
+                if (currentEmp.telegram_id) {
+                    await pool.query(
+                        `DELETE FROM pending_reports WHERE telegram_id = $1`,
+                        [currentEmp.telegram_id.toString()]
+                    );
+                }
+            } else {
+                // Khi kích hoạt lại: khôi phục các membership bị PAUSED sang ACTIVE
                 await pool.query(
-                    `DELETE FROM pending_reports WHERE telegram_id = $1 AND group_id = $2`,
-                    [currentEmp.telegram_id.toString(), targetGroupId]
+                    `UPDATE employee_group_memberships
+                     SET status = 'ACTIVE', pause_reason = NULL, resumed_at = NOW(), updated_by = $1, updated_at = NOW()
+                     WHERE (employee_id = $2 OR employee_id IN (SELECT id FROM employees WHERE telegram_id = $3 AND telegram_id IS NOT NULL))
+                       AND status = 'PAUSED'`,
+                    [
+                        `admin:${req.admin?.id || 'system'}`,
+                        currentEmp.id,
+                        currentEmp.telegram_id ? String(currentEmp.telegram_id) : null
+                    ]
                 );
             }
+
+            if (typeof syncAllTimekeepSheets === 'function') {
+                syncAllTimekeepSheets().catch(err => console.error('[Sync Sheets on Staff Update]', err));
+            }
     
-            res.json({ success: true });
+            res.json({ success: true, is_active: newIsActive });
         } catch (error) {
+            console.error('[API ERROR tk-users update]:', error);
             res.status(500).json({ error: error.message });
         }
     });
-    
+
     app.put('/api/admin/tk-users/:id/group-settings', async (req, res) => {
         try {
             const { isSuperAdmin, allowedGroupIds } = await getAdminAuthContext(req);

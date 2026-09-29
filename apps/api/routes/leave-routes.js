@@ -100,6 +100,20 @@ export function registerLeaveRoutes({
                     request: { ...request, date: formattedDate }
                 });
                 syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
+            } else if (!isAutoReject && status === 'APPROVED' && request.request_type === 'LATE') {
+                const formattedDate = new Date(request.date).toISOString().split('T')[0];
+                const existingPenaltyRes = await pool.query(
+                    `SELECT id, amount, reason FROM tk_penalties WHERE user_id = $1 AND date = $2 AND penalty_type = 'LATE' LIMIT 1`,
+                    [request.user_id, formattedDate]
+                );
+                if (existingPenaltyRes.rows.length > 0) {
+                    const existingPenalty = existingPenaltyRes.rows[0];
+                    await pool.query(
+                        `UPDATE tk_penalties SET amount = 0, reason = reason || ' (Đã được Admin duyệt đơn đi muộn - miễn phạt)' WHERE id = $1`,
+                        [existingPenalty.id]
+                    );
+                }
+                syncAllTimekeepSheets().catch(e => console.error('Sheet sync error:', e));
             } else if (!isAutoReject && status === 'APPROVED' && request.request_type === 'SCHEDULE_CHANGE') {
                 try {
                     const daysToSave = JSON.parse(request.reason);

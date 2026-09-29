@@ -47,8 +47,9 @@ export function createSaveLeaveRequest({
 
         let groupId = user.group_id;
         let telegramGroupId = chatId;
+        let group = null;
         if (chatId) {
-            const group = await repository.findGroupByTelegramGroupId(chatId);
+            group = await repository.findGroupByTelegramGroupId(chatId);
             if (group) {
                 if (!isAdmin && user.group_id !== group.id) {
                     return { ok: false, status: 404, message: 'Nhân sự chưa đăng ký tài khoản trong nhóm này!' };
@@ -59,11 +60,48 @@ export function createSaveLeaveRequest({
             }
         } else {
             telegramGroupId = await repository.findTelegramGroupId(groupId);
+            if (telegramGroupId) {
+                group = await repository.findGroupByTelegramGroupId(telegramGroupId);
+            }
         }
 
         const proofUrl = decodeProofImage(proofImage, telegramId, fs, path, uploadDir);
 
-        // Đơn nghỉ đột xuất/đi muộn có hiệu lực ngay. Lịch cũ được chụp lại trong
+        const approvalSettings = group?.approval_settings || {};
+        const isLate = requestType === 'LATE';
+        const approvalMode = isLate
+            ? (approvalSettings.leave_late || 'AUTO')
+            : (approvalSettings.leave_absence || 'AUTO');
+
+        if (approvalMode === 'MANUAL') {
+            const pendingReq = await repository.insertPendingLeaveRequest({
+                groupId, userId: user.id, requestType, lateMinutes, date, reason, proofUrl
+            });
+            const requestId = pendingReq?.id;
+
+            if (telegramGroupId) {
+                const displayDate = moment(date).format('DD/MM/YYYY');
+                let msg = `⏳ <b>ĐƠN XIN ĐANG CHỜ DUYỆT TRÊN WEB ADMIN</b>\n\n` +
+                    `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
+                    `💼 <b>Vị trí:</b> ${user.role}\n` +
+                    `📅 <b>Ngày xin phép:</b> ${displayDate}\n` +
+                    `📝 <b>Loại yêu cầu:</b> ${requestTypeName(requestType, lateMinutes)}\n` +
+                    `💬 <b>Lý do:</b> ${reason}\n` +
+                    `📌 <b>Trạng thái:</b> Chờ Quản lý/Admin duyệt trên Web Admin\n`;
+
+                msg += proofUrl
+                    ? `📸 <b>Minh chứng:</b> <a href="${publicBaseUrl}${proofUrl}">Xem ảnh đính kèm</a>\n`
+                    : `📸 <b>Minh chứng:</b> Không có\n`;
+
+                await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, {
+                    parse_mode: 'HTML'
+                }, 'leave_request_notice');
+            }
+
+            return { ok: true, message: 'Đơn đã được gửi và đang chờ Quản lý/Admin duyệt trên Web Admin.' };
+        }
+
+        // Đơn nghỉ đột xuất/đi muộn có hiệu lực ngay khi chế độ là AUTO. Lịch cũ được chụp lại trong
         // cùng transaction để có thể khôi phục chính xác nếu quản lý từ chối.
         const autoAccepted = await createAutoAcceptedLeaveRequest({
             pool, groupId, userId: user.id, requestType, lateMinutes, date, reason, proofUrl

@@ -6,6 +6,7 @@
  */
 
 import { google } from 'googleapis';
+import { runGatedWrite } from '../../../../packages/shared/sheet-write-gate.js';
 
 const SHEET_RANGE = 'DailyExport!A1';
 
@@ -17,12 +18,12 @@ export function createDailyExportSheet({ spreadsheetId }) {
         const authClient = await auth.getClient();
         const sheets = google.sheets({ version: 'v4', auth: authClient });
 
-        await sheets.spreadsheets.values.update({
+        await runGatedWrite(() => sheets.spreadsheets.values.update({
             spreadsheetId,
             range: SHEET_RANGE,
             valueInputOption: 'RAW',
             requestBody: { values: rows }
-        });
+        }));
     }
 
     return { writeDailyExport, SHEET_RANGE };

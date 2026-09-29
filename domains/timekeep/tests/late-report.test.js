@@ -38,6 +38,48 @@ test('có tín hiệu đi muộn nhưng không trích được số phút vẫn 
     assert.deepEqual(parseLateAnnouncement('em xin đi muộn ạ, xe hỏng'), { matched: true, minutes: null });
 });
 
+test('nhận diện câu xin vào làm theo mốc giờ đích (vd: 9 rưỡi, 9h30, 10h)', () => {
+    assert.deepEqual(
+        parseLateAnnouncement('@giangbaongoc a ơi e xin mai 9 rưỡi vào làm ạ. Nay e làm xong muộn quá giờ mới về ạ'),
+        { matched: true, minutes: 60, targetTime: '9:30' }
+    );
+    assert.deepEqual(
+        parseLateAnnouncement('em xin 9h30 vào làm ạ'),
+        { matched: true, minutes: 60, targetTime: '9:30' }
+    );
+    assert.deepEqual(
+        parseLateAnnouncement('mai em xin vào làm lúc 9 rưỡi ạ'),
+        { matched: true, minutes: 60, targetTime: '9:30' }
+    );
+    assert.deepEqual(
+        parseLateAnnouncement('mai e xin ca 9h30 ạ'),
+        { matched: true, minutes: 60, targetTime: '9:30' }
+    );
+    assert.deepEqual(
+        parseLateAnnouncement('em xin vào muộn 10h'),
+        { matched: true, minutes: 90, targetTime: '10:00' }
+    );
+});
+
+test('không nhận diện câu hỏi, thắc mắc, khiếu nại hoặc nói về quá khứ', () => {
+    assert.equal(
+        parseLateAnnouncement('@bothotro1 e ơi xem lại cho a hôm qua a xin đi muộn xong nó vẫn trừ như bt').matched,
+        false
+    );
+    assert.equal(
+        parseLateAnnouncement('sao hôm qua e xin đi muộn mà vẫn bị trừ tiền vậy').matched,
+        false
+    );
+    assert.equal(
+        parseLateAnnouncement('anh kiểm tra lại giúp em, hôm qua em đã xin đi muộn rồi').matched,
+        false
+    );
+    assert.equal(
+        parseLateAnnouncement('tại sao hôm qua vẫn trừ công đi muộn của em').matched,
+        false
+    );
+});
+
 test('không có cụm tín hiệu đi muộn/trễ thì không khớp', () => {
     assert.equal(parseLateAnnouncement('hôm nay em nghỉ cả ngày ạ').matched, false);
     assert.equal(parseLateAnnouncement('báo cáo: doanh thu hôm nay 500k').matched, false);

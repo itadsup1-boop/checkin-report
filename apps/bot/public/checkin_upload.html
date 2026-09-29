@@ -4,7 +4,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-    <title>Check-in Video Chấm Công</title>
+    <title>Check-in / Check-out Ảnh & Video Chấm Công</title>
 
     <!--
       Token màu dùng chung với ba Mini App quản lý kho (nhập/xuất/tồn) — xem
@@ -292,29 +292,30 @@
 
         <!-- Thân -->
         <div class="body">
-            <div class="section-label">📹 CHECK-IN BẰNG VIDEO</div>
+            <div class="section-label">📸 CHECK-IN / CHECK-OUT (ẢNH / VIDEO)</div>
 
-            <!-- Vùng chọn video -->
+            <!-- Vùng chọn ảnh / video -->
             <div class="dropzone" id="uploadZone">
-                <div class="dropzone__icon">🎬</div>
-                <div class="dropzone__title">Chọn video check-in từ thiết bị</div>
-                <div class="dropzone__desc">Hỗ trợ MP4, MOV, WEBM... Dung lượng tối đa 200MB.<br>Video nên quay rõ mặt tại chi nhánh.</div>
-                <input type="file" id="videoFileInput" accept="video/*" class="hidden">
+                <div class="dropzone__icon">📸</div>
+                <div class="dropzone__title">Chọn ảnh hoặc video từ thiết bị</div>
+                <div class="dropzone__desc">Hỗ trợ JPG, PNG, MP4, MOV, WEBM... Dung lượng tối đa 200MB.<br>Chụp ảnh hoặc quay video rõ mặt tại nơi làm việc.<br><span style="color:var(--brand); font-weight:700;">Lần 1: Check-in · Lần 2: Check-out</span></div>
+                <input type="file" id="videoFileInput" accept="image/*,video/*" class="hidden">
             </div>
 
             <!-- Xem trước -->
             <div class="preview" id="previewBox">
                 <div class="preview__player">
-                    <video id="videoPreview" controls playsinline></video>
+                    <video id="videoPreview" controls playsinline style="width:100%; display:none; max-height:260px; background:var(--camera-bg);"></video>
+                    <img id="imagePreview" alt="Xem trước ảnh" style="width:100%; display:none; max-height:260px; object-fit:contain; background:var(--camera-bg);" />
                 </div>
                 <div class="file-meta">
-                    <div class="file-meta__icon">🎞️</div>
+                    <div class="file-meta__icon" id="fileMetaIcon">📸</div>
                     <div style="flex:1; min-width:0;">
                         <div class="file-meta__name" id="fileName">-</div>
                         <div class="file-meta__size" id="fileSize">-</div>
                     </div>
                 </div>
-                <button class="btn btn--ghost" id="changeFileBtn">🔄 Chọn video khác</button>
+                <button class="btn btn--ghost" id="changeFileBtn">🔄 Chọn tệp khác</button>
             </div>
 
             <!-- Cảnh báo lỗi -->
@@ -325,13 +326,13 @@
 
             <div class="banner banner--warn banner--show">
                 <span>💡</span>
-                <span>Video check-in sẽ được lưu trữ bảo mật và chỉ dùng để xác thực chấm công. Vui lòng đảm bảo khuôn mặt rõ nét trong video.</span>
+                <span>Ảnh hoặc video check-in / check-out sẽ được lưu trữ bảo mật và dùng để xác thực chấm công. Hệ thống tự động ghi nhận <b>Check-in</b> cho lần gửi thứ nhất và <b>Check-out</b> cho lần gửi thứ hai trong ngày.</span>
             </div>
         </div>
 
         <!-- Thanh dưới -->
         <div class="footbar">
-            <button class="btn btn--brand" id="btnUpload" disabled>📤 Gửi Video Chấm Công</button>
+            <button class="btn btn--brand" id="btnUpload" disabled>📤 Gửi Ảnh / Video Check-in / Check-out</button>
         </div>
     </div>
 
@@ -351,10 +352,10 @@
     <!-- Màn hình thành công -->
     <div class="success" id="successScreen">
         <div class="success__icon">✓</div>
-        <div class="success__title">Điểm danh thành công!</div>
-        <div class="success__desc">Video điểm danh của bạn đã được ghi nhận vào hệ thống.</div>
+        <div class="success__title" id="successTitle">Điểm danh thành công!</div>
+        <div class="success__desc" id="successDesc">Video của bạn đã được ghi nhận vào hệ thống.</div>
         <div class="success__timebox">
-            <div class="success__timebox-label">GHI NHẬN LÚC</div>
+            <div class="success__timebox-label" id="successTypeLabel">GHI NHẬN LÚC</div>
             <div class="success__timebox-value" id="successTime">--:--:-- · --/--/----</div>
         </div>
         <button class="btn btn--alt" onclick="closeWebApp()">Đóng cửa sổ</button>
@@ -478,7 +479,10 @@
         function resetFileSelection() {
             selectedFile = null;
             videoFileInput.value = '';
-            document.getElementById('videoPreview').src = '';
+            const videoPreview = document.getElementById('videoPreview');
+            const imagePreview = document.getElementById('imagePreview');
+            if (videoPreview) { videoPreview.src = ''; videoPreview.style.display = 'none'; }
+            if (imagePreview) { imagePreview.src = ''; imagePreview.style.display = 'none'; }
             document.getElementById('previewBox').classList.remove('preview--show');
             uploadZone.style.display = 'block';
             document.getElementById('btnUpload').disabled = true;
@@ -497,10 +501,25 @@
             const sizeInMB = (selectedFile.size / (1024 * 1024)).toFixed(1);
             document.getElementById('fileSize').textContent = `${sizeInMB} MB`;
 
-            // Show Video Preview
+            const isImage = selectedFile.type ? selectedFile.type.startsWith('image/') : /\.(jpg|jpeg|png|webp|gif|bmp|heic)$/i.test(selectedFile.name);
             const videoPreview = document.getElementById('videoPreview');
-            const videoURL = URL.createObjectURL(selectedFile);
-            videoPreview.src = videoURL;
+            const imagePreview = document.getElementById('imagePreview');
+            const fileMetaIcon = document.getElementById('fileMetaIcon');
+            const fileURL = URL.createObjectURL(selectedFile);
+
+            if (isImage) {
+                videoPreview.style.display = 'none';
+                videoPreview.src = '';
+                imagePreview.style.display = 'block';
+                imagePreview.src = fileURL;
+                if (fileMetaIcon) fileMetaIcon.textContent = '🖼️';
+            } else {
+                imagePreview.style.display = 'none';
+                imagePreview.src = '';
+                videoPreview.style.display = 'block';
+                videoPreview.src = fileURL;
+                if (fileMetaIcon) fileMetaIcon.textContent = '🎞️';
+            }
 
             uploadZone.style.display = 'none';
             document.getElementById('previewBox').classList.add('preview--show');
@@ -516,7 +535,7 @@
 
             // Warn if file > 200MB
             if (selectedFile.size > 200 * 1024 * 1024) {
-                showError('Dung lượng video vượt quá 200MB. Vui lòng chọn video nhỏ hơn!');
+                showError('Dung lượng tệp vượt quá 200MB. Vui lòng chọn tệp nhỏ hơn!');
                 return;
             }
 
@@ -525,7 +544,7 @@
             const loadingTitle = document.getElementById('loadingTitle');
             progressBar.style.width = '0%';
             percentText.textContent = '0%';
-            loadingTitle.textContent = 'Đang tải video lên máy chủ...';
+            loadingTitle.textContent = 'Đang tải tệp lên máy chủ...';
             document.getElementById('loadingOverlay').classList.add('overlay--show');
 
             const formData = new FormData();
@@ -561,10 +580,19 @@
                     try {
                         const data = JSON.parse(xhr.responseText);
                         if (data.success) {
+                            if (data.isCheckout) {
+                                document.getElementById('successTitle').textContent = 'Check-out thành công!';
+                                document.getElementById('successDesc').textContent = 'Ảnh / video check-out của bạn đã được ghi nhận vào hệ thống.';
+                                document.getElementById('successTypeLabel').textContent = 'CHECK-OUT LÚC';
+                            } else {
+                                document.getElementById('successTitle').textContent = 'Check-in thành công!';
+                                document.getElementById('successDesc').textContent = 'Ảnh / video check-in của bạn đã được ghi nhận vào hệ thống.';
+                                document.getElementById('successTypeLabel').textContent = 'CHECK-IN LÚC';
+                            }
                             document.getElementById('successTime').textContent = getCurrentTimeString();
                             document.getElementById('successScreen').classList.add('success--show');
                         } else {
-                            showError(data.message || 'Lỗi khi tải video lên!');
+                            showError(data.message || 'Lỗi khi tải tệp lên!');
                         }
                     } catch (err) {
                         showError('Lỗi phản hồi từ máy chủ!');

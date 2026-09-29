@@ -41,12 +41,22 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                 const statsUrl = createWebAppUrl('stats', 'stats.html');
                 const baocaoUrl = createWebAppUrl('baocao', 'form.html');
                 const customerUrl = createWebAppUrl('customer', 'customer_form.html');
+                const telesaleUrl = createWebAppUrl('telesale', 'telesale.html');
     
                 const schedclientSig = crypto.createHmac('sha256', token).update(`scheduleclient:${ctx.chat.id}:${ts}`).digest('hex');
                 const scheduleclientUrl2 = `https://t.me/${botUsername}/${appShortName}?startapp=scheduleclient_${ctx.chat.id}_${ts}_${schedclientSig}`;
     
                 const makeupclientSig = crypto.createHmac('sha256', token).update(`makeupclient:${ctx.chat.id}:${ts}`).digest('hex');
                 const makeupclientUrl = `https://t.me/${botUsername}/${appShortName}?startapp=makeupclient_${ctx.chat.id}_${ts}_${makeupclientSig}`;
+
+                const tourclientSig = crypto.createHmac('sha256', token).update(`tourclient:${ctx.chat.id}:${ts}`).digest('hex');
+                const tourclientUrl = `https://t.me/${botUsername}/${appShortName}?startapp=tourclient_${ctx.chat.id}_${ts}_${tourclientSig}`;
+
+                const toureditSig = crypto.createHmac('sha256', token).update(`touredit:${ctx.chat.id}:${ts}`).digest('hex');
+                const toureditUrl = `https://t.me/${botUsername}/${appShortName}?startapp=touredit_${ctx.chat.id}_${ts}_${toureditSig}`;
+
+                const tourcheckSig = crypto.createHmac('sha256', token).update(`tourcheck:${ctx.chat.id}:${ts}`).digest('hex');
+                const tourcheckUrl = `https://t.me/${botUsername}/${appShortName}?startapp=tourcheck_${ctx.chat.id}_${ts}_${tourcheckSig}`;
     
                 // Generate dmUrl (Direct Message URL) for Report Form
                 const dmUrl = `https://t.me/${botUsername}`; // Used for 'Điền Form Báo Cáo' which typically opens PM
@@ -65,7 +75,7 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                                 inline_keyboard: [
                                     [
                                         { text: '👤 Đăng ký tài khoản', url: registerUrl },
-                                        { text: '📸 Check-in (Upload Video)', url: checkinUrl }
+                                        { text: '📸 Check-in / Check-out (Ảnh / Video)', url: checkinUrl }
                                     ],
                                     [
                                         { text: '📅 Đăng ký lịch tuần', url: scheduleUrl },
@@ -141,10 +151,11 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                                         { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
                                     ],
                                     [
-                                        { text: '📅 Đặt Lịch / Check Lịch', url: scheduleclientUrl2 }
+                                        { text: '💆‍♀️ Báo Tour', url: tourclientUrl }
                                     ],
                                     [
-                                        { text: '🕘 Báo Bù / Báo Công Muộn', url: makeupclientUrl }
+                                        { text: '✏️ Sửa Công Tour', url: toureditUrl },
+                                        { text: '📊 Check Công Tour', url: tourcheckUrl }
                                     ]
                                 ]
                             }
@@ -189,6 +200,35 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                                     ],
                                     [
                                         { text: '📋 Lịch Sử', url: retailHistoryUrl }
+                                    ],
+                                    [
+                                        { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
+                } else if (botRole === 'telesale') {
+                    await ctx.reply(
+                        `📊 <b>HỆ THỐNG BÁO CÁO TELESALE</b>\n\n` +
+                        `Vui lòng nhấn nút bên dưới để mở Mini App điền báo cáo, hoặc sao chép mẫu gửi trực tiếp vào nhóm:\n\n` +
+                        `👇 <b>Chạm vào khung bên dưới để sao chép mẫu báo cáo:</b>\n` +
+                        `<code>Nhân sự: \n` +
+                        `Số nhận: \n` +
+                        `Số trùng / KNC/ Văng: \n` +
+                        `Số lịch PV mới: \n` +
+                        `Số lịch PV cũ: \n` +
+                        `Lịch hẹn ngày mai: \n` +
+                        `Tổng tới hôm nay: \n` +
+                        `Tổng bong hôm nay: \n` +
+                        `TỔNG DS hnay: </code>\n\n` +
+                        `<i>(Điền đúng tên của bạn tại mục "Nhân sự:" và gửi trực tiếp vào nhóm để hệ thống tự ghi nhận)</i>`,
+                        {
+                            parse_mode: 'HTML',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: '📊 Điền Báo Cáo Telesale', url: telesaleUrl }
                                     ],
                                     [
                                         { text: '👤 Đăng Ký Tài Khoản', url: registerUrl }
@@ -262,13 +302,13 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
     
                     await ctx.reply(
                         `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
-                        `Vui lòng nhấn nút <b>Tải Up Video Check-in</b> dưới đây để điểm danh bằng Video:`,
+                        `Vui lòng nhấn nút <b>Check-in / Check-out (Ảnh / Video)</b> dưới đây để điểm danh / check-out:`,
                         {
                             parse_mode: 'HTML',
                             reply_markup: {
                                 inline_keyboard: [
                                     [
-                                        { text: '📸 Tải Up Video Check-in', web_app: { url: checkinUrl } }
+                                        { text: '📸 Check-in / Check-out (Ảnh / Video)', web_app: { url: checkinUrl } }
                                     ]
                                 ]
                             }
@@ -406,7 +446,69 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                             }
                         }
                     );
+                } else if (startPayload && startPayload.startsWith('telesale_')) {
+                    const payloadParts = startPayload.split('_');
+                    const groupId = payloadParts[1];
+                    const ts = payloadParts[2];
+                    const sig = payloadParts[3];
+                    const formUrl = `${miniAppUrl}/mini-app/telesale.html?chat_id=${groupId}&ts=${ts}&sig=${sig}&action=telesale`;
+
+                    await ctx.reply(
+                        `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                        `Vui lòng nhấn nút <b>Điền Báo Cáo Telesale</b> dưới đây để mở form báo cáo:\n\n` +
+                        `<i>(Hoặc sao chép mẫu báo cáo bên dưới để gửi vào nhóm chat)</i>\n` +
+                        `<code>Nhân sự: \n` +
+                        `Số nhận: \n` +
+                        `Số trùng / KNC/ Văng: \n` +
+                        `Số lịch PV mới: \n` +
+                        `Số lịch PV cũ: \n` +
+                        `Lịch hẹn ngày mai: \n` +
+                        `Tổng tới hôm nay: \n` +
+                        `Tổng bong hôm nay: \n` +
+                        `TỔNG DS hnay: </code>`,
+                        {
+                            parse_mode: 'HTML',
+                            reply_markup: {
+                                inline_keyboard: [
+                                    [
+                                        { text: '📊 Điền Báo Cáo Telesale', web_app: { url: formUrl } }
+                                    ]
+                                ]
+                            }
+                        }
+                    );
                 } else {
+                    // Kiểm tra xem nhân sự có thuộc role Telesale không để tiện mở form trực tiếp
+                    let isTelesaleEmp = false;
+                    try {
+                        const empCheck = await pool.query(
+                            `SELECT role FROM employees WHERE (telegram_id = $1 OR pending_telegram_id = $1) AND is_active = TRUE LIMIT 1`,
+                            [String(ctx.from.id)]
+                        );
+                        if (empCheck.rows[0]?.role === 'Telesale') {
+                            isTelesaleEmp = true;
+                        }
+                    } catch (e) {}
+
+                    if (isTelesaleEmp) {
+                        const directFormUrl = `${miniAppUrl}/mini-app/telesale.html?user_id=${ctx.from.id}`;
+                        await ctx.reply(
+                            `👋 Xin chào <b>${ctx.from.first_name}</b>!\n\n` +
+                            `Vui lòng nhấn nút <b>Điền Báo Cáo Telesale</b> dưới đây để mở form báo cáo:`,
+                            {
+                                parse_mode: 'HTML',
+                                reply_markup: {
+                                    inline_keyboard: [
+                                        [
+                                            { text: '📊 Điền Báo Cáo Telesale', web_app: { url: directFormUrl } }
+                                        ]
+                                    ]
+                                }
+                            }
+                        );
+                        return;
+                    }
+
                     const botInfo = await ctx.telegram.getMe();
                     const addToGroupUrl = `https://t.me/${botInfo.username}?startgroup=true`;
     

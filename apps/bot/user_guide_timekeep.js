@@ -10,9 +10,9 @@ export const TIMEKEEP_BOT_HELP_HTML = `
 2️⃣ <b>Đăng ký Lịch Tuần & Ca làm việc:</b>
 • Gõ <code>/lich_tuan</code> hoặc bấm <b>[📅 Lịch Tuần]</b> để chọn ca: Ca Sớm, Ca Muộn, Cả Ngày, hoặc Xin Nghỉ.
 
-3️⃣ <b>Check-in Điểm Danh (Video):</b>
-• Bấm <b>[📹 Check-in]</b> để chọn & nộp video từ MiniApp.
-• Hoặc gửi 1 clip video ngắn lên nhóm kèm từ <code>check</code> (Vd: <code>checkin ca sớm</code>).
+3️⃣ <b>Check-in / Check-out Điểm Danh (Ảnh / Video):</b>
+• Bấm <b>[📸 Check-in / Check-out]</b> để chọn & nộp ảnh hoặc video từ MiniApp (Gửi lần 1: Check-in, gửi lần 2: Check-out).
+• Hoặc gửi ảnh / video lên nhóm kèm từ <code>check</code> (Vd: <code>checkin ca sớm</code>) hoặc <code>check out</code> khi hết ca.
 
 4️⃣ <b>Nhắc nhở & Phạt đi muộn:</b>
 • Bot tự động nhắc nhở trước tất cả các ca 5 phút.

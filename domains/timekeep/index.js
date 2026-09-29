@@ -39,6 +39,7 @@ import { createRunShiftReminders } from './application/run-shift-reminders.js';
 import { createRunLatePenaltyCheck } from './application/run-late-penalty-check.js';
 import { createSendSundayScheduleReminder } from './application/send-sunday-schedule-reminder.js';
 import { createExportAttendanceExcel } from './application/export-attendance-excel.js';
+import { createScanMarketingCheckout } from './application/scan-marketing-checkout.js';
 import { createReviewRegistrationService } from './application/review-registration.js';
 import {
     finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
@@ -76,6 +77,7 @@ export function registerTimekeepModule({
     requireGroupRole,
     sendMessageToRoleGroup,
     sendVideoToRoleGroup,
+    sendPhotoToRoleGroup = async () => ({}),
     multer,
     fs,
     path,
@@ -143,7 +145,7 @@ export function registerTimekeepModule({
     });
     const { saveCheckin } = createSaveCheckin({
         checkinRepository: checkins, scheduleRepository: schedules, findEmployeeContext, isSystemAdmin,
-        moment, fs, path, exec, bot, sendVideoToRoleGroup, uploadDir: checkinUploadDir, syncSheets: syncAllTimekeepSheets
+        moment, fs, path, exec, bot, sendVideoToRoleGroup, sendPhotoToRoleGroup, uploadDir: checkinUploadDir, syncSheets: syncAllTimekeepSheets
     });
     const { getPersonalStats } = createGetPersonalStats({
         attendanceRepository: attendance, scheduleRepository: schedules, findEmployeeContext, isSystemAdmin, moment
@@ -165,6 +167,15 @@ export function registerTimekeepModule({
     // wildcard nếu có; hiện các route Mini App ở đây đều có đường dẫn cụ thể, không
     // có ký tự đại diện, nên thứ tự không ảnh hưởng lẫn nhau.
     registerScheduleMiniAppRoutes({ botApp, getScheduleView, saveWeeklySchedule });
+    const scanMarketingCheckout = createScanMarketingCheckout({
+        checkinRepository: checkins,
+        bot,
+        sendMessageToRoleGroup,
+        moment,
+        syncSheets: syncAllTimekeepSheets,
+        effectiveStartDate: '2026-09-29'
+    });
+
     registerLeaveRequestRoutes({ botApp, saveLeaveRequest });
     registerCheckinRoutes({ botApp, multer, fs, path, uploadDir: checkinUploadDir, saveCheckin });
     registerPersonalStatsRoutes({ botApp, getPersonalStats });
@@ -186,6 +197,7 @@ export function registerTimekeepModule({
                 cron, runShiftReminders, runLatePenaltyCheck,
                 finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
                 groupAbsenceNotifications, buildAbsenceNotificationText,
+                scanMarketingCheckout,
                 pool, sendMessageToRoleGroup, bot, syncSheets: syncAllTimekeepSheets, moment,
                 isCompanyHoliday
             }),
@@ -197,7 +209,7 @@ export function registerTimekeepModule({
         registerEmployee, toggleScheduleRegistration, saveGroupSettings,
         buildAttendanceDashboard, manageSchedules, exportDailySheet,
         getScheduleView, saveWeeklySchedule, saveLeaveRequest, reviewLeaveRequest, excusePenalty,
-        saveCheckin, getPersonalStats, exportAttendanceExcel, sendSundayScheduleReminder,
+        saveCheckin, getPersonalStats, exportAttendanceExcel, sendSundayScheduleReminder, scanMarketingCheckout,
         scheduledJobs
     });
 }

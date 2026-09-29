@@ -13,10 +13,18 @@ const HEADERS = [
     'Đã TT (đ)', 'Nợ (đ)', 'Người thực hiện', 'Bảo hành', 'Link Folder Drive'
 ];
 
+import { isExcludedSheetEmployee } from '../../../../packages/shared/excluded-employees.js';
+
 export function createCustomerSheet({ getCustomerDocForGroup }) {
     async function syncRecord(telegramGroupId, data) {
+        if (isExcludedSheetEmployee(data?.employeeName) || isExcludedSheetEmployee(data?.consultant)) {
+            console.log(`[Customer Sheet] Bỏ qua nhân sự loại trừ: ${data?.employeeName || data?.consultant}`);
+            return;
+        }
+
         try {
             const doc = await getCustomerDocForGroup(telegramGroupId);
+
             if (!doc) {
                 console.warn(`[Sheet Sync Warning] Không tìm thấy Spreadsheet cấu hình cho nhóm ${telegramGroupId}`);
                 return;

@@ -1,8 +1,13 @@
 import { getDocById } from './sheetManager.js';
 import pool from '../../packages/database/index.js';
+import { computeRowsHash, createSheetSyncState } from './sheet-sync-state.js';
+import { isExcludedSheetEmployee } from '../../packages/shared/excluded-employees.js';
 import moment from 'moment';
 
+
 const HEADERS = ['STT', 'Họ và tên', 'Nhóm / Chi nhánh', 'Chức vụ', 'Ngày', 'Giờ Check-in', 'Trạng thái', 'Ghi chú Admin', 'Tổng Tiền Phạt', 'Lý do Phạt'];
+
+const syncState = createSheetSyncState({ pool });
 
 // Gộp các lần gọi trùng nhau.
 //
@@ -42,32 +47,53 @@ export async function syncAllTimekeepSheets() {
 
 async function runTimekeepSync() {
     const spreadsheetId = process.env.TIMEKEEP_SPREADSHEET_ID;
-    if (!spreadsheetId || spreadsheetId === 'SPREADSHEET_ID_CHUA_CAI_DAT') {
-        console.log('[SHEET SYNC] Bỏ qua vì chưa cài đặt TIMEKEEP_SPREADSHEET_ID');
-        return { success: false, message: 'Chưa cài đặt TIMEKEEP_SPREADSHEET_ID trong .env' };
-    }
+    const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
 
-    try {
-        const doc = await getDocById(spreadsheetId);
-        if (!doc) {
-            return { success: false, message: 'Không kết nối được Google Sheet ID' };
+    // 1. Đồng bộ Sheet Tổng hệ thống (nếu có cấu hình trong .env)
+    if (spreadsheetId && spreadsheetId !== 'SPREADSHEET_ID_CHUA_CAI_DAT') {
+        try {
+            const doc = await getDocById(spreadsheetId);
+            if (doc) {
+                await doc.loadInfo();
+                await syncMasterSheet(doc, todayStr);
+                await syncIndividualSheets(doc, todayStr);
+                console.log('[SHEET SYNC] Đồng bộ Master Sheet thành công!');
+            }
+        } catch (e) {
+            console.error('[SHEET SYNC Master Err]:', e.message);
         }
-        await doc.loadInfo();
-
-        const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
-
-        // 1. Đồng bộ Sheet Tổng
-        await syncMasterSheet(doc, todayStr);
-
-        // 2. Đồng bộ các Sheet cá nhân từng người (Chỉ các nhóm Chấm công: UK, US...)
-        await syncIndividualSheets(doc, todayStr);
-
-        console.log('[SHEET SYNC] Đồng bộ dữ liệu các nhóm Chấm công (UK, US...) thành công!');
-        return { success: true, message: 'Đã đồng bộ đúng dữ liệu các nhóm Chấm công (UK, US...) thành công!' };
-    } catch (error) {
-        console.error('[SHEET SYNC ERR]', error);
-        return { success: false, message: error.message };
     }
+
+    // 2. Đồng bộ các Google Sheet riêng của từng nhóm (cấu hình qua kpi_sheet_id trên Web Admin)
+    try {
+        const customGroups = await pool.query(
+            `SELECT DISTINCT telegram_group_id, group_name, kpi_sheet_id
+             FROM telegram_groups
+             WHERE (bot_role = 'timekeep' OR bot_role IS NULL)
+               AND is_deleted = false
+               AND kpi_sheet_id IS NOT NULL
+               AND kpi_sheet_id != ''
+               AND kpi_sheet_id != $1`,
+            [spreadsheetId || '']
+        );
+
+        for (const g of customGroups.rows) {
+            try {
+                const groupDoc = await getDocById(g.kpi_sheet_id);
+                if (!groupDoc) continue;
+                await groupDoc.loadInfo();
+                await syncMasterSheet(groupDoc, todayStr, g.telegram_group_id);
+                await syncIndividualSheets(groupDoc, todayStr, g.telegram_group_id);
+                console.log(`[SHEET SYNC] Đã đồng bộ Google Sheet riêng cho nhóm ${g.group_name} (${g.kpi_sheet_id})`);
+            } catch (err) {
+                console.error(`[SHEET SYNC Group Err - ${g.group_name}]:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.error('[SHEET SYNC Custom Groups Query Err]:', err.message);
+    }
+
+    return { success: true, message: 'Đã hoàn tất đồng bộ Google Sheets' };
 }
 
 // Định dạng hàng tiêu đề: Nền màu VÀNG (#FFFF00), chữ in đậm.
@@ -171,8 +197,8 @@ function parseAttendanceRow(shift_type, check_in_time, checkin_status, attendanc
     };
 }
 
-// 1. Đồng bộ Sheet Tổng Hợp (Chỉ các nhóm Chấm công - bot_role = 'timekeep')
-async function syncMasterSheet(doc, todayStr) {
+// 1. Đồng bộ Sheet Tổng Hợp (Hỗ trợ lọc theo từng nhóm nếu có targetGroupId)
+async function syncMasterSheet(doc, todayStr, targetGroupId = null) {
     const query = `
         SELECT 
             e.full_name,
@@ -201,8 +227,9 @@ async function syncMasterSheet(doc, todayStr) {
           ON gm.employee_id = e.id AND gm.telegram_group_id = e.telegram_group_id
         WHERE e.is_active = true 
           AND e.full_name NOT LIKE '/%' 
-          AND e.full_name != 'tester'
+          AND LOWER(TRIM(e.full_name)) NOT IN ('boss', 'longg', 'test', 'tester', 'boss hỗ trợ', 'boss ho tro', 'bot test')
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
+          AND ($2::text IS NULL OR g.telegram_group_id = $2::text)
           AND d.date > COALESCE(e.created_at::date, '2026-07-22'::date)
           AND (
               COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
@@ -211,25 +238,37 @@ async function syncMasterSheet(doc, todayStr) {
         GROUP BY e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name, d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note, ds.result
         ORDER BY d.date::date ASC, g.group_name ASC, e.full_name ASC
     `;
-    const res = await pool.query(query, [todayStr]);
+    const res = await pool.query(query, [todayStr, targetGroupId]);
 
     let sheetMaster = doc.sheetsByTitle['Tổng Hợp Chấm Công'] || doc.sheetsByTitle['Lịch Tổng'];
     let masterIsNew = false;
     if (!sheetMaster) {
-        sheetMaster = await doc.addSheet({
-            title: 'Tổng Hợp Chấm Công'
-        });
-        masterIsNew = true;
+        const firstSheet = doc.sheetsByIndex[0];
+        if (firstSheet && (firstSheet.title === 'Trang tính1' || firstSheet.title === 'Sheet1')) {
+            sheetMaster = firstSheet;
+            await sheetMaster.updateProperties({ title: 'Tổng Hợp Chấm Công' });
+            masterIsNew = true;
+        } else {
+            sheetMaster = await doc.addSheet({
+                title: 'Tổng Hợp Chấm Công'
+            });
+            masterIsNew = true;
+        }
     }
 
     await ensureHeaderRow(sheetMaster, { isNew: masterIsNew });
-    await sheetMaster.clearRows();
 
     const masterRows = res.rows.reduce((acc, r) => {
+        // Lọc nhân sự loại trừ khỏi sheet
+        if (isExcludedSheetEmployee(r.full_name)) {
+            return acc;
+        }
+
         // Lọc người được miễn điểm danh (chỉ in lên sheet khi có check_in_time)
         if (r.is_exempt_checkin === true && !r.check_in_time) {
             return acc;
         }
+
 
         const { checkinTimeStr, statusStr } = parseAttendanceRow(
             r.shift_type,
@@ -255,13 +294,21 @@ async function syncMasterSheet(doc, todayStr) {
         return acc;
     }, []);
 
-    if (masterRows.length > 0) {
-        await sheetMaster.addRows(masterRows);
+    // Chỉ ghi khi nội dung thực sự thay đổi — tránh tốn lệnh ghi (quota Google)
+    // cho những lượt sync không có dữ liệu mới.
+    const masterKey = `${doc.spreadsheetId}:master:${targetGroupId || 'all'}`;
+    const masterHash = computeRowsHash(masterRows);
+    if (!(await syncState.hasSameContent(masterKey, masterHash))) {
+        await sheetMaster.clearRows();
+        if (masterRows.length > 0) {
+            await sheetMaster.addRows(masterRows);
+        }
+        await syncState.saveContent(masterKey, masterHash);
     }
 }
 
 // 2. Đồng bộ các Sheet cá nhân từng người (Chỉ thuộc các nhóm Chấm công - bot_role = 'timekeep')
-async function syncIndividualSheets(doc, todayStr) {
+async function syncIndividualSheets(doc, todayStr, targetGroupId = null) {
     const empQuery = `
         SELECT e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name
         FROM employees e
@@ -270,15 +317,31 @@ async function syncIndividualSheets(doc, todayStr) {
           AND e.full_name IS NOT NULL 
           AND e.full_name != '' 
           AND e.full_name NOT LIKE '/%' 
-          AND e.full_name != 'tester'
+          AND LOWER(TRIM(e.full_name)) NOT IN ('boss', 'longg', 'test', 'tester', 'boss hỗ trợ', 'boss ho tro', 'bot test')
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
+          AND ($1::text IS NULL OR g.telegram_group_id = $1::text)
         ORDER BY g.group_name ASC, e.full_name ASC
     `;
-    const empRes = await pool.query(empQuery);
+    const empRes = await pool.query(empQuery, [targetGroupId]);
+
+    // Xóa các tab cá nhân thuộc danh sách loại trừ nếu từng được tạo trước đây
+    for (const [title, s] of Object.entries(doc.sheetsByTitle)) {
+        if (isExcludedSheetEmployee(title)) {
+            try {
+                console.log(`[SHEET SYNC] Đang xóa tab nhân sự loại trừ "${title}"`);
+                await s.delete();
+            } catch (err) {
+                console.warn(`[SHEET SYNC] Không thể xóa tab "${title}":`, err.message);
+            }
+        }
+    }
 
     for (const emp of empRes.rows) {
+        if (isExcludedSheetEmployee(emp.full_name)) continue;
+
         let cleanName = emp.full_name.replace(/[\/*?:\[\]]/g, '').trim().substring(0, 80);
         if (!cleanName) continue;
+
 
         try {
             // Check case-insensitive to avoid Google API 400 error
@@ -316,7 +379,6 @@ async function syncIndividualSheets(doc, todayStr) {
             }
 
             await ensureHeaderRow(sheetEmp, { isNew: sheetEmpIsNew });
-            await sheetEmp.clearRows();
 
             const detailQuery = `
                 SELECT 
@@ -379,8 +441,15 @@ async function syncIndividualSheets(doc, todayStr) {
                 return acc;
             }, []);
 
-            if (empRows.length > 0) {
-                await sheetEmp.addRows(empRows);
+            // Chỉ ghi khi nội dung thay đổi (xem chú thích ở syncMasterSheet).
+            const empKey = `${doc.spreadsheetId}:emp:${emp.id}`;
+            const empHash = computeRowsHash(empRows);
+            if (!(await syncState.hasSameContent(empKey, empHash))) {
+                await sheetEmp.clearRows();
+                if (empRows.length > 0) {
+                    await sheetEmp.addRows(empRows);
+                }
+                await syncState.saveContent(empKey, empHash);
             }
 
             await new Promise(r => setTimeout(r, 2000));

@@ -14,6 +14,7 @@ import {
 } from '../domain/appointment-rules.js';
 import {
     buildDueReminder,
+    buildBookingNotice,
     buildArrivedMessage,
     buildPhotoDebtReminder,
     buildPhotoDebtSummary,
@@ -74,7 +75,7 @@ function createHarness() {
 }
 function checkPayloadLimit() {}
 
-test('module lịch khách đăng ký đúng 12 endpoint và không chạm database lúc khởi động', () => {
+test('module lịch khách đăng ký đúng 19 endpoint và không chạm database lúc khởi động', () => {
     const harness = createHarness();
 
     assert.deepEqual(
@@ -84,6 +85,14 @@ test('module lịch khách đăng ký đúng 12 endpoint và không chạm datab
             'GET /api/schedules/incomplete',
             'POST /api/schedules/makeup',
             'GET /api/schedules/makeup/history',
+            // Báo tour KTV — phải đứng TRƯỚC '/api/schedules/:id'.
+            'GET /api/schedules/tour/suggestions',
+            'GET /api/schedules/tour/doctors',
+            'GET /api/schedules/tour/ktvs',
+            'GET /api/schedules/tour/stats',
+            'GET /api/schedules/tour/recent',
+            'POST /api/schedules/tour/submit',
+            'PUT /api/schedules/tour/:id',
             // Đặt lịch
             'GET /api/schedules',
             'GET /api/schedules/search',
@@ -384,6 +393,47 @@ test('không đặt được lịch chéo nhóm', async () => {
 
     const outcome = await book({ initData, requestedGroupId: '-100BBB', form: {} });
     assert.equal(outcome.status, 403);
+});
+
+test('nhóm report đặt lịch thành công thông báo lịch khách và không đính kèm nút', async () => {
+    let sentNotice = null;
+    let writtenRow = null;
+    const book = createBookAppointmentService({
+        repository: {
+            SCHEDULE_NOTIFY_ROLES: ['report', 'report_tour'],
+            async findOverlap() { return null; },
+            async findEmployee() { return { full_name: 'Huệ ktv', employee_code: 'UK01' }; },
+            async insert() { return 888; }
+        },
+        notifier: {
+            async send(gId, role, msg, tag, keyboard) {
+                sentNotice = { gId, role, msg, tag, keyboard };
+            }
+        },
+        getGroupRole: async () => 'report',
+        sheetSync: {
+            async writeAppointmentRow(gId, emp, data) {
+                writtenRow = { gId, emp, data };
+                return 10;
+            }
+        }
+    });
+
+    const initData = 'user=' + encodeURIComponent(JSON.stringify({ id: 111, first_name: 'Huệ' }))
+        + '&start_param=schedule_-4807311025';
+    const form = {
+        appointment_time: '2026-09-21T15:00:00Z', customer_name: 'Chị Mai', phone: '0912345678', service: 'Csd'
+    };
+
+    const outcome = await book({ initData, requestedGroupId: '-4807311025', form });
+    assert.equal(outcome.ok, true);
+    assert.equal(outcome.id, 888);
+    assert.ok(sentNotice);
+    assert.equal(sentNotice.gId, '-4807311025');
+    assert.equal(sentNotice.role, 'report');
+    assert.match(sentNotice.msg, /THÔNG BÁO LỊCH HẸN KHÁCH HÀNG/);
+    assert.match(sentNotice.msg, /Chị Mai/);
+    assert.equal(sentNotice.keyboard, undefined, 'nhóm report không gửi kèm nút thao tác');
 });
 
 test('chỉ người đặt lịch được bấm Đã đến / Hủy', async () => {

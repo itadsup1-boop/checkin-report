@@ -18,12 +18,19 @@ export function registerPhotoReplyHandler({
     submitProofPhoto,
     moment,
     fs,
-    adminIds = ''
+    adminIds = '',
+    onTourPhoto
 }) {
     kpiComposer.on('photo', async (ctx, next) => {
         try {
             const replyMsg = ctx.message.reply_to_message;
-            if (!replyMsg || !replyMsg.from || !replyMsg.from.is_bot) return next();
+            if (!replyMsg || !replyMsg.from || !replyMsg.from.is_bot) {
+                if (onTourPhoto) {
+                    const handled = await onTourPhoto(ctx);
+                    if (handled) return;
+                }
+                return next();
+            }
 
             const text = replyMsg.text || replyMsg.caption || '';
             const isCustomerNotice = text.includes('ĐÃ ĐẾN') || text.includes('BÁO ĐỘNG LỊCH KHÁCH')

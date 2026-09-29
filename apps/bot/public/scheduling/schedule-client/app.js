@@ -23,6 +23,9 @@ import { createEditTab } from './tabs/edit-tab.js';
 import { createTasksTab } from './tabs/tasks-tab.js';
 import { createMakeupTab } from './tabs/makeup-tab.js';
 import { createCompletionTab } from './tabs/completion-tab.js';
+import { createTourReportTab } from './tabs/tour-report-tab.js';
+import { createTourEditTab } from './tabs/tour-edit-tab.js';
+import { createTourCheckTab } from './tabs/tour-check-tab.js';
 
 const TABS = [
     { key: 'check', label: 'Check Lịch' },
@@ -32,6 +35,12 @@ const TABS = [
     { key: 'makeup', label: role => role === 'report_tour' ? 'Báo Bù' : 'Hoàn Tất Lịch', schedulingOnly: true }
 ];
 
+const TOUR_TABS = [
+    { key: 'tour', label: 'Báo Tour' },
+    { key: 'edit_tour', label: 'Sửa Công Tour' },
+    { key: 'check_tour', label: 'Check Công Tour' }
+];
+
 const params = new URLSearchParams(location.search);
 const updateId = params.get('action') === 'update' ? params.get('id') : null;
 
@@ -39,7 +48,12 @@ const updateId = params.get('action') === 'update' ? params.get('id') : null;
 const dateInput = h('input', { type: 'date', class: 'form-control', value: todayString() });
 const getDate = () => dateInput.value;
 
-function wantedTab(payload) {
+function wantedTab(payload, isTour) {
+    if (isTour || (typeof payload === 'string' && payload.startsWith('tour'))) {
+        if (params.get('tab') === 'edit_tour' || payload.startsWith('touredit')) return 'edit_tour';
+        if (params.get('tab') === 'check_tour' || payload.startsWith('tourcheck')) return 'check_tour';
+        return 'tour';
+    }
     if (updateId) return 'add';
     if (params.get('tab') === 'edit') return 'edit';
     if (params.get('tab') === 'makeup' || payload.startsWith('makeupclient_')) return 'makeup';
@@ -60,7 +74,7 @@ function start() {
 
 function render(role, payload) {
     const mount = el('app');
-    const isTour = role === 'report_tour';
+    const isTour = role === 'report_tour' || (typeof payload === 'string' && payload.startsWith('tour')) || ['tour', 'edit_tour', 'check_tour'].includes(params.get('tab'));
     const isScheduling = role === 'report' || isTour;
 
     const tabs = {
@@ -78,10 +92,17 @@ function render(role, payload) {
         makeup: isTour ? createMakeupTab() : createCompletionTab()
     };
 
-    const visible = TABS.filter(tab =>
-        (!tab.schedulingOnly || isScheduling) && (!tab.tourOnly || isTour));
-    const requested = wantedTab(payload);
-    const active = visible.some(tab => tab.key === requested) ? requested : 'check';
+    if (isTour) {
+        tabs.tour = createTourReportTab();
+        tabs.edit_tour = createTourEditTab();
+        tabs.check_tour = createTourCheckTab();
+    }
+
+    const visible = isTour
+        ? TOUR_TABS
+        : TABS.filter(tab => (!tab.schedulingOnly || isScheduling) && (!tab.tourOnly || isTour));
+    const requested = wantedTab(payload, isTour);
+    const active = visible.some(tab => tab.key === requested) ? requested : (isTour ? 'tour' : 'check');
 
     const radios = {};
     const labels = [];
@@ -117,7 +138,7 @@ function render(role, payload) {
     // Mở thẳng vào Báo Bù thì KHÔNG nạp dòng thời gian và nhiệm vụ — giống bản cũ,
     // tránh ba request thừa khi nhân viên chỉ vào để báo bù.
     // Chế độ cập nhật cũng bỏ qua vì thanh tab đang bị ẩn.
-    if (active !== 'makeup' && !updateId) {
+    if (active !== 'makeup' && !updateId && !isTour) {
         tabs.check.reload();
         if (radios.tasks) tabs.tasks.reload();
     }

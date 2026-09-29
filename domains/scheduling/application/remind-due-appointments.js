@@ -32,17 +32,12 @@ export function createRemindDueAppointments({ repository, completionRepository, 
             for (const appointment of await repository.findDueForReminder()) {
                 const message = buildDueReminder(appointment);
                 for (const { gId, role } of await resolveTargets(appointment, defaultTargets)) {
-                    await notifier.send(gId, role, message, 'schedule_time_reminder',
-                        arrivalKeyboard(appointment.id));
+                    const keyboard = role === 'report_tour' ? arrivalKeyboard(appointment.id) : undefined;
+                    await notifier.send(gId, role, message, 'schedule_time_reminder', keyboard);
                 }
                 await repository.markReminded(appointment.id);
             }
-
-            for (const appointment of await completionRepository.findReportPhotoDebtsDueForReminder()) {
-                const sent = await notifier.send(appointment.group_id, 'report',
-                    buildPhotoDebtReminder(appointment), 'schedule_report_photo_debt_30m');
-                if (sent) await completionRepository.markCompletionReminded(appointment.id);
-            }
+            // Role report không còn yêu cầu nộp ảnh nên không gửi nhắc nợ ảnh sau 30 phút.
         } catch (e) {
             console.error('Lỗi cron nhắc lịch khách đúng giờ:', e);
         }

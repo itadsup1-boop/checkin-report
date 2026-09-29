@@ -84,6 +84,10 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
     async function sendSundayScheduleReminder(type) {
         try {
             console.log(`[Sunday Cron] Chạy trình nhắc nhở lịch: ${type}`);
+            if (type === 'general_17' && typeof repository.openScheduleRegistrationForAll === 'function') {
+                await repository.openScheduleRegistrationForAll();
+            }
+
             const groups = await repository.findActiveTimekeepGroups();
             if (groups.length === 0) return;
 
@@ -92,17 +96,21 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
             const botUsername = await getBotUsername();
 
             for (const group of groups) {
-                const groupId = group.telegram_group_id;
-                if (groupId === '-5321152019' || group.schedule_registration_open === false) continue;
-                const scheduleUrl = generateScheduleLink(groupId, botUsername);
-                const unregisteredStaff = await repository.findUnregisteredStaff(groupId, nextWeekDates[0], nextWeekDates[6]);
+                try {
+                    const groupId = group.telegram_group_id;
+                    if (groupId === '-5321152019' || group.schedule_registration_open === false) continue;
+                    const scheduleUrl = generateScheduleLink(groupId, botUsername);
+                    const unregisteredStaff = await repository.findUnregisteredStaff(groupId, nextWeekDates[0], nextWeekDates[6]);
 
-                if (type === 'general_17' || type === 'general_18') {
-                    await sendGeneralReminder(groupId, group.group_name, scheduleUrl);
-                } else if (type === 'targeted_19' || type === 'targeted_1950') {
-                    await sendTargetedReminder(groupId, type, unregisteredStaff, scheduleUrl);
-                } else if (type === 'auto_set_2000') {
-                    await autoAssignAndClose(group, group.group_name, unregisteredStaff, nextWeekDates);
+                    if (type === 'general_17' || type === 'general_18') {
+                        await sendGeneralReminder(groupId, group.group_name, scheduleUrl);
+                    } else if (type === 'targeted_19' || type === 'targeted_1950') {
+                        await sendTargetedReminder(groupId, type, unregisteredStaff, scheduleUrl);
+                    } else if (type === 'auto_set_2000') {
+                        await autoAssignAndClose(group, group.group_name, unregisteredStaff, nextWeekDates);
+                    }
+                } catch (groupError) {
+                    console.error(`[Sunday Cron Error] Lỗi nhóm ${group.group_name} (${group.telegram_group_id}):`, groupError.message);
                 }
             }
         } catch (e) {

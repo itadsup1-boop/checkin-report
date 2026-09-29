@@ -1,13 +1,17 @@
-import { Save, X } from 'lucide-react';
+import { PauseCircle, PlayCircle, Save, X } from 'lucide-react';
 import { useState } from 'react';
 
 export default function StaffGroupSettingsModal({ employee, membership, saving, onClose, onSave }) {
   const [form, setForm] = useState({
     role: membership.role || '',
+    status: membership.membership_status || membership.status || 'ACTIVE',
+    pause_reason: membership.pause_reason || '',
     is_exempt_checkin: Boolean(membership.is_exempt_checkin),
     need_report: membership.need_report !== false,
     current_kpi_target: Number(membership.current_kpi_target || 0)
   });
+
+  const isPaused = form.status === 'PAUSED';
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-900/40 p-0 sm:items-center sm:p-4">
@@ -17,6 +21,40 @@ export default function StaffGroupSettingsModal({ employee, membership, saving, 
           <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-700"><X className="h-5 w-5" /></button>
         </div>
         <div className="mt-5 space-y-4">
+          <div className={`rounded-xl border p-3.5 transition ${isPaused ? 'border-amber-300 bg-amber-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <strong className="block text-xs font-bold text-slate-800">Trạng thái tại nhóm này</strong>
+                <small className={`text-[11px] font-medium ${isPaused ? 'text-amber-700' : 'text-emerald-600'}`}>
+                  {isPaused ? '⏸ Đang tạm dừng / Vô hiệu hóa tại nhóm' : '▶ Đang hoạt động bình thường'}
+                </small>
+              </div>
+              <button
+                type="button"
+                onClick={() => setForm(current => ({ ...current, status: current.status === 'PAUSED' ? 'ACTIVE' : 'PAUSED' }))}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-bold transition shadow-sm ${
+                  isPaused
+                    ? 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                    : 'border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                }`}
+              >
+                {isPaused ? <PlayCircle className="h-4 w-4" /> : <PauseCircle className="h-4 w-4" />}
+                {isPaused ? 'Kích hoạt lại nhóm' : 'Vô hiệu hóa / Tạm dừng'}
+              </button>
+            </div>
+            {isPaused && (
+              <label className="mt-3 block text-xs font-semibold text-slate-600">
+                Lý do tạm dừng / vô hiệu hóa:
+                <input
+                  value={form.pause_reason}
+                  onChange={event => setForm(current => ({ ...current, pause_reason: event.target.value }))}
+                  placeholder="VD: Nghỉ việc, chuyển nhóm, tạm ngưng..."
+                  className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-amber-500"
+                />
+              </label>
+            )}
+          </div>
+
           <label className="block text-xs font-semibold text-slate-600">Vai trò tại nhóm
             <input value={form.role} onChange={event => setForm(current => ({ ...current, role: event.target.value }))} className="mt-1.5 w-full rounded-lg border border-slate-200 px-3 py-2.5 text-sm text-slate-900 outline-none focus:border-blue-400" />
           </label>

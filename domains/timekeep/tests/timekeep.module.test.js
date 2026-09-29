@@ -119,7 +119,7 @@ test('module đăng ký đúng 2 bot.action (duyệt/từ chối nghỉ, miễn 
         '/^excuse_penalty_([0-9a-f-]{36})$/i'
     ]);
     assert.deepEqual(h.botOnHandlers.map(o => o.events), [
-        ['video', 'video_note', 'animation', 'text', 'edited_message'],
+        ['video', 'video_note', 'animation', 'photo', 'document', 'text', 'edited_message'],
         'text'
     ]);
 });

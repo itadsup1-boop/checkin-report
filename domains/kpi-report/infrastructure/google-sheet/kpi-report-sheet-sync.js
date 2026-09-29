@@ -7,12 +7,15 @@
  * thao tác của người kia là hỏng dữ liệu Sheet).
  */
 
+import { isExcludedSheetEmployee } from '../../../../packages/shared/excluded-employees.js';
+
 const REPORT_HEADERS = [
     'Ngày', 'Nhân viên', 'Mã NV', 'Telegram ID', 'Số tin nhắn (KPI)', 'Tin nhắn Thực tế',
     'Doanh Thu', 'Lịch Khách', 'Hoàn thành (%)', 'Trạng thái', 'Tình trạng Ảnh', 'Nội dung tin nhắn'
 ];
 
 export function createKpiReportSheetSync({ getKpiDocForGroup }) {
+
     let sheetQueue = Promise.resolve();
 
     function enqueue(work) {
@@ -27,7 +30,12 @@ export function createKpiReportSheetSync({ getKpiDocForGroup }) {
 
     /** Luôn thêm dòng mới — báo cáo là nhật ký theo thời gian, không tìm/sửa dòng cũ. */
     async function enqueueReportRow(groupId, rowData) {
+        if (isExcludedSheetEmployee(rowData['Nhân viên'])) {
+            return;
+        }
+
         return enqueue(async () => {
+
             const kpiDoc = await getKpiDocForGroup(groupId);
             if (!kpiDoc) {
                 console.warn(`[KPI Sheet] group_id=${groupId} status=skipped reason=spreadsheet_not_configured`);
@@ -65,6 +73,8 @@ export function createKpiReportSheetSync({ getKpiDocForGroup }) {
             const mainSheet = kpiDoc.sheetsByIndex[0];
 
             for (const employee of employees) {
+                if (isExcludedSheetEmployee(employee.full_name)) continue;
+
                 const tinhTrangAnh = penaltyAmount > 0
                     ? `🚨 BỎ BÁO CÁO (Phạt: -${penaltyAmount.toLocaleString('vi-VN')}đ)`
                     : '🚨 BỎ BÁO CÁO';
@@ -106,7 +116,8 @@ export function createKpiReportSheetSync({ getKpiDocForGroup }) {
      * sử lỗi) — khớp đúng quy tắc "tối đa 1 lần phạt/ngày" ở tầng nghiệp vụ.
      */
     async function enqueuePenaltyLog(groupId, fullName, employeeCode, telegramId, penaltyType, amount, details) {
-        if (amount <= 0) return;
+        if (amount <= 0 || isExcludedSheetEmployee(fullName)) return;
+
 
         return enqueue(async () => {
             const kpiDoc = await getKpiDocForGroup(groupId);

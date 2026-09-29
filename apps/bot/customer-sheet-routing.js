@@ -7,6 +7,10 @@ export function resolveCustomerSpreadsheetId(groupSettings, env = process.env) {
         return env.TOUR_SPREADSHEET_ID || null;
     }
 
+    if (groupSettings?.bot_role === 'telesale') {
+        return env.TELESALE_SPREADSHEET_ID || '1gQYXoylEysKKqUpYMxAzLw1nA7KC89eC-FO4kSzhlYU';
+    }
+
     return env.CUSTOMER_SPREADSHEET_ID || null;
 }
 

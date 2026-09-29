@@ -19,7 +19,7 @@ import {
     getEmployeeMembership,
     registerEmployeeInKpiGroup
 } from '../../packages/shared/kpiMembership.js';
-import { getCustomerDocForGroup, getKpiDocForGroup } from './sheetManager.js';
+import { getCustomerDocForGroup, getKpiDocForGroup, getDocById } from './sheetManager.js';
 import {
     registerSchedulingModule,
     parseAppointmentReplyReference,
@@ -534,6 +534,7 @@ export function setupKpiBot(bot, botApp, { isCompanyHoliday } = {}) {
         sendMessageToRoleGroup,
         getGroupRole,
         getCustomerDocForGroup,
+        getDocById,
         adminIds: process.env.ADMIN_IDS,
         fs,
         path,

@@ -46,3 +46,11 @@ test('thiết lập từng nhóm nằm ngay dưới thẻ hồ sơ nhân viên',
   assert.match(groupManagement, /group-membership/);
   assert.match(groupManagement, /Quyền kho/);
 });
+
+test('hồ sơ nhân viên cho phép tùy ý đổi tên và lưu vào hệ thống', () => {
+  const header = fs.readFileSync(new URL('./EmployeeProfileHeader.jsx', import.meta.url), 'utf8');
+  assert.match(header, /isEditingName/);
+  assert.match(header, /Đổi tên/);
+  assert.match(header, /handleSaveName/);
+  assert.match(header, /\/admin\/tk-users\/\$\{employee\.id\}/);
+});

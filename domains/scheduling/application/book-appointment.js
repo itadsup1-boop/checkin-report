@@ -10,7 +10,7 @@ import {
     groupIdFromStartParam,
     isRealGroupId
 } from '../domain/appointment-rules.js';
-import { buildUrgentAlert, arrivalKeyboard, timeOf } from '../domain/appointment-messages.js';
+import { buildUrgentAlert, buildBookingNotice, arrivalKeyboard, timeOf } from '../domain/appointment-messages.js';
 
 const SESSION_FORMAT_ERROR =
     'Định dạng Số Buổi Làm chưa đúng! Vui lòng điền dạng X/Y (ví dụ: 2/10) hoặc X/Tái khám (ví dụ: 1/Tái khám).';
@@ -18,7 +18,7 @@ const SESSION_FORMAT_ERROR =
 const UNREGISTERED_ERROR =
     '⚠️ Tài khoản Telegram của bạn chưa được đăng ký trong danh sách nhân sự. Vui lòng đăng ký nhân sự trước!';
 
-export function createBookAppointmentService({ repository, notifier, getGroupRole }) {
+export function createBookAppointmentService({ repository, notifier, getGroupRole, sheetSync }) {
     /** Nhóm lấy từ start_param trước, rồi mới tới groupId client gửi lên. */
     function resolveGroupId(initData, requestedGroupId) {
         const parsed = new URLSearchParams(initData);
@@ -110,7 +110,48 @@ export function createBookAppointmentService({ repository, notifier, getGroupRol
             isReminded: Boolean(form.is_urgent)
         });
 
-        if (form.is_urgent) {
+        const role = await getGroupRole(groupId);
+        if (role === 'report') {
+            try {
+                const noticeMessage = buildBookingNotice({
+                    ...form,
+                    id,
+                    employee_name: employeeName,
+                    session_type: sessionType
+                });
+                await notifier.send(groupId, 'report', noticeMessage, 'schedule_booking_notice');
+            } catch (tgErr) {
+                console.error('Lỗi gửi thông báo đặt lịch nhóm report:', tgErr);
+            }
+
+            if (sheetSync) {
+                try {
+                    const aptDate = new Date(form.appointment_time);
+                    const workDateFormatted = aptDate.toLocaleDateString('vi-VN');
+                    const timeFormatted = aptDate.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+                    const rowData = {
+                        'Ngày': workDateFormatted,
+                        'Nhân Viên': employeeName,
+                        'Mã NV': employee.employee_code || '',
+                        'Khách Hàng': form.customer_name,
+                        'Loại khách': 'Khách cũ',
+                        'SĐT': form.phone,
+                        'Dịch Vụ': form.service || '',
+                        'Buổi Làm': form.sessions || '',
+                        'Thời Gian': `${timeFormatted} ${workDateFormatted}`,
+                        'Trạng Thái': 'Đã hoàn thành',
+                        'Lý Do Hủy': '',
+                        'Thu Tiền': form.revenue || '',
+                        'Ảnh Chứng Thực': ''
+                    };
+                    sheetSync.writeAppointmentRow(groupId, employeeName, rowData).catch(err => {
+                        console.error('[Sheet Sync] Lỗi ghi lịch hẹn report lên Sheet:', err.message);
+                    });
+                } catch (sheetErr) {
+                    console.error('Lỗi chuẩn bị đồng bộ sheet:', sheetErr);
+                }
+            }
+        } else if (form.is_urgent) {
             try {
                 await notifyUrgent({ ...form, id, employee_name: employeeName, session_type: sessionType }, groupId);
             } catch (tgErr) {

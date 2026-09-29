@@ -21,6 +21,7 @@ import { registerTimekeepRegistrationReview } from '../../domains/timekeep/index
 import { registerStaffProfileModule } from '../../domains/staff-profile/index.js';
 import { registerCompanyHolidayAdminModule } from '../../domains/company-holiday/index.js';
 import { registerTelegramGroupAutomation } from '../../domains/telegram-group-automation/index.js';
+import { registerTelesaleAdminModule } from '../../domains/telesale/index.js';
 import { createAdminAuth } from './admin-auth.js';
 import { webAdminSecurityHeaders } from '../../packages/shared/web-admin-security-headers.js';
 import { registerAdminAccountRoutes } from './routes/admin-account-routes.js';
@@ -32,7 +33,7 @@ import { registerEmployeeRoutes } from './routes/employee-routes.js';
 import { registerGroupRoutes } from './routes/group-routes.js';
 import { registerProxyRoutes } from './routes/proxy-routes.js';
 
-const PAUSABLE_GROUP_ROLES = [...KPI_GROUP_ROLES, 'timekeep'];
+const PAUSABLE_GROUP_ROLES = [...KPI_GROUP_ROLES, 'timekeep', 'retail_checkin', 'telesale', 'customer', 'warehouse'];
 const normalizeStaffRole = role => String(role || '').trim().toLocaleLowerCase('vi') === 'admin'
     ? 'admin'
     : String(role || '').trim();
@@ -110,6 +111,7 @@ registerCompanyHolidayAdminModule({
     requireSuperAdmin: adminAuth.requireSuperAdmin
 });
 registerTelegramGroupAutomation({ app, pool, requireSuperAdmin: adminAuth.requireSuperAdmin });
+registerTelesaleAdminModule({ app, pool, adminAuth });
 
 // APIs Quản lý Tài khoản Admin (Dành cho Super Admin)
 // Thêm các endpoint khác theo tài liệu THIET_KE_HE_THONG.md ở đây
@@ -119,10 +121,12 @@ registerStaffRoutes({
     app,
     pool,
     getAdminAuthContext,
+    kpiGroupRoles: KPI_GROUP_ROLES,
     pausableGroupRoles: PAUSABLE_GROUP_ROLES,
     normalizeStaffRole,
     pauseEmployeeMembershipsInAllGroups,
-    registerEmployeeInKpiGroup
+    registerEmployeeInKpiGroup,
+    syncAllTimekeepSheets
 });
 registerAttendanceRoutes({ app, pool, getAdminAuthContext, syncAllTimekeepSheets });
 registerScheduleRoutes({ app, pool, getAdminAuthContext });

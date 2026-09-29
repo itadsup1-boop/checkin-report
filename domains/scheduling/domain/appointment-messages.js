@@ -25,6 +25,18 @@ function optionalLines(a) {
     };
 }
 
+/** Thông báo lịch hẹn khách hàng cho nhóm report (không kèm nút, không cần gửi ảnh). */
+export function buildBookingNotice(a) {
+    const line = optionalLines(a);
+    return '📅 <b>THÔNG BÁO LỊCH HẸN KHÁCH HÀNG</b> 📅\n\n'
+        + `⏰ Thời gian khách đến: <b>${timeOf(a.appointment_time)} (${dateOf(a.appointment_time)})</b>\n`
+        + `👤 Khách hàng: <b>${a.customer_name}</b> (SĐT: ${a.phone})\n`
+        + `💇 Dịch vụ: ${a.service || ''} - Buổi: ${a.sessions || ''}\n`
+        + line.sessionType + line.doctor + line.nurse + line.incurred + line.revenue
+        + `💼 Nhân viên đặt: <b>${a.employee_name}</b>\n\n`
+        + '👉 <i>Vui lòng chuẩn bị đón tiếp khách!</i>';
+}
+
 /** Báo động khi nhân viên chốt khách đi luôn (`is_urgent`). */
 export function buildUrgentAlert(a) {
     const line = optionalLines(a);

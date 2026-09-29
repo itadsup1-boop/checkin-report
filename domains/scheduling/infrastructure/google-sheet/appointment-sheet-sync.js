@@ -11,11 +11,13 @@
  */
 
 import { buildCustomerSheetRowKey, findCustomerSheetRow } from '../../domain/sheet-row-matching.js';
+import { isExcludedSheetEmployee } from '../../../../packages/shared/excluded-employees.js';
 
 const SHEET_HEADERS = [
     'Ngày', 'Nhân Viên', 'Mã NV', 'Khách Hàng', 'Loại khách', 'SĐT', 'Dịch Vụ', 'Buổi Làm',
     'Thời Gian', 'Trạng Thái', 'Lý Do Hủy', 'Thu Tiền', 'Ảnh Chứng Thực'
 ];
+
 
 export function createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRole, moment }) {
     /** Nhóm report_tour ghi vào sheet cá nhân có hậu tố " [Tour]" để phân biệt với nhóm report. */
@@ -32,12 +34,18 @@ export function createAppointmentSheetSync({ getCustomerDocForGroup, getGroupRol
     }
 
     function masterSheetNameOf(target) {
-        return target.role === 'report_tour' ? 'TỔNG HỢP TOUR' : 'TỔNG HỢP KHÁCH HÀNG';
+        return 'TỔNG HỢP KHÁCH HÀNG';
     }
 
     /** Ghi một dòng mới hoặc cập nhật dòng trùng (theo khoá), vào cả sheet tổng hợp lẫn sheet cá nhân. */
     async function writeAppointmentRow(groupId, employeeName, rowData) {
+        if (isExcludedSheetEmployee(employeeName)) {
+            console.log(`[Customer Sheet] Bỏ qua nhân sự loại trừ: ${employeeName}`);
+            return null;
+        }
+
         const target = await getSheetTarget(groupId, employeeName);
+
         if (!target.doc) {
             console.warn(`[Customer Sheet] group_id=${groupId} status=skipped reason=spreadsheet_not_configured`);
             return null;

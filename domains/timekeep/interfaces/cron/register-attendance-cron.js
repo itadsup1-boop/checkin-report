@@ -6,6 +6,7 @@ export function registerAttendanceCron({
     cron, runShiftReminders, runLatePenaltyCheck,
     finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
     groupAbsenceNotifications, buildAbsenceNotificationText,
+    scanMarketingCheckout,
     pool, sendMessageToRoleGroup, bot, syncSheets, moment, isCompanyHoliday
 }) {
     return cron.schedule('*/1 * * * *', async () => {
@@ -56,6 +57,31 @@ export function registerAttendanceCron({
                     } catch (error) {
                         console.error(`[14:00 Absence Notice] Không gửi được nhóm ${group.groupName}:`, error.message);
                     }
+                }
+            }
+
+            // 23:59 (12h cuối ngày): chốt nhân sự Marketing quên check-out
+            if (currentTimeStr >= '23:59' && typeof scanMarketingCheckout?.scanEveningCheckout === 'function') {
+                try {
+                    const checkoutDirty = await scanMarketingCheckout.scanEveningCheckout(todayStr);
+                    if (checkoutDirty) {
+                        attendanceSheetDirty = true;
+                    }
+                } catch (error) {
+                    console.error('[23:59 Marketing Checkout Sweep Error]:', error.message);
+                }
+            }
+
+            // Quét bù nếu vừa qua ngày mới (00:00 - 00:05) mà ngày hôm trước chưa chốt hết
+            if (currentTimeStr <= '00:05' && typeof scanMarketingCheckout?.scanEveningCheckout === 'function') {
+                try {
+                    const yesterdayStr = nowVN.clone().subtract(1, 'day').format('YYYY-MM-DD');
+                    const checkoutDirty = await scanMarketingCheckout.scanEveningCheckout(yesterdayStr);
+                    if (checkoutDirty) {
+                        attendanceSheetDirty = true;
+                    }
+                } catch (error) {
+                    console.error('[00:00 Marketing Checkout Sweep Catchup Error]:', error.message);
                 }
             }
 

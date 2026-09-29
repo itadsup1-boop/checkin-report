@@ -4,7 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
+import { installSheetWriteGate } from '../../packages/shared/sheet-write-gate.js';
 import { resolveCustomerSpreadsheetId, resolveKpiSpreadsheetId } from './customer-sheet-routing.js';
+
+// Toàn bộ dự án chỉ tạo GoogleSpreadsheet ở file này, nên bật cổng ghi ở đây
+// là phủ hết mọi đường ghi Sheet (chống 429 quota + tự retry).
+installSheetWriteGate();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

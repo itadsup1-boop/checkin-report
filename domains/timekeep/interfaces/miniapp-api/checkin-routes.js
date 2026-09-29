@@ -25,7 +25,7 @@ export function registerCheckinRoutes({ botApp, multer, fs, path, uploadDir, sav
                 return res.status(result.status).json({ success: false, message: result.message });
             }
 
-            res.json({ success: true, message: result.message });
+            res.json({ success: true, message: result.message, isCheckout: Boolean(result.isCheckout) });
             result.runBackgroundTask?.();
         } catch (error) {
             console.error('[Save Checkin Error]:', error);

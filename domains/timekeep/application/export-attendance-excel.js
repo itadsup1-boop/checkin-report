@@ -2,7 +2,10 @@
  * Xuất Excel điểm danh một ngày cho Web Admin — mỗi nhân viên một dòng, kèm ca
  * làm, giờ vào/ra, trạng thái, số phút muộn, lý do và tiền phạt.
  */
+import { isExcludedSheetEmployee } from '../../../packages/shared/excluded-employees.js';
+
 function resolveShiftDisplay(userSchedule, groupSettings, telegramGroupId) {
+
     if (!userSchedule) return 'Không có ca';
     if (userSchedule.shift_type === 'OFF') return 'Nghỉ';
 
@@ -125,8 +128,10 @@ export function createExportAttendanceExcel({ repository, ExcelJS, moment }) {
         ws.getColumn('penalty').numFmt = '#,##0';
 
         users.forEach(user => {
+            if (isExcludedSheetEmployee(user?.full_name)) return;
             ws.addRow(buildRow(user, { schedules, checkins, penalties, leaveRequests, groupSettings, moment }));
         });
+
 
         const headerRow = ws.getRow(1);
         headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };

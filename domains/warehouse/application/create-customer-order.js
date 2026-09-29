@@ -96,7 +96,18 @@ export function createCreateCustomerOrderUseCase({
                     });
                 }
 
-                const canAutoApprove = actorContext.isAdmin
+                let isGroupAutoApprove = false;
+                if (chatId) {
+                    const groupRes = await client.query(
+                        'SELECT approval_settings FROM telegram_groups WHERE telegram_group_id = $1 LIMIT 1',
+                        [String(chatId)]
+                    );
+                    const appSettings = groupRes.rows[0]?.approval_settings;
+                    isGroupAutoApprove = appSettings?.warehouse_order === 'AUTO';
+                }
+
+                const canAutoApprove = isGroupAutoApprove
+                    || actorContext.isAdmin
                     || actorContext.permissions.has('AUTO_APPROVE_OWN_ORDER')
                     || actorContext.permissions.has('APPROVE_EXPORT');
 

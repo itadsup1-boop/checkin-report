@@ -67,7 +67,8 @@ export function shouldFinalizeAbsence(date, now) {
 const LATE_SIGNAL_PHRASES = [
     'đi muộn', 'đến muộn', 'tới muộn',
     'đi trễ', 'đến trễ', 'tới trễ',
-    'xin muộn', 'xin trễ', 'báo muộn', 'báo trễ'
+    'xin muộn', 'xin trễ', 'báo muộn', 'báo trễ',
+    'vào muộn', 'vào trễ'
 ];
 
 /** Số đếm viết bằng chữ hay gặp — nhiều người gõ "năm phút" thay vì "5 phút". */
@@ -79,73 +80,92 @@ const NUMBER_WORDS = {
 };
 
 /**
- * Nhận diện tin nhắn tự báo đi muộn và cố trích số phút.
+ * Nhận diện tin nhắn tự báo đi muộn hoặc xin vào làm theo mốc giờ đích (vd: 'xin mai 9 rưỡi vào làm').
  *
- * KHÔNG tự phân biệt "xin phép" hay "báo cáo" — trong tiếng Việt "xin ..." đã
- * là một hành vi xin phép, không có ranh giới thật giữa hai cách nói. Việc lọc
- * người ngoài hỏi/nhắc hộ (không phải chính nhân viên tự báo) nằm ở tầng gọi
- * hàm này: chỉ gọi khi người GỬI tin nhắn chính là nhân viên đang được nhắc tới.
- *
- * @returns {{matched: boolean, minutes: ?number}} `minutes` null nghĩa là có
- *   tín hiệu đi muộn nhưng không trích được số phút — nơi gọi tự quyết định
- *   giá trị mặc định.
+ * @returns {{matched: boolean, minutes: ?number, targetTime?: string}}
  */
-export function parseLateAnnouncement(text) {
+export function parseLateAnnouncement(text, baseShiftHour = 8.5) {
     const normalized = (text || '').toLowerCase();
-    if (!LATE_SIGNAL_PHRASES.some(phrase => normalized.includes(phrase))) {
+
+    // Bỏ qua các câu hỏi/khiếu nại, xem lại công/phạt hoặc nói về quá khứ (không phải đơn mới)
+    const isPastOrInquiry = /(?:xem lại|check lại|kiểm tra lại|sao lại|tại sao|vẫn trừ|bị trừ|vẫn bị trừ|trừ như bt|đã xin|xin rồi|sao vẫn)/i.test(normalized)
+        || (/(?:hôm qua|hôm kia|hôm nọ|hôm trước|ngày hôm qua|hôm rồi)/i.test(normalized) && !normalized.includes('hôm nay') && !normalized.includes('mai'));
+    if (isPastOrInquiry) {
         return { matched: false, minutes: null };
     }
 
-    // 1. Trường hợp đặc biệt: 'nửa tiếng', 'nửa giờ'
-    if (normalized.includes('nửa tiếng') || normalized.includes('nửa giờ')) {
-        return { matched: true, minutes: 30 };
-    }
+    // 1. Kiểm tra các mẫu câu thời lượng cụ thể trước (phút / tiếng / giờ)
+    const hasLatePhrase = LATE_SIGNAL_PHRASES.some(phrase => normalized.includes(phrase));
 
-    // 2. Giờ + Phút kết hợp: e.g. '1h30', '1h30p', '1 tiếng 30 phút', '1 giờ 15 phút'
-    const comboMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h)\s*(\d+)\s*(?:phút|p|phut)?/);
-    if (comboMatch) {
-        const h = parseInt(comboMatch[1], 10);
-        const m = parseInt(comboMatch[2], 10);
-        return { matched: true, minutes: h * 60 + m };
-    }
-
-    // 3. Tiếng rưỡi / giờ rưỡi: e.g. '1 tiếng rưỡi', '2 giờ rưỡi'
-    const ruoiMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ)\s*rưỡi/);
-    if (ruoiMatch) {
-        const h = parseInt(ruoiMatch[1], 10);
-        return { matched: true, minutes: h * 60 + 30 };
-    }
-
-    // 4. Số thập phân giờ: e.g. '1.5 tiếng', '1,5h', '2.5 giờ'
-    const decimalMatch = normalized.match(/(\d+[.,]\d+)\s*(?:tiếng|giờ|h\b)/);
-    if (decimalMatch) {
-        const h = parseFloat(decimalMatch[1].replace(',', '.'));
-        return { matched: true, minutes: Math.round(h * 60) };
-    }
-
-    // 5. Số nguyên giờ/tiếng: e.g. '1 tiếng', '2 giờ', '1h'
-    const hourMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h\b)/);
-    if (hourMatch) {
-        const h = parseInt(hourMatch[1], 10);
-        return { matched: true, minutes: h * 60 };
-    }
-
-    // 6. Số nguyên phút: e.g. '15 phút', '20p', '30 min'
-    const digitMatch = normalized.match(/(\d+)\s*(phút|p\b|'|min)/);
-    if (digitMatch) {
-        return { matched: true, minutes: parseInt(digitMatch[1], 10) };
-    }
-
-    // 7. Chữ viết số: e.g. 'năm phút', 'mười lăm phút', 'một tiếng', 'hai tiếng'
-    const wordKeys = Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length);
-    for (const word of wordKeys) {
-        if (normalized.includes(`${word} tiếng`) || normalized.includes(`${word} giờ`)) {
-            return { matched: true, minutes: NUMBER_WORDS[word] * 60 };
+    if (hasLatePhrase) {
+        if (normalized.includes('nửa tiếng') || normalized.includes('nửa giờ')) {
+            return { matched: true, minutes: 30 };
         }
-        if (normalized.includes(`${word} phút`) || normalized.includes(`${word} p `)) {
-            return { matched: true, minutes: NUMBER_WORDS[word] };
+        const digitMinMatch = normalized.match(/(\d+)\s*(phút|p\b|'|min)/);
+        if (digitMinMatch) {
+            return { matched: true, minutes: parseInt(digitMinMatch[1], 10) };
+        }
+        const comboMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h)\s*(\d+)(?!\s*rưỡi)\s*(?:phút|p|phut)?/);
+        if (comboMatch) {
+            const h = parseInt(comboMatch[1], 10);
+            const m = parseInt(comboMatch[2], 10);
+            return { matched: true, minutes: h * 60 + m };
+        }
+        const ruoiMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ)\s*rưỡi/);
+        if (ruoiMatch) {
+            const h = parseInt(ruoiMatch[1], 10);
+            return { matched: true, minutes: h * 60 + 30 };
+        }
+        const decimalMatch = normalized.match(/(\d+[.,]\d+)\s*(?:tiếng|giờ|h\b)/);
+        if (decimalMatch) {
+            const h = parseFloat(decimalMatch[1].replace(',', '.'));
+            return { matched: true, minutes: Math.round(h * 60) };
+        }
+        const hourMatch = normalized.match(/(\d+)\s*(?:tiếng|giờ|h\b)(?!\s*\d)/);
+        if (hourMatch) {
+            const h = parseInt(hourMatch[1], 10);
+            if (h <= 4) {
+                return { matched: true, minutes: h * 60 };
+            }
+        }
+        const wordKeys = Object.keys(NUMBER_WORDS).sort((a, b) => b.length - a.length);
+        for (const word of wordKeys) {
+            if (normalized.includes(word + ' tiếng') || normalized.includes(word + ' giờ')) {
+                return { matched: true, minutes: NUMBER_WORDS[word] * 60 };
+            }
+            if (normalized.includes(word + ' phút') || normalized.includes(word + ' p ')) {
+                return { matched: true, minutes: NUMBER_WORDS[word] };
+            }
         }
     }
 
-    return { matched: true, minutes: null };
+    // 2. Kiểm tra MỐC GIỜ ĐÍCH VÀO LÀM:
+    // 'xin mai 9 rưỡi vào làm', 'xin vào làm lúc 9h30', 'xin ca 9h30', 'xin vào muộn 10h', 'xin đi muộn khoảng 10h 10 rưỡi'
+    const targetClockRegex = /(?:xin|báo|chuyển|đổi)(?:[^\n.,!?;]*?)(?:vào làm|đi làm|đến làm|tới làm|ca|vào muộn|đến muộn|tới muộn|đi muộn)(?:[^\n.,!?;]*?)(?:lúc|khoảng|tầm|sau)?\s*(\d{1,2})\s*(?:h(?:\s*(\d{1,2}))?|giờ(?:\s*(\d{1,2}))?|:(\d{1,2})|\s*rưỡi)?(?:\s+(?:hoặc|đến|-|tới)?\s*(\d{1,2})\s*(?:rưỡi|h(?:\d{1,2})?))?/i;
+    const reverseClockRegex = /(?:xin|báo)(?:[^\n.,!?;]*?)\s+(\d{1,2})\s*(?:h(\d{1,2})?|:(\d{1,2})|\s*giờ(?:\s*(\d{1,2}))?|\s*rưỡi)\s+(?:vào làm|đi làm|đến làm|tới làm|mới vào|mới đi)/i;
+
+    let clockMatch = normalized.match(reverseClockRegex) || normalized.match(targetClockRegex);
+    if (clockMatch) {
+        const matchStr = clockMatch[0];
+        let hour = parseInt(clockMatch[1], 10);
+        let min = 0;
+        if (matchStr.includes('rưỡi')) {
+            min = 30;
+            if (clockMatch[5]) hour = parseInt(clockMatch[5], 10);
+        } else if (clockMatch[2] || clockMatch[3] || clockMatch[4]) {
+            min = parseInt(clockMatch[2] || clockMatch[3] || clockMatch[4], 10);
+        }
+        if (hour >= 7 && hour <= 15) {
+            const targetTotalMin = hour * 60 + min;
+            const baseTotalMin = Math.round(baseShiftHour * 60); // 8:30 = 510
+            const diffMin = Math.max(0, targetTotalMin - baseTotalMin);
+            return { matched: true, minutes: diffMin, targetTime: `${hour}:${min < 10 ? '0' : ''}${min}` };
+        }
+    }
+
+    if (hasLatePhrase) {
+        return { matched: true, minutes: null };
+    }
+
+    return { matched: false, minutes: null };
 }

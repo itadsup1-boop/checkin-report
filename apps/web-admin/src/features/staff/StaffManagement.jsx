@@ -11,6 +11,7 @@ import {
   Edit3,
   Search,
   UserCheck,
+  UserX,
   Users
 } from 'lucide-react';
 
@@ -22,7 +23,7 @@ const displayStaffRole = role => String(role || '').trim().toLocaleLowerCase('vi
 // Lưu ý: chọn "Kế toán" ở đây chỉ là NHÃN hiển thị, không tự cấp quyền
 // MANAGE_PRICING/VIEW_PRICING — vẫn phải bấm nút "Quyền kho" để cấp quyền
 // thật cho nhóm cụ thể.
-const ROW_GRID = 'grid-cols-[44px_minmax(260px,1.1fr)_minmax(420px,1.8fr)_minmax(210px,0.8fr)_100px]';
+const ROW_GRID = 'grid-cols-[44px_minmax(260px,1.1fr)_minmax(380px,1.8fr)_minmax(210px,0.8fr)_180px]';
 
 function initials(name) {
   return String(name || '?')
@@ -72,6 +73,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
   const [toast, setToast] = useState(null);
   const [reviewingRequestId, setReviewingRequestId] = useState(null);
   const [registrationTargets, setRegistrationTargets] = useState({});
+  const [togglingUserId, setTogglingUserId] = useState(null);
 
   const showToast = useCallback(message => {
     setToast(message);
@@ -82,6 +84,30 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
     const params = new URLSearchParams();
     if (selectedGroupId && selectedGroupId !== 'ALL') params.set('nhom', selectedGroupId);
     navigate(params.toString() ? `/nhan-su/${user.id}?${params}` : `/nhan-su/${user.id}`);
+  };
+
+  const toggleStaffActive = async (user, event) => {
+    event?.stopPropagation?.();
+    const currentActive = user.is_active !== false;
+    const nextStatus = !currentActive;
+    const confirmMsg = nextStatus
+      ? `Kích hoạt lại nhân sự ${user.full_name}?`
+      : `Vô hiệu hóa nhân sự ${user.full_name}?\n\nBot sẽ ngừng nhắc nhở, tạm dừng chấm công và loại trừ nhân sự này khỏi báo cáo trên toàn hệ thống.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setTogglingUserId(user.id);
+    try {
+      await axios.put(`${API_URL}/admin/tk-users/${user.id}`, {
+        is_active: nextStatus,
+        telegram_group_id: user.telegram_group_id || user.memberships?.[0]?.telegram_group_id
+      });
+      showToast(nextStatus ? `✅ Đã kích hoạt lại ${user.full_name}` : `Đã vô hiệu hóa ${user.full_name}`);
+      await fetchStaff();
+    } catch (error) {
+      showToast(`❌ Lỗi khi cập nhật trạng thái: ${error.response?.data?.error || error.message}`);
+    } finally {
+      setTogglingUserId(null);
+    }
   };
 
   const fetchStaff = useCallback(async () => {
@@ -270,6 +296,8 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
         </div>
       </section>
 
+      {/* Ẩn phần Lịch sử đăng ký gần đây theo yêu cầu của Quản trị viên */}
+      {/*
       {registrationHistory.length > 0 && (
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
           <div className="border-b border-slate-100 px-5 py-4">
@@ -299,6 +327,7 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
           </div>
         </section>
       )}
+      */}
 
       <div className="grid gap-3 sm:grid-cols-3">
         <CompactSummary icon={Users} label="Tổng nhân sự" value={groupedStaff.length} tone="cyan" />
@@ -321,9 +350,44 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
         <div className="divide-y divide-slate-100 md:hidden">
           {loading ? <div className="flex h-32 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-100 border-t-blue-600" /></div> : filteredStaff.length === 0 ? <div className="px-5 py-10 text-center text-sm text-slate-500">{searchTerm ? 'Không tìm thấy nhân sự phù hợp.' : 'Chưa có nhân sự đăng ký.'}</div> : filteredStaff.map((user, index) => (
             <div key={user.identity_key} role="link" tabIndex={0} onClick={() => openEmployeeProfile(user)} onKeyDown={event => { if (event.key === 'Enter') openEmployeeProfile(user); }} className="block w-full px-4 py-4 text-left active:bg-blue-50">
-              <div className="flex items-start gap-3"><div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{initials(user.full_name)}</div><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><p className="truncate text-sm font-bold text-slate-900">{user.full_name}</p><span className="text-[10px] text-slate-400">#{index + 1}</span></div><p className="mt-1 text-[10px] text-slate-500">Telegram {user.telegram_id || 'Chưa liên kết'}</p></div></div>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">{initials(user.full_name)}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="truncate text-sm font-bold text-slate-900">{user.full_name}</p>
+                    <span className="text-[10px] text-slate-400">#{index + 1}</span>
+                  </div>
+                  <p className="mt-1 text-[10px] text-slate-500">Telegram {user.telegram_id || 'Chưa liên kết'}</p>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Tag tone={user.is_active === false ? 'rose' : 'emerald'}>
+                  {user.is_active === false ? '⛔ Đã vô hiệu hóa' : '✅ Đang hoạt động'}
+                </Tag>
+              </div>
               <div className="mt-3 space-y-2">{user.memberships.map(membership => { const paused = membership.membership_status === 'PAUSED'; return <div key={`${membership.employee_id}:${membership.telegram_group_id}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3"><div className="flex flex-wrap items-center gap-2"><Tag tone="cyan">{membership.role || 'Chưa có vai trò'}</Tag><span className="min-w-0 flex-1 truncate text-[11px] font-medium text-slate-600">{membership.group_name}</span></div><div className="mt-2"><Tag tone={paused ? 'amber' : 'emerald'}>{paused ? '⏸ Tạm dừng' : '▶ Hoạt động'}</Tag></div></div>; })}</div>
-              <button type="button" onClick={event => { event.stopPropagation(); openEmployeeProfile(user); }} className="mt-3 inline-flex w-full items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 text-xs font-semibold text-blue-600"><Edit3 className="h-4 w-4" />Sửa và xem thống kê</button>
+              <div className="mt-3 flex gap-2" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+                <button
+                  type="button"
+                  disabled={togglingUserId === user.id}
+                  onClick={event => toggleStaffActive(user, event)}
+                  className={`inline-flex flex-1 items-center justify-center gap-1 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
+                    user.is_active === false
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                      : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                  } disabled:opacity-50`}
+                >
+                  {user.is_active === false ? <UserCheck className="h-4 w-4" /> : <UserX className="h-4 w-4" />}
+                  {user.is_active === false ? 'Kích hoạt lại' : 'Vô hiệu hóa'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openEmployeeProfile(user)}
+                  className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-600"
+                >
+                  <Edit3 className="h-4 w-4" />Sửa và xem thống kê
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -382,11 +446,45 @@ export default function StaffManagement({ selectedGroupId = 'ALL' }) {
                       </div>
 
                       <div className="space-y-1.5">
-                        {user.memberships.map(membership => { const paused = membership.membership_status === 'PAUSED'; return <div key={`${membership.employee_id}:${membership.telegram_group_id}`} className="flex min-h-[42px] items-center"><Tag tone={paused ? 'amber' : 'emerald'}>{paused ? '⏸ Tạm dừng tại nhóm' : '▶ Hoạt động tại nhóm'}</Tag></div>; })}
+                        <div className="flex items-center">
+                          <Tag tone={user.is_active === false ? 'rose' : 'emerald'}>
+                            {user.is_active === false ? '⛔ Đã vô hiệu' : '✅ Hoạt động'}
+                          </Tag>
+                        </div>
+                        {user.memberships.map(membership => {
+                          const paused = membership.membership_status === 'PAUSED';
+                          return (
+                            <div key={`${membership.employee_id}:${membership.telegram_group_id}`} className="flex items-center">
+                              <Tag tone={paused ? 'amber' : 'slate'}>
+                                {paused ? '⏸ Tạm dừng nhóm' : '▶ Nhóm hoạt động'}
+                              </Tag>
+                            </div>
+                          );
+                        })}
                       </div>
 
-                      <div className="flex justify-end" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
-                        <button type="button" onClick={() => openEmployeeProfile(user)} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-600 hover:bg-blue-100"><Edit3 className="h-4 w-4" />Sửa</button>
+                      <div className="flex items-center justify-end gap-1.5" onClick={event => event.stopPropagation()} onKeyDown={event => event.stopPropagation()}>
+                        <button
+                          type="button"
+                          disabled={togglingUserId === user.id}
+                          onClick={event => toggleStaffActive(user, event)}
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition ${
+                            user.is_active === false
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                              : 'border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100'
+                          } disabled:opacity-50`}
+                          title={user.is_active === false ? 'Kích hoạt lại nhân sự' : 'Vô hiệu hóa nhân sự'}
+                        >
+                          {user.is_active === false ? <UserCheck className="h-3.5 w-3.5" /> : <UserX className="h-3.5 w-3.5" />}
+                          {user.is_active === false ? 'Kích hoạt' : 'Vô hiệu'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openEmployeeProfile(user)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-600 hover:bg-blue-100"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />Sửa
+                        </button>
                       </div>
                     </div>
                   );

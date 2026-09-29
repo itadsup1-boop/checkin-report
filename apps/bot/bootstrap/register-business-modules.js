@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { registerWarehouseModule } from '../../../domains/warehouse/index.js';
 import { registerCustomerModule } from '../../../domains/customer/index.js';
 import { registerRetailCheckinModule } from '../../../domains/retail-checkin/index.js';
+import { registerTelesaleModule } from '../../../domains/telesale/index.js';
 import { getGroupRole } from '../role_guard.js';
 
 export function registerBusinessModules({
@@ -74,5 +75,15 @@ export function registerBusinessModules({
         authenticateTelegramMiniApp,
         getGroupRole,
         getDocForGroup: getCustomerDocForGroup || getDocById
+    });
+
+    // Module báo cáo Telesale tự động
+    registerTelesaleModule({
+        botApp,
+        bot,
+        pool,
+        cron,
+        getDocById,
+        getGroupRole
     });
 }

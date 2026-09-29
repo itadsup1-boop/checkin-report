@@ -224,11 +224,57 @@ export function createEmployeeRepository({ pool }) {
         return result.rows[0] || null;
     }
 
+    async function activateUnlinkedEmployee(client, suggestedId, data, { isKpiGroup }) {
+        const result = await client.query(
+            `UPDATE employees
+             SET telegram_id = $1, telegram_username = $2, role = COALESCE(NULLIF(role, ''), $3),
+                 telegram_group_id = CASE WHEN $4 THEN NULL ELSE $5 END,
+                 is_active = TRUE,
+                 pending_telegram_id = NULL, pending_telegram_username = NULL, pending_role = NULL,
+                 pending_telegram_group_id = NULL, pending_requested_at = NULL, pending_is_new_profile = FALSE
+             WHERE id = $6 RETURNING *`,
+            [String(data.telegramId), data.telegramUsername || '', data.role, isKpiGroup, isKpiGroup ? null : data.telegramGroupId, suggestedId]
+        );
+        return result.rows[0] || null;
+    }
+
+    async function insertActiveEmployee(client, groupId, data, { isKpiGroup, employeeCode }) {
+        const result = await client.query(
+            `INSERT INTO employees
+                (group_id, telegram_group_id, telegram_id, telegram_username,
+                 full_name, role, employee_code, department, position, is_active)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, TRUE)
+             RETURNING *`,
+            [
+                groupId,
+                isKpiGroup ? null : data.telegramGroupId,
+                String(data.telegramId),
+                data.telegramUsername || '',
+                data.fullName,
+                data.role,
+                employeeCode,
+                'Chưa xếp',
+                'Nhân viên'
+            ]
+        );
+        return result.rows[0];
+    }
+
+    async function markRegistrationActive(client, telegramId, telegramGroupId, reviewedBy) {
+        await client.query(
+            `UPDATE employee_registration_requests
+             SET status = 'ACTIVE', reviewed_by = $3, reviewed_at = NOW()
+             WHERE telegram_id = $1 AND telegram_group_id = $2 AND status = 'PENDING'`,
+            [String(telegramId), String(telegramGroupId), reviewedBy]
+        );
+    }
+
     return {
         findGroup, createGroup, findByTelegramIdInGroup, lockByTelegramIdInGroup, findUnlinkedByName,
         setPendingRegistration, lockPendingByTelegramInGroup, insertPendingEmployee, createRegistrationRequest,
         findPendingRegistrationById, findPendingRegistrations,
         clearPendingRegistration, finalizeApprovedRegistration,
-        lockGlobalEmployee, lockUnlinkedByName
+        lockGlobalEmployee, lockUnlinkedByName,
+        activateUnlinkedEmployee, insertActiveEmployee, markRegistrationActive
     };
 }

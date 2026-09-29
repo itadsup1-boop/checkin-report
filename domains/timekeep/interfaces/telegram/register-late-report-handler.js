@@ -35,12 +35,24 @@ export function registerLateReportHandler({ bot, findEmployeeContext, saveLeaveR
             const user = await findEmployeeContext(telegramId, telegramGroupId);
             if (!user) return next();
 
+            const nowMoment = moment().utcOffset(7);
+            let targetDate = nowMoment.format('YYYY-MM-DD');
+
+            // Xử lý từ "mai" / "ngày mai":
+            // Nếu gửi từ 12:00 trưa trở đi: "mai" là ngày hôm sau.
+            // Nếu gửi lúc rạng sáng (00:00 - 06:00): người làm đêm nói "mai" thực chất là ca sáng cùng ngày hôm đó (sáng nay).
+            const lowerText = msg.text.toLowerCase();
+            const mentionsTomorrow = /(?:^|\s)(?:ngày mai|mai)(?:\s|$|[.,!?;])/i.test(lowerText) && !lowerText.includes('hôm nay') && !lowerText.includes('nay e');
+            if (mentionsTomorrow && nowMoment.hour() >= 12) {
+                targetDate = nowMoment.clone().add(1, 'day').format('YYYY-MM-DD');
+            }
+
             await saveLeaveRequest({
                 telegramId,
                 chatId: telegramGroupId,
                 requestType: 'LATE',
                 lateMinutes: parsed.minutes || DEFAULT_LATE_MINUTES,
-                date: moment().utcOffset(7).format('YYYY-MM-DD'),
+                date: targetDate,
                 reason: msg.text.trim(),
                 proofImage: null
             });

@@ -87,7 +87,8 @@ export function findMissingTourFields(item) {
  */
 export function groupIdFromStartParam(startParam) {
     const value = String(startParam || '');
-    if (!value.startsWith('schedule_') && !value.startsWith('scheduleclient_')) return '';
+    const allowedPrefixes = ['schedule_', 'scheduleclient_', 'makeupclient_', 'tourclient_', 'touredit_', 'tourcheck_'];
+    if (!allowedPrefixes.some(p => value.startsWith(p))) return '';
     const parts = value.split('_');
     return parts.length >= 2 ? parts[1] : '';
 }

@@ -31,6 +31,13 @@ test('nhóm report_tour chưa có ID dùng Sheet tour mặc định', () => {
     );
 });
 
+test('nhóm telesale chưa có ID dùng Sheet telesale mặc định', () => {
+    assert.equal(
+        resolveCustomerSpreadsheetId({ bot_role: 'telesale', customer_sheet_id: null }, { TELESALE_SPREADSHEET_ID: 'telesale-default' }),
+        'telesale-default'
+    );
+});
+
 test('KPI ưu tiên kpi_sheet_id riêng của nhóm', () => {
     assert.equal(
         resolveKpiSpreadsheetId({ kpi_sheet_id: ' meditech-kpi ' }, { GOOGLE_SPREADSHEET_ID: 'kpi-default' }),

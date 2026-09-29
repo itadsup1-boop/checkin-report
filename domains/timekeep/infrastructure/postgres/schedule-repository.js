@@ -240,6 +240,16 @@ export function createScheduleRepository({ pool }) {
         return result.rows[0].id;
     }
 
+    async function insertPendingLeaveRequest({ groupId, userId, requestType, lateMinutes, date, reason, proofUrl }) {
+        const result = await pool.query(
+            `INSERT INTO tk_leave_requests (group_id, user_id, request_type, late_minutes, date, reason, proof_url, status, approved_by, auto_accepted, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 'PENDING', NULL, FALSE, NOW())
+             RETURNING *`,
+            [groupId, userId, requestType, Number(lateMinutes) || 0, date, reason, proofUrl]
+        );
+        return result.rows[0];
+    }
+
     return {
         findCallerWithFlag, setRegistrationOpen,
         updateShift, findGroupIdOfEmployee, findTelegramGroupIdOfSchedule,
@@ -247,6 +257,7 @@ export function createScheduleRepository({ pool }) {
         findGroupByTelegramGroupId, findGroupRegistrationFlag, findEmployeeById,
         findSchedulesInRange, findGroupSchedulesInRange, findGroupEmployees, isManager,
         findOffOverlap, findExistingShiftsForDates, upsertScheduleDay,
-        findTelegramGroupId, cancelPendingScheduleChangeRequests, insertScheduleChangeRequest
+        findTelegramGroupId, cancelPendingScheduleChangeRequests, insertScheduleChangeRequest,
+        insertPendingLeaveRequest
     };
 }

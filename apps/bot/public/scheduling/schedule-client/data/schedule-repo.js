@@ -139,3 +139,77 @@ export function submitMakeupRequest(payload) {
 export async function loadMakeupHistory() {
     return request('/api/schedules/makeup/history', { headers: authHeaders() });
 }
+
+/* ---------- Chức năng Báo Tour, Sửa Tour, Check Tour (role report_tour) ---------- */
+
+export async function loadTodaySuggestions() {
+    const data = await request(`/api/schedules/tour/suggestions?${query({
+        groupId: getGroupId()
+    })}`, { headers: authHeaders() });
+    return data.data || [];
+}
+
+export async function loadDoctors() {
+    const data = await request(`/api/schedules/tour/doctors?${query({
+        groupId: getGroupId()
+    })}`, { headers: authHeaders() });
+    return data.data || [];
+}
+
+export async function loadKtvs() {
+    const res = await request(`/api/schedules/tour/ktvs?${query({
+        groupId: getGroupId(),
+        telegram_id: getTelegramUserId()
+    })}`, { headers: authHeaders() });
+    const list = res.data || [];
+    list.userLastKtv = res.userLastKtv || '';
+    list.userEmpName = res.userEmpName || '';
+    return list;
+}
+
+export async function loadTourStats(date) {
+    const user = globalThis.Telegram?.WebApp?.initDataUnsafe?.user;
+    const ktvName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : '';
+    const data = await request(`/api/schedules/tour/stats?${query({
+        groupId: getGroupId(),
+        date: date || '',
+        telegram_id: getTelegramUserId(),
+        ktv_name: ktvName
+    })}`, { headers: authHeaders() });
+    return data.data || { todayCredit: 0, monthCredit: 0, totalCredit: 0, totalCount: 0, tours: [] };
+}
+
+export async function loadRecentTours() {
+    const user = globalThis.Telegram?.WebApp?.initDataUnsafe?.user;
+    const ktvName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : '';
+    const storedKtv = (typeof localStorage !== 'undefined' && localStorage.getItem('last_tour_ktv1')) || '';
+    const data = await request(`/api/schedules/tour/recent?${query({
+        groupId: getGroupId(),
+        telegram_id: getTelegramUserId(),
+        ktv_name: ktvName || storedKtv
+    })}`, { headers: authHeaders() });
+    return data.data || [];
+}
+
+export function submitTourReport(form) {
+    const user = globalThis.Telegram?.WebApp?.initDataUnsafe?.user;
+    const sender = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : 'KTV';
+    return jsonPost('/api/schedules/tour/submit', {
+        ...form,
+        groupId: getGroupId(),
+        telegramUserId: getTelegramUserId(),
+        reportedBy: sender
+    });
+}
+
+export function updateTourReport(id, form) {
+    const user = globalThis.Telegram?.WebApp?.initDataUnsafe?.user;
+    const ktvName = user ? `${user.first_name || ''} ${user.last_name || ''}`.trim() : '';
+    const storedKtv = (typeof localStorage !== 'undefined' && localStorage.getItem('last_tour_ktv1')) || '';
+    return jsonPost(`/api/schedules/tour/${encodeURIComponent(id)}`, {
+        ...form,
+        groupId: getGroupId(),
+        telegramUserId: getTelegramUserId(),
+        updaterKtv: ktvName || storedKtv
+    }, 'PUT');
+}

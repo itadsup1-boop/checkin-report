@@ -15,7 +15,7 @@ import ExcelJS from 'exceljs';
 import { initLogger, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
 import { reportWizard } from './reportWizard.js';
 import { setupWizard } from './setupWizard.js';
-import { requireGroupRole, sendMessageToRoleGroup, sendMediaGroupToRoleGroup, sendVideoToRoleGroup } from './role_guard.js';
+import { requireGroupRole, sendMessageToRoleGroup, sendMediaGroupToRoleGroup, sendVideoToRoleGroup, sendPhotoToRoleGroup } from './role_guard.js';
 import { TIMEKEEP_BOT_HELP_HTML } from './user_guide_timekeep.js';
 import { syncAllTimekeepSheets } from './syncTimekeepSheets.js';
 import { getOrCreateCustomerFolder, uploadToDrive, createWarehouseFolder, getOrCreateRetailFolderHierarchy } from './googleDrive.js';
@@ -146,6 +146,7 @@ registerTimekeepModule({
     requireGroupRole,
     sendMessageToRoleGroup,
     sendVideoToRoleGroup,
+    sendPhotoToRoleGroup,
     multer,
     fs,
     path,

@@ -231,6 +231,12 @@ export function createRetailRepository({ pool }) {
                      )
              )
                AND e.is_active = true
+               AND NOT EXISTS (
+                   SELECT 1 FROM public.employee_group_memberships egm 
+                   WHERE egm.employee_id = e.id 
+                     AND egm.telegram_group_id = tkg.telegram_group_id 
+                     AND egm.status = 'PAUSED'
+               )
              ORDER BY valid_points DESC, e.full_name ASC`,
             [groupId, dateStr, kpiTarget]
         );
@@ -278,6 +284,12 @@ export function createRetailRepository({ pool }) {
                      )
              )
                AND e.is_active = true
+               AND NOT EXISTS (
+                   SELECT 1 FROM public.employee_group_memberships egm 
+                   WHERE egm.employee_id = e.id 
+                     AND egm.telegram_group_id = tkg.telegram_group_id 
+                     AND egm.status = 'PAUSED'
+               )
              ORDER BY e.full_name ASC`,
             [groupId, monthStr, defaultKpi]
         );

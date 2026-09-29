@@ -46,7 +46,34 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
         return pendingOutcome;
     }
 
-    async function registerInKpiFlow({ groupId, telegramGroupId, data }) {
+    async function autoApproveRegistration(client, { groupId, data, isKpiGroup, telegramGroupId }) {
+        const suggestedProfile = await repository.lockUnlinkedByName(client, groupId, data.fullName);
+        let employee = null;
+        if (suggestedProfile) {
+            employee = await repository.activateUnlinkedEmployee(client, suggestedProfile.id, data, { isKpiGroup });
+            await repository.createRegistrationRequest(client, employee, data, { isNewProfile: false });
+        } else {
+            employee = await repository.insertActiveEmployee(client, groupId, data, {
+                isKpiGroup,
+                employeeCode: buildEmployeeCode(data.telegramId)
+            });
+            await repository.createRegistrationRequest(client, employee, data, { isNewProfile: true });
+        }
+
+        await repository.markRegistrationActive(client, data.telegramId, data.telegramGroupId, 'Hệ thống tự động duyệt');
+
+        if (isKpiGroup && registerInKpiGroup) {
+            await registerInKpiGroup(client, employee, telegramGroupId, 'auto_registration_approval');
+        }
+
+        return {
+            ok: true,
+            pending: false,
+            message: 'Đăng ký tài khoản thành công! Bạn có thể bắt đầu sử dụng ngay.'
+        };
+    }
+
+    async function registerInKpiFlow({ groupId, telegramGroupId, data, isAutoApprove }) {
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
@@ -54,6 +81,11 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
             // Đã xác minh bằng chính Telegram ID trước đó: chỉ thêm membership nhóm KPI.
             const employee = await repository.lockGlobalEmployee(client, data.telegramId);
             if (!employee) {
+                if (isAutoApprove) {
+                    const outcome = await autoApproveRegistration(client, { groupId, data, isKpiGroup: true, telegramGroupId });
+                    await client.query('COMMIT');
+                    return outcome;
+                }
                 const outcome = await queuePendingRegistration(client, { groupId, data, isKpiGroup: true });
                 await client.query('COMMIT');
                 return outcome;
@@ -92,8 +124,10 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
         console.log(`[Registration] Nhận yêu cầu đăng ký: ID=${data.telegramId}, Name=${data.fullName}, Role=${data.role}, GroupID=${data.telegramGroupId}`);
 
         const group = await resolveGroup(data.telegramGroupId);
+        const isAutoApprove = group?.approval_settings?.staff_registration === 'AUTO';
+
         if (kpiGroupRoles.includes(group.bot_role)) {
-            return registerInKpiFlow({ groupId: group.id, telegramGroupId: data.telegramGroupId, data });
+            return registerInKpiFlow({ groupId: group.id, telegramGroupId: data.telegramGroupId, data, isAutoApprove });
         }
 
         const client = await pool.connect();
@@ -104,6 +138,13 @@ export function createRegisterEmployeeService({ pool, repository, kpiGroupRoles,
             if (existing) {
                 await client.query('ROLLBACK');
                 return { ok: false, status: 400, message: 'Người dùng đã đăng ký trong nhóm này.' };
+            }
+
+            if (isAutoApprove) {
+                const outcome = await autoApproveRegistration(client, { groupId: group.id, data, isKpiGroup: false, telegramGroupId: data.telegramGroupId });
+                await client.query('COMMIT');
+                console.log(`[Registration] Tự động duyệt nhân sự: ${data.fullName}`);
+                return outcome;
             }
 
             const outcome = await queuePendingRegistration(client, { groupId: group.id, data, isKpiGroup: false });
