@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="vi">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+    <title>Check-in Tuyến Điểm Bán Thị Trường</title>
+
+    <!-- Design Tokens & Theme -->
+    <link rel="stylesheet" href="/mini-app/shared-ui/theme-tokens.css">
+    <link rel="stylesheet" href="/mini-app/retail/theme.css">
+
+    <!-- Telegram WebApp SDK -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Topbar -->
+        <header class="topbar">
+            <div class="avatar" id="userAvatar">NV</div>
+            <div class="topbar__info">
+                <div class="topbar__name" id="userName">Đang kết nối...</div>
+                <div class="topbar__role" id="userRole">Nhân viên thị trường</div>
+            </div>
+            <div class="topbar__clock">
+                <div class="topbar__time" id="liveClock">--:--</div>
+                <div class="topbar__date" id="liveDate">--/--/----</div>
+            </div>
+        </header>
+
+        <!-- Thanh chuyển Tab -->
+        <nav class="tabs-bar">
+            <button type="button" class="tab-btn active" id="tabBtnCheckin" onclick="switchTab('checkin')">
+                <span>📸 Check-in Mới</span>
+            </button>
+            <button type="button" class="tab-btn" id="tabBtnHistory" onclick="switchTab('history')">
+                <span>📋 Lịch Sử</span>
+            </button>
+        </nav>
+
+        <!-- Thân trang -->
+        <main class="body">
+            <!-- TAB 1: FORM CHECK-IN MỚI -->
+            <div id="viewCheckin" class="tab-view active">
+                <!-- Thẻ tiến độ KPI -->
+                <section class="kpi-card" id="kpiCard">
+                    <div class="kpi-card__head">
+                        <span class="kpi-card__title">🎯 Chỉ tiêu trong ngày</span>
+                        <span class="kpi-card__status" id="kpiStatusBadge">Đang thực hiện</span>
+                    </div>
+                    <div class="kpi-card__score" id="kpiScoreText">0 <span>/ 15 điểm</span></div>
+                    <div class="kpi-bar">
+                        <div class="kpi-bar__fill" id="kpiBarFill"></div>
+                    </div>
+                    <div class="kpi-card__note" id="kpiNoteText">Còn thiếu 15 điểm để hoàn thành KPI hôm nay.</div>
+                </section>
+
+                <!-- Banner cảnh báo lỗi / quy định -->
+                <div class="banner" id="errorBanner">
+                    <div class="banner__icon-wrap">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="12" y1="8" x2="12" y2="12"></line>
+                            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                        </svg>
+                    </div>
+                    <div class="banner__content">
+                        <div class="banner__title" id="errorTitle">Không thể thực hiện</div>
+                        <div class="banner__desc" id="errorText">Có lỗi xảy ra</div>
+                    </div>
+                </div>
+
+                <!-- Form Check-in -->
+                <form id="checkinForm" onsubmit="return false;">
+                    <div class="field">
+                        <label class="field__label" for="storeName">
+                            🏪 Tên điểm bán / Cửa hàng <span class="field__required">*</span>
+                        </label>
+                        <input type="text" class="field-input" id="storeName" placeholder="Ví dụ: Tạp hóa Lan Anh, WinMart+..." autocomplete="off">
+                    </div>
+
+                    <div class="field">
+                        <label class="field__label" for="storeAddress">
+                            📬 Địa chỉ chi tiết <span class="field__required">*</span>
+                        </label>
+                        <input type="text" class="field-input" id="storeAddress" placeholder="Ví dụ: 123 Nguyễn Văn Tuyết, Đống Đa..." autocomplete="off">
+                    </div>
+
+                    <!-- Thẻ Định vị GPS -->
+                    <div class="field">
+                        <label class="field__label">
+                            📍 Vị trí thực tế (GPS)
+                        </label>
+                        <div class="gps-card" id="gpsCard">
+                            <div class="gps-card__header">
+                                <div class="gps-card__title">
+                                    <span class="gps-card__icon">🛰️</span>
+                                    <span>Định vị toạ độ điểm bán</span>
+                                </div>
+                                <span class="gps-badge" id="gpsStatusBadge">Chờ định vị</span>
+                            </div>
+                            <div class="gps-card__body">
+                                <div class="gps-card__coords" id="gpsCoordsText">Đang sẵn sàng kết nối GPS...</div>
+                                <div class="gps-card__actions">
+                                    <button type="button" class="gps-btn" id="btnRefreshGps" title="Lấy lại toạ độ GPS">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                                        </svg>
+                                        <span id="btnRefreshGpsText">Lấy vị trí</span>
+                                    </button>
+                                    <a href="#" target="_blank" rel="noopener noreferrer" class="gps-link" id="linkGoogleMaps" style="display:none">
+                                        <span>🗺️ Xem trên Bản đồ</span>
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="field">
+                        <label class="field__label">
+                            📸 Minh chứng hình ảnh <span class="field__required">* (Tối thiểu 1 ảnh)</span>
+                        </label>
+                        <div class="photo-grid" id="mainPhotoGrid">
+                            <!-- Ô ảnh 1: Selfie trước cổng -->
+                            <div class="photo-box" id="boxSelfie">
+                                <button type="button" class="photo-box__remove" id="btnRemoveSelfie" title="Xóa ảnh">×</button>
+                                <img class="photo-box__preview" id="previewSelfie" alt="Selfie">
+                                <div class="photo-box__content">
+                                    <div class="photo-box__icon">🤳</div>
+                                    <div class="photo-box__title">Ảnh 1: Cổng / Biển hiệu</div>
+                                    <div class="photo-box__sub">Selfie có mặt trước biển hiệu</div>
+                                </div>
+                                <span class="photo-box__badge">✓ Đã chụp cổng</span>
+                                <input type="file" id="fileSelfie" accept="image/*" style="display:none">
+                            </div>
+
+                            <!-- Ô ảnh 2: Quầy kệ sản phẩm (ban đầu) -->
+                            <div class="photo-box" id="boxStoreInitial">
+                                <div class="photo-box__content">
+                                    <div class="photo-box__icon">🛒</div>
+                                    <div class="photo-box__title">Ảnh 2+: Quầy kệ bên trong</div>
+                                    <div class="photo-box__sub">Chạm để chụp ảnh quầy kệ</div>
+                                </div>
+                                <span class="photo-box__badge" style="background:var(--brand)">+ Chụp quầy</span>
+                            </div>
+                        </div>
+
+                        <!-- Khu vực danh sách nhiều ảnh quầy kệ -->
+                        <div class="shelf-gallery-box" id="shelfGalleryBox">
+                            <div class="shelf-gallery-header">
+                                <div class="shelf-gallery-title">
+                                    <span>🛒 Ảnh quầy kệ đã chụp</span>
+                                    <span class="shelf-gallery-count" id="shelfCountBadge">0 ảnh</span>
+                                </div>
+                                <div style="font-size:10.5px; color:var(--muted)">Có thể chụp thêm nhiều góc</div>
+                            </div>
+                            <div class="shelf-grid" id="shelfGrid"></div>
+                        </div>
+                        <input type="file" id="fileStore" accept="image/*" multiple style="display:none">
+                    </div>
+                </form>
+            </div>
+
+            <!-- TAB 2: LỊCH SỬ & DANH SÁCH ĐIỂM BÁN THEO NGÀY -->
+            <div id="viewHistory" class="tab-view" style="display:none">
+                <!-- Thanh điều hướng ngày -->
+                <div class="history-date-nav">
+                    <button type="button" class="date-nav-btn" id="btnPrevDate" title="Xem ngày hôm trước">◀</button>
+                    <div class="date-picker-box" title="Bấm để chọn ngày bất kỳ">
+                        <span style="font-size:15px">📅</span>
+                        <span class="date-display-label" id="historyDateLabel">--/--/----</span>
+                        <input type="date" class="date-native-input" id="historyDateInput">
+                    </div>
+                    <button type="button" class="date-nav-btn" id="btnNextDate" title="Xem ngày hôm sau">▶</button>
+                    <button type="button" class="date-today-btn" id="btnToday">Hôm nay</button>
+                </div>
+
+                <!-- Thẻ tóm tắt KPI ngày được chọn -->
+                <section class="history-summary-card" id="historySummaryCard">
+                    <div class="history-summary-card__head">
+                        <span class="history-summary-card__title" id="historyCardDateTitle">🎯 Tiến độ ngày</span>
+                        <span class="history-summary-card__badge" id="historyStatusBadge">Đang kiểm tra...</span>
+                    </div>
+                    <div class="history-summary-card__score" id="historyScoreText">0 <span>/ 15 điểm</span></div>
+                    <div class="kpi-bar">
+                        <div class="kpi-bar__fill" id="historyBarFill" style="background:#38bdf8"></div>
+                    </div>
+                    <div class="history-summary-card__note" id="historyNoteText">Đang tải dữ liệu kiểm tra...</div>
+                </section>
+
+                <!-- Danh sách điểm bán -->
+                <div class="history-list-header">
+                    <div class="history-list-title">
+                        <span>🏪 Các điểm bán đã check-in</span>
+                        <span class="history-list-count" id="historyListCount">0 điểm</span>
+                    </div>
+                    <button type="button" id="btnRefreshHistory" style="font-size:12px; font-weight:800; color:var(--brand-dark); display:flex; align-items:center; gap:4px">
+                        🔄 Tải lại
+                    </button>
+                </div>
+
+                <!-- Container danh sách điểm bán -->
+                <div id="historyStoreList"></div>
+            </div>
+        </main>
+
+        <!-- Lightbox Modal phóng to ảnh -->
+        <div class="lightbox-modal" id="lightboxModal">
+            <button type="button" class="lightbox-close-btn" id="btnCloseLightbox" title="Đóng">×</button>
+            <img class="lightbox-image" id="lightboxImage" src="" alt="Ảnh chi tiết">
+            <div class="lightbox-title" id="lightboxTitle">Ảnh điểm bán</div>
+        </div>
+
+        <!-- Nút gửi ở chân trang -->
+        <footer class="footbar">
+            <button class="btn btn--brand" id="btnSubmit" disabled>
+                <span>Xác nhận Check-in</span>
+            </button>
+        </footer>
+    </div>
+
+    <!-- Blocker ngoài Telegram -->
+    <div class="tg-blocker" id="tgBlocker">
+        <div class="tg-blocker__icon">🔐</div>
+        <div class="tg-blocker__title">Truy cập không hợp lệ</div>
+        <div class="tg-blocker__desc">
+            Vui lòng mở ứng dụng này trực tiếp từ nút bấm trong nhóm Telegram của bạn.
+        </div>
+    </div>
+
+    <!-- Màn hình thành công -->
+    <div class="success-overlay" id="successOverlay">
+        <div class="success-card">
+            <div class="success-icon">✓</div>
+            <div class="success-title">Check-in Thành Công!</div>
+            <div class="success-store" id="successStoreName">Tạp hóa Lan Anh</div>
+            <div class="success-address" id="successStoreAddress">123 Nguyễn Văn Tuyết</div>
+            <div class="success-badge" id="successProgressText">Tiến độ hôm nay: 2 / 15 điểm</div>
+            <button class="btn btn--brand" id="btnContinue" style="margin-bottom:8px">Tiếp tục check-in điểm khác</button>
+            <button type="button" id="btnCloseApp" style="font-size:13px; font-weight:700; color:var(--faint); padding:6px">Đóng ứng dụng</button>
+        </div>
+    </div>
+
+    <!-- Client Logic -->
+    <script src="/mini-app/retail/app.js"></script>
+</body>
+
+</html>

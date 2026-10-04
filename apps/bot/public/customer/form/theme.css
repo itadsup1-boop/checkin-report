@@ -1,0 +1,247 @@
+/* ============================================================
+   Giao diện Mini App hồ sơ khách hàng.
+
+   Bảng màu giữ NGUYÊN của bản cũ: nền tối #0f172a, nhấn cyan #06b6d4 — để
+   nhân viên không thấy lạ. Đây là app duy nhất còn dùng nền tối; kho và lịch
+   khách đã chuyển sang bảng sáng ở ../../shared-ui/theme-tokens.css.
+
+   Muốn gộp về một bảng màu thì ánh xạ khối :root dưới đây sang token dùng
+   chung, giống cách warehouse/ đã làm.
+   ============================================================ */
+
+:root {
+  --bg: #0f172a;
+  --card-bg: #1e293b;
+  --card-border: rgba(255, 255, 255, .08);
+  --ink: #f8fafc;
+  --muted: #94a3b8;
+  --primary: #06b6d4;
+  --primary-hover: #0891b2;
+  --primary-glow: rgba(6, 182, 212, .35);
+  --success: #10b981;
+  --danger: #f43f5e;
+  --warning: #f59e0b;
+  --input-bg: rgba(15, 23, 42, .6);
+  --input-border: rgba(255, 255, 255, .08);
+  --input-focus: #22d3ee;
+  --r: 14px;
+  --r-lg: 20px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+body {
+  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  min-height: 100vh;
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; background: none; }
+input, select { outline: none; }
+.hidden { display: none !important; }
+
+#app { max-width: 480px; margin: 0 auto; padding: 16px 16px 32px; }
+
+/* ---------- Đầu trang ---------- */
+
+.header { text-align: center; margin-bottom: 18px; }
+.header__title {
+  font-size: 21px; font-weight: 700; letter-spacing: -.4px;
+  background: linear-gradient(to right, #ffffff, #cffafe);
+  -webkit-background-clip: text; background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.header__date { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+/* ---------- Thẻ ---------- */
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  padding: 18px 16px;
+  margin-bottom: 14px;
+  box-shadow: 0 18px 40px -18px rgba(0, 0, 0, .6);
+}
+.section-title {
+  font-size: 13px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; color: var(--primary);
+  margin-bottom: 14px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--card-border);
+}
+
+/* ---------- Trường nhập ---------- */
+
+.form-group { margin-bottom: 14px; }
+.form-group:last-child { margin-bottom: 0; }
+.form-group label {
+  display: block; font-size: 12.5px; font-weight: 500;
+  color: var(--muted); margin-bottom: 6px;
+}
+.required { color: var(--danger); }
+
+.form-control {
+  width: 100%;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-size: 15px;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+.form-control:focus {
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, .15);
+}
+.form-control:disabled { color: var(--muted); cursor: not-allowed; }
+
+.field-hint { font-size: 11px; color: var(--muted); margin-top: 5px; }
+.form-row { display: flex; gap: 10px; }
+.form-row > * { flex: 1; }
+
+/* ---------- Chọn chế độ nộp ảnh ---------- */
+
+.media-mode {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: var(--r);
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.media-mode input { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; accent-color: var(--primary); }
+.media-mode__title { font-size: 14px; font-weight: 600; }
+.media-mode__desc { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+.reply-help {
+  background: rgba(245, 158, 11, .1);
+  border: 1px solid rgba(245, 158, 11, .25);
+  border-radius: var(--r);
+  padding: 12px;
+  font-size: 12.5px;
+  color: var(--warning);
+  line-height: 1.6;
+}
+
+/* ---------- Ảnh xem trước ---------- */
+
+.preview-container {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px;
+}
+.preview-item {
+  position: relative; aspect-ratio: 1;
+  border-radius: 10px; overflow: hidden;
+  border: 1px solid var(--input-border);
+  background: rgba(0, 0, 0, .25);
+}
+.preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.video-badge {
+  position: absolute; left: 3px; bottom: 3px;
+  background: rgba(0, 0, 0, .7); color: #fff;
+  font-size: 8px; font-weight: 700; padding: 2px 5px; border-radius: 4px;
+}
+.remove-btn {
+  position: absolute; top: 2px; right: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: rgba(244, 63, 94, .9); color: #fff;
+  font-size: 10px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ---------- Nút ---------- */
+
+.btn {
+  width: 100%; padding: 14px;
+  border-radius: var(--r);
+  font-size: 15px; font-weight: 700;
+  transition: transform .1s ease, opacity .15s ease;
+}
+.btn:active { transform: scale(.99); }
+.btn:disabled { opacity: .55; cursor: not-allowed; }
+.btn-primary {
+  background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+  color: #fff;
+  box-shadow: 0 6px 18px var(--primary-glow);
+}
+.btn-outline {
+  background: rgba(255, 255, 255, .03);
+  border: 1px solid var(--input-border);
+  color: var(--ink);
+  font-size: 14px;
+}
+.btn-success { background: var(--success); color: #fff; }
+.submit-row { margin-top: 4px; }
+
+/* ---------- Thông báo ---------- */
+
+.alert {
+  display: none;
+  background: rgba(244, 63, 94, .12);
+  border: 1px solid rgba(244, 63, 94, .3);
+  color: #fecdd3;
+  border-radius: var(--r);
+  padding: 12px 14px;
+  font-size: 13px;
+  margin-bottom: 14px;
+  line-height: 1.55;
+}
+
+/* ---------- Lớp phủ khi gửi ---------- */
+
+.loading-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  background: rgba(15, 23, 42, .95);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.loading-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: var(--r-lg);
+  padding: 26px 22px;
+  text-align: center;
+  width: 100%; max-width: 320px;
+}
+.loading-title { font-size: 15px; font-weight: 600; margin: 14px 0 16px; }
+.spinner {
+  width: 42px; height: 42px; margin: 0 auto;
+  border: 4px solid rgba(6, 182, 212, .12);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.progress-track {
+  height: 8px; background: rgba(255, 255, 255, .08);
+  border-radius: 4px; overflow: hidden;
+}
+.progress-bar {
+  width: 0; height: 100%;
+  background: linear-gradient(90deg, #22d3ee, var(--primary));
+  border-radius: 4px;
+  transition: width .15s ease;
+}
+.progress-text { font-size: 12px; color: var(--muted); font-weight: 600; margin-top: 8px; }
+
+/* ---------- Màn hình thành công ---------- */
+
+.success-screen {
+  min-height: 100vh;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; padding: 28px 22px; gap: 6px;
+}
+.success-icon { font-size: 52px; }
+.success-title { font-size: 19px; font-weight: 700; color: var(--success); margin-top: 6px; }
+.success-desc { font-size: 14px; color: var(--muted); line-height: 1.6; margin: 6px 0 22px; max-width: 320px; }
+
+@media (max-width: 360px) {
+  .preview-container { grid-template-columns: repeat(3, 1fr); }
+  .form-row { flex-direction: column; gap: 0; }
+}

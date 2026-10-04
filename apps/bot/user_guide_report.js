@@ -4,15 +4,15 @@ export const REPORT_BOT_HELP_HTML = `
 👤 <b>DÀNH CHO NHÂN VIÊN:</b>
 
 1️⃣ <b>Đăng ký tài khoản:</b>
-• Gõ lệnh: <code>/setup Họ và Tên</code> (Vd: <code>/setup Nguyễn Văn A</code>)
-• Hoặc bấm nút <b>[👤 Đăng Ký Tài Khoản]</b> dưới bảng tin.
+• Bấm nút <b>[👤 Đăng Ký Tài Khoản]</b> dưới bảng tin.
+• Nhập họ tên và vị trí trực tiếp trong Mini App, sau đó bấm <b>ĐĂNG KÝ NGAY</b>.
 
 2️⃣ <b>Đăng ký & Xem Lịch Tuần:</b>
 • Gõ lệnh: <code>/lich_tuan</code> hoặc bấm <b>[📅 Lịch Tuần]</b> để chọn ca làm việc.
 
-3️⃣ <b>Check-in Video:</b>
-• Bấm <b>[📹 Check-in]</b> để chọn & tải video từ MiniApp.
-• Hoặc gửi 1 video lên nhóm kèm từ <code>check</code> trong caption.
+3️⃣ <b>Check-in / Check-out (Ảnh / Video):</b>
+• Bấm <b>[📸 Check-in / Check-out]</b> để chọn & tải ảnh hoặc video từ MiniApp (Gửi lần 1: Check-in, gửi lần 2: Check-out).
+• Hoặc gửi ảnh / video lên nhóm kèm từ <code>check</code> trong caption hoặc <code>check out</code> khi kết ca.
 
 4️⃣ <b>Báo cáo KPI hằng ngày:</b>
 • Bấm <b>[📊 Báo Cáo KPI]</b> để mở Form nộp số liệu & tải ảnh.

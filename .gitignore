@@ -74,4 +74,7 @@ scripts/windows/cloudflared.exe
 # video & uploaded files
 apps/bot/public/uploads/
 apps/public/uploads/
-**/public/uploads/
+**/public/uploads/scratch/
+
+# --- Script tạm khi debug (đã bỏ theo dõi ở commit 4d80d9d) ---
+/scratch/
