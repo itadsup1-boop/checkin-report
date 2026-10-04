@@ -281,6 +281,76 @@ describe('Telesale Application Flows', () => {
         assert.match(sentMessages[0].text, /TỔNG KẾT TELESALE TOÀN ĐỘI/);
     });
 
+    test('scanTelesaleDeadline không gửi lại tin phạt nếu penalty đã tồn tại (isNew = false) hoặc lock bị từ chối', async () => {
+        const tgNotices = [];
+        const mockRepo = {
+            findActiveTelesaleGroups: async () => [
+                { telegram_group_id: '-100999', group_name: 'Team Telesale' }
+            ],
+            findMembersInTelesaleGroup: async () => [
+                { id: 'emp-1', full_name: 'Trang', telegram_id: '111' }
+            ],
+            findReportedEmployeeIds: async () => [],
+            findOffDutyEmployeeIds: async () => [],
+            findOnLeaveEmployeeIds: async () => [],
+            createPenalty: async (p) => ({ id: 101, ...p, isNew: false }),
+            acquireNotificationLock: async () => false
+        };
+
+        const mockBot = {
+            telegram: {
+                sendMessage: async (chatId, text) => {
+                    tgNotices.push({ chatId, text });
+                }
+            }
+        };
+
+        const scanDeadline = createScanTelesaleDeadline({
+            telesaleRepository: mockRepo,
+            bot: mockBot,
+            now: () => new Date('2026-09-22T12:05:00Z')
+        });
+
+        await scanDeadline();
+
+        // Không được gửi bất kỳ tin nhắn nào do đã tồn tại và lock bị từ chối
+        assert.equal(tgNotices.length, 0);
+    });
+
+    test('summarizeDailyTelesale không gửi trùng tin nếu lock thông báo đã bị chiếm (đa tiến trình)', async () => {
+        const sentMessages = [];
+        const mockRepo = {
+            findActiveTelesaleGroups: async () => [
+                { telegram_group_id: '-100999', group_name: 'Team Telesale' }
+            ],
+            getDailyGroupSummary: async () => ({
+                reports: [
+                    { full_name: 'Trang', so_nhan: 10, tong_lich: 1, tong_toi_hnay: 1, lich_ngay_mai: 0, tong_ds_hnay: 1000000 }
+                ]
+            }),
+            acquireNotificationLock: async () => false
+        };
+
+        const mockBot = {
+            telegram: {
+                sendMessage: async (chatId, text, opts) => {
+                    sentMessages.push({ chatId, text, opts });
+                }
+            }
+        };
+
+        const summarize = createSummarizeDailyTelesale({
+            telesaleRepository: mockRepo,
+            bot: mockBot,
+            now: () => new Date('2026-09-23T12:00:00Z')
+        });
+
+        await summarize();
+
+        // Không gửi tin nào do lock từ chối (tránh 2 tin nhắn)
+        assert.equal(sentMessages.length, 0);
+    });
+
     test('submitTelesaleReport đồng bộ đúng vào tên đầy đủ khi người dùng chỉ ghi tên gọi rút gọn', async () => {
         let savedReport = null;
 

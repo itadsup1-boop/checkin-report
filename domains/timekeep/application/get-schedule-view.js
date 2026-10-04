@@ -67,6 +67,7 @@ export function createGetScheduleView({ repository, findEmployeeContext, isSyste
             ok: true,
             data: {
                 user, target_user: targetUser, is_admin: isAdmin,
+                schedule_registration_open: scheduleRegistrationOpen,
                 currentWeekDays, nextWeekDays,
                 is_current_week_locked: isCurrentWeekLocked, is_next_week_locked: isNextWeekLocked,
                 mySchedules, groupSchedules, groupUsers

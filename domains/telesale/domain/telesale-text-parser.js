@@ -65,9 +65,12 @@ export function isTelesaleReportMessage(text) {
     const patterns = [
         /(?:nhân\s*sự|nhân\s*viên|nv|tên)\s*[:：]/i,
         /số\s*nhận\s*[:：]/i,
-        /(?:trùng|knc|văng)\s*[:：]/i,
+        /(?:trùng|knc|văng)(?:\s*\([^)]*\))?\s*[:：]/i,
         /lịch\s*pv\s*mới\s*[:：]/i,
         /lịch\s*pv\s*cũ\s*[:：]/i,
+        /(?:số\s*)?đơn\s*chốt\s*mới\s*[:：]/i,
+        /(?:số\s*)?đơn\s*chốt\s*cũ\s*[:：]/i,
+        /(?:khách|đơn)\s*chốt\s*[:：]/i,
         /lịch\s*(?:hẹn\s*)?ngày\s*mai\s*[:：]/i,
         /(?:tổng\s*)?tới\s*h(?:ôm\s*)?nay\s*[:：]/i,
         /(?:tổng\s*)?bong\s*h(?:ôm\s*)?nay\s*[:：]/i,
@@ -81,24 +84,17 @@ export function isTelesaleReportMessage(text) {
         }
     }
 
-    return matchCount >= 3;
+    return matchCount >= 2;
 }
 
 /**
  * Bóc tách nội dung tin nhắn báo cáo Telesale thành cấu trúc dữ liệu chuẩn.
+ * Hỗ trợ linh hoạt cả form chuẩn 9 trường và form tùy biến (như nhóm Xây Dựng 24h).
  *
- * Mẫu chuẩn:
- * Nhân sự: ...
- * Số nhận: ...
- * Số trùng / KNC/ Văng: ...
- * Số lịch PV mới: ...
- * Số lịch PV cũ: ...
- * Lịch hẹn ngày mai: ...
- * Tổng tới hôm nay: ...
- * Tổng bong hôm nay: ...
- * TỔNG DS hnay: ...
+ * @param {string} text Nội dung tin nhắn Telegram
+ * @param {Array} dynamicFields Danh sách cấu hình trường động của nhóm (nếu có)
  */
-export function parseTelesaleTextMessage(text) {
+export function parseTelesaleTextMessage(text, dynamicFields = null) {
     if (!text || typeof text !== 'string') {
         return { isValid: false, message: 'Nội dung tin nhắn trống' };
     }
@@ -110,14 +106,20 @@ export function parseTelesaleTextMessage(text) {
     let so_trung_knc_vang = 0;
     let lich_pv_moi = 0;
     let lich_pv_cu = 0;
+    let so_don_chot_moi = 0;
+    let so_don_chot_cu = 0;
     let lich_ngay_mai = 0;
     let tong_toi_hnay = 0;
     let tong_bong_hnay = 0;
     let tong_ds_hnay = 0;
 
+    const customValues = {};
+    const customers = [];
     let matchedFieldsCount = 0;
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+
         // 1. Nhân sự: (hỗ trợ Nhân sự, Nhân viên, NV, Họ và tên, Tên...)
         const empMatch = line.match(/^(?:nhân\s*sự|nhan\s*su|nhân\s*viên|nhan\s*vien|nv|họ\s*và\s*tên|ho\s*va\s*ten|tên|ten)\s*[:：]\s*(.*)$/i);
         if (empMatch) {
@@ -130,14 +132,16 @@ export function parseTelesaleTextMessage(text) {
         const nhanMatch = line.match(/^(?:số\s*nhận|so\s*nhan)\s*[:：]\s*(.*)$/i);
         if (nhanMatch) {
             so_nhan = parseTelesaleNumber(nhanMatch[1]);
+            customValues.so_nhan = so_nhan;
             matchedFieldsCount++;
             continue;
         }
 
-        // 3. Số trùng / KNC/ Văng:
-        const trungMatch = line.match(/^(?:số\s*trùng\s*[\/\\]\s*knc\s*[\/\\]\s*văng|số\s*trùng|trùng\s*[\/\\]\s*knc\s*[\/\\]\s*văng|so\s*trung)\s*[:：]\s*(.*)$/i);
+        // 3. Số trùng / KNC/ Văng (hỗ trợ cả có ghi chú trong ngoặc ví dụ "(trên 200km)"):
+        const trungMatch = line.match(/^(?:số\s*trùng\s*[\/\\]\s*knc\s*[\/\\]\s*văng|số\s*trùng|trùng\s*[\/\\]\s*knc\s*[\/\\]\s*văng|so\s*trung)(?:\s*\([^)]*\))?\s*[:：]\s*(.*)$/i);
         if (trungMatch) {
             so_trung_knc_vang = parseTelesaleNumber(trungMatch[1]);
+            customValues.so_trung_knc_vang = so_trung_knc_vang;
             matchedFieldsCount++;
             continue;
         }
@@ -146,6 +150,7 @@ export function parseTelesaleTextMessage(text) {
         const pvMoiMatch = line.match(/^(?:số\s*lịch\s*pv\s*mới|lịch\s*pv\s*mới|lich\s*pv\s*moi|số\s*lịch\s*mới)\s*[:：]\s*(.*)$/i);
         if (pvMoiMatch) {
             lich_pv_moi = parseTelesaleNumber(pvMoiMatch[1]);
+            customValues.lich_pv_moi = lich_pv_moi;
             matchedFieldsCount++;
             continue;
         }
@@ -154,40 +159,109 @@ export function parseTelesaleTextMessage(text) {
         const pvCuMatch = line.match(/^(?:số\s*lịch\s*pv\s*cũ|lịch\s*pv\s*cũ|lich\s*pv\s*cu|số\s*lịch\s*cũ)\s*[:：]\s*(.*)$/i);
         if (pvCuMatch) {
             lich_pv_cu = parseTelesaleNumber(pvCuMatch[1]);
+            customValues.lich_pv_cu = lich_pv_cu;
             matchedFieldsCount++;
             continue;
         }
 
-        // 6. Lịch hẹn ngày mai:
+        // 6. Số đơn chốt mới:
+        const chotMoiMatch = line.match(/^(?:số\s*đơn\s*chốt\s*mới|đơn\s*chốt\s*mới|don\s*chot\s*moi)\s*[:：]\s*(.*)$/i);
+        if (chotMoiMatch) {
+            so_don_chot_moi = parseTelesaleNumber(chotMoiMatch[1]);
+            customValues.so_don_chot_moi = so_don_chot_moi;
+            matchedFieldsCount++;
+            continue;
+        }
+
+        // 7. Số đơn chốt cũ:
+        const chotCuMatch = line.match(/^(?:số\s*đơn\s*chốt\s*cũ|đơn\s*chốt\s*cũ|don\s*chot\s*cu)\s*[:：]\s*(.*)$/i);
+        if (chotCuMatch) {
+            so_don_chot_cu = parseTelesaleNumber(chotCuMatch[1]);
+            customValues.so_don_chot_cu = so_don_chot_cu;
+            matchedFieldsCount++;
+            continue;
+        }
+
+        // 8. Lịch hẹn ngày mai:
         const ngayMaiMatch = line.match(/^(?:lịch\s*hẹn\s*ngày\s*mai|lịch\s*ngày\s*mai|lich\s*hen\s*ngay\s*mai|lich\s*ngay\s*mai)\s*[:：]\s*(.*)$/i);
         if (ngayMaiMatch) {
             lich_ngay_mai = parseTelesaleNumber(ngayMaiMatch[1]);
+            customValues.lich_ngay_mai = lich_ngay_mai;
             matchedFieldsCount++;
             continue;
         }
 
-        // 7. Tổng tới hôm nay:
+        // 9. Tổng tới hôm nay:
         const toiMatch = line.match(/^(?:(?:tổng\s*|khách\s*)?tới\s*h(?:ôm\s*)?nay|(?:tổng\s*|khách\s*)?tới|tong\s*toi\s*hnay|tong\s*toi)\s*[:：]\s*(.*)$/i);
         if (toiMatch) {
             tong_toi_hnay = parseTelesaleNumber(toiMatch[1]);
+            customValues.tong_toi_hnay = tong_toi_hnay;
             matchedFieldsCount++;
             continue;
         }
 
-        // 8. Tổng bong hôm nay:
+        // 10. Tổng bong hôm nay:
         const bongMatch = line.match(/^(?:(?:tổng\s*|khách\s*)?bong\s*h(?:ôm\s*)?nay|(?:tổng\s*|khách\s*)?bong|tong\s*bong\s*hnay|tong\s*bong)\s*[:：]\s*(.*)$/i);
         if (bongMatch) {
             tong_bong_hnay = parseTelesaleNumber(bongMatch[1]);
+            customValues.tong_bong_hnay = tong_bong_hnay;
             matchedFieldsCount++;
             continue;
         }
 
-        // 9. TỔNG DS hnay:
+        // 11. TỔNG DS hnay:
         const dsMatch = line.match(/^(?:tổng\s*ds\s*h(?:ôm\s*)?nay|tong\s*ds\s*hnay|doanh\s*số\s*h(?:ôm\s*)?nay|doanh\s*thu\s*h(?:ôm\s*)?nay|tổng\s*ds|doanh\s*số|ds\s*hnay)\s*[:：]\s*(.*)$/i);
         if (dsMatch) {
             tong_ds_hnay = parseTelesaleNumber(dsMatch[1], true);
+            customValues.tong_ds_hnay = tong_ds_hnay;
             matchedFieldsCount++;
             continue;
+        }
+
+        // 12. Khớp trường tuỳ biến từ dynamicFields (nếu có)
+        if (dynamicFields && Array.isArray(dynamicFields)) {
+            let fieldMatched = false;
+            for (const f of dynamicFields) {
+                if (f.category !== 'INPUT') continue;
+                const cleanLabel = f.label.replace(/\([^)]*\)/g, '').trim().toLowerCase();
+                const cleanLine = line.toLowerCase();
+                if (cleanLine.startsWith(cleanLabel) || cleanLine.startsWith(f.key.toLowerCase())) {
+                    const colonIdx = line.indexOf(':') !== -1 ? line.indexOf(':') : line.indexOf('：');
+                    if (colonIdx !== -1) {
+                        const valStr = line.slice(colonIdx + 1).trim();
+                        const isCurr = f.type === 'currency' || f.data_type === 'currency';
+                        const parsedVal = (f.type === 'number' || isCurr) ? parseTelesaleNumber(valStr, isCurr) : valStr;
+                        customValues[f.key] = parsedVal;
+                        matchedFieldsCount++;
+                        fieldMatched = true;
+                        break;
+                    }
+                }
+            }
+            if (fieldMatched) continue;
+        }
+
+        // 13. Khớp danh sách chi tiết khách hàng: "1. tên khách hàng 1"
+        const custMatch = line.match(/^(\d+)[\.\-\/]\s*(.+)$/);
+        if (custMatch) {
+            const idx = parseInt(custMatch[1], 10);
+            const content = custMatch[2].trim();
+            const colonIdx = line.indexOf(':') !== -1 ? line.lastIndexOf(':') : line.lastIndexOf('：');
+            if (colonIdx > line.indexOf(content)) {
+                const name = line.slice(line.indexOf(content), colonIdx).trim();
+                const amt = parseTelesaleNumber(line.slice(colonIdx + 1), true);
+                customers.push({ index: idx, name, amount: amt });
+            } else {
+                let amt = 0;
+                if (i + 1 < lines.length) {
+                    const nextLine = lines[i + 1].trim();
+                    if (/^[\d.,\s]+(?:đ|k|tr|triệu)?$/i.test(nextLine) || /ds/i.test(nextLine)) {
+                        amt = parseTelesaleNumber(nextLine, true);
+                        i++;
+                    }
+                }
+                customers.push({ index: idx, name: content, amount: amt });
+            }
         }
     }
 
@@ -199,9 +273,13 @@ export function parseTelesaleTextMessage(text) {
         so_trung_knc_vang,
         lich_pv_moi,
         lich_pv_cu,
+        so_don_chot_moi,
+        so_don_chot_cu,
         lich_ngay_mai,
         tong_toi_hnay,
         tong_bong_hnay,
-        tong_ds_hnay
+        tong_ds_hnay,
+        customValues,
+        customers
     };
 }

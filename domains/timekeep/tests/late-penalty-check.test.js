@@ -63,24 +63,24 @@ test('từ phút thứ 33 trở đi mới ghi nhận đi muộn', async () => {
     assert.equal(inserted[0].lateMinutes, 33);
 });
 
-test('có báo trước đúng trong hạn đã khai (đến muộn <= số phút đã báo, sau khi vượt ân hạn) => miễn phạt hoàn toàn', async () => {
+test('có báo trước đúng trong hạn đã khai (đến muộn <= số phút đã báo, sau khi vượt ân hạn) => ghi nhận ON_TIME, không phạt', async () => {
     const checkin = buildCheckin({ shiftStart: '08:30:00', checkInTime: '09:05:00' }); // muộn 35 phút
-    const { repository, inserted } = buildRepository({
+    const { repository, inserted, statuses } = buildRepository({
         checkin, approvedLateLeave: { id: 'req-1', late_minutes: 40 } // đã báo trước 40 phút
     });
     const { runLatePenaltyCheck } = createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup: async () => {}, bot: {}, moment });
 
     await runLatePenaltyCheck({ todayStr: '2026-08-24', currentMonth: 8, currentYear: 2026 });
 
-    assert.equal(inserted.length, 1);
-    assert.equal(inserted[0].amount, 0);
-    assert.match(inserted[0].reason, /đến đúng trong thời gian đã báo/);
+    assert.equal(inserted.length, 0);
+    assert.deepEqual(statuses, ['ON_TIME']);
 });
 
-test('có báo trước nhưng đến muộn hơn số phút đã khai => vẫn giảm 50%, không miễn', async () => {
+test('có báo trước nhưng đến muộn hơn số phút đã khai => vẫn giảm 50% khi đã từng bị phạt trong tháng', async () => {
     const checkin = buildCheckin({ shiftStart: '08:30:00', checkInTime: '09:10:00' }); // muộn 40 phút
     const { repository, inserted } = buildRepository({
-        checkin, approvedLateLeave: { id: 'req-1', late_minutes: 35 } // chỉ báo trước 35 phút
+        checkin, approvedLateLeave: { id: 'req-1', late_minutes: 35 }, // chỉ báo trước 35 phút
+        latePenaltyCountInMonth: 1
     });
     const { runLatePenaltyCheck } = createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup: async () => {}, bot: {}, moment });
 
@@ -92,9 +92,38 @@ test('có báo trước nhưng đến muộn hơn số phút đã khai => vẫn 
     assert.match(inserted[0].reason, /Đã giảm 50%/);
 });
 
+test('có báo trước nhưng đến muộn hơn số phút đã khai và là lần đầu trong tháng => miễn phạt nhưng ghi nhận lý do quá hạn', async () => {
+    const checkin = buildCheckin({ shiftStart: '08:30:00', checkInTime: '09:10:00' }); // muộn 40 phút
+    const { repository, inserted } = buildRepository({
+        checkin, approvedLateLeave: { id: 'req-1', late_minutes: 35 }, // chỉ báo trước 35 phút
+        latePenaltyCountInMonth: 0 // lần đầu trong tháng
+    });
+    const { runLatePenaltyCheck } = createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup: async () => {}, bot: {}, moment });
+
+    await runLatePenaltyCheck({ todayStr: '2026-08-24', currentMonth: 8, currentYear: 2026 });
+
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0].amount, 0);
+    assert.match(inserted[0].reason, /Quá hạn xin muộn/);
+});
+
+test('bỏ qua check-in thuộc nhóm MARKETING không quét qua cron Clinic', async () => {
+    const checkin = {
+        ...buildCheckin({ shiftStart: '08:00:00', checkInTime: '08:55:00' }),
+        attendance_policy: 'MARKETING'
+    };
+    const { repository, inserted, statuses } = buildRepository({ checkin, approvedLateLeave: null });
+    const { runLatePenaltyCheck } = createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup: async () => {}, bot: {}, moment });
+
+    await runLatePenaltyCheck({ todayStr: '2026-08-24', currentMonth: 8, currentYear: 2026 });
+
+    assert.equal(inserted.length, 0);
+    assert.equal(statuses.length, 0);
+});
+
 test('không có đơn báo trước nào => phạt đầy đủ theo số phút muộn thực tế', async () => {
     const checkin = buildCheckin({ shiftStart: '08:30:00', checkInTime: '09:10:00' }); // muộn 40 phút
-    const { repository, inserted } = buildRepository({ checkin, approvedLateLeave: null });
+    const { repository, inserted } = buildRepository({ checkin, approvedLateLeave: null, latePenaltyCountInMonth: 1 });
     const { runLatePenaltyCheck } = createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup: async () => {}, bot: {}, moment });
 
     await runLatePenaltyCheck({ todayStr: '2026-08-24', currentMonth: 8, currentYear: 2026 });

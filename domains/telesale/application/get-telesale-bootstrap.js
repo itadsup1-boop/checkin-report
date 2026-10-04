@@ -55,6 +55,7 @@ export function createGetTelesaleBootstrap({
         }
 
         let existingServices = [];
+        let existingReportValues = {};
         if (existingReport) {
             let raw = existingReport.raw_payload;
             if (typeof raw === 'string') {
@@ -62,6 +63,16 @@ export function createGetTelesaleBootstrap({
             }
             if (raw && Array.isArray(raw.services)) {
                 existingServices = raw.services;
+            }
+            existingReportValues = existingReport.report_values || {};
+        }
+
+        let formConfig = null;
+        if (telegramGroupId && telesaleRepository.getFormConfig) {
+            try {
+                formConfig = await telesaleRepository.getFormConfig(telegramGroupId);
+            } catch (cfgErr) {
+                console.warn('[Telesale Bootstrap Warning] Không lấy được formConfig:', cfgErr.message);
             }
         }
 
@@ -75,6 +86,7 @@ export function createGetTelesaleBootstrap({
             dateStr,
             monthlyPrevRevenue,
             services,
+            formConfig,
             existingReport: existingReport ? {
                 so_nhan: existingReport.so_nhan,
                 so_trung_knc_vang: existingReport.so_trung_knc_vang,
@@ -84,7 +96,8 @@ export function createGetTelesaleBootstrap({
                 tong_toi_hnay: existingReport.tong_toi_hnay,
                 tong_bong_hnay: existingReport.tong_bong_hnay,
                 tong_ds_hnay: existingReport.tong_ds_hnay,
-                services: existingServices
+                services: existingServices,
+                reportValues: existingReportValues
             } : null
         };
     };

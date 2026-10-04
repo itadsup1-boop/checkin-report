@@ -149,10 +149,14 @@ export function createServiceOrderSheetSync({ pool, moment, getDocById }) {
         const items = itemsResult.rows;
         const existingRow = rowByOrderCode.get(order.order_code);
         if (existingRow) {
-            // Đơn đã có dòng: chỉ cập nhật trạng thái, không ghi thêm dòng mới.
+            // Đơn đã có dòng: cập nhật trạng thái và thông tin mặt hàng mới nhất
             existingRow.set('Trạng thái đơn', trangThai);
             existingRow.set('Người hoàn tác', nguoiHoanTac);
             existingRow.set('Thời gian hoàn tác', gioHoanTac);
+            existingRow.set('Dịch vụ', gopDichVu(items));
+            existingRow.set('Mặt hàng', gopMatHang(items));
+            existingRow.set('Số mặt hàng', items.length);
+            existingRow.set('Lấy từ cơ sở khác', gopDieuChuyen(items));
             await existingRow.save();
         } else if (items.length > 0) {
             await exportSheet.addRow({

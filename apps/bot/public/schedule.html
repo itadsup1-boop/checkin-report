@@ -769,7 +769,7 @@
                         isUserAdmin = res.is_admin;
                         isCurrentWeekLocked = res.is_current_week_locked;
                         isNextWeekLocked = res.is_next_week_locked;
-                        scheduleRegistrationOpen = res.schedule_registration_open;
+                        scheduleRegistrationOpen = res.schedule_registration_open ?? res.user?.schedule_registration_open ?? true;
                         currentWeekDays = res.currentWeekDays;
                         nextWeekDays = res.nextWeekDays;
                         groupSchedules = res.groupSchedules;

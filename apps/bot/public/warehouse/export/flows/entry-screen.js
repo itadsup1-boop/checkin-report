@@ -89,6 +89,14 @@ export function createEntryScreen({ catalog, onPick }) {
                 tone: TRANSFER_TONE,
                 disabled: noProducts,
                 onClick: () => onPick('transfer')
+            }),
+
+            optionCard({
+                iconName: 'edit',
+                title: 'Sửa đơn xuất (24h)',
+                desc: 'Chỉnh sửa đơn hàng trong vòng 24 giờ.',
+                tone: CUSTOMER_TONE,
+                onClick: () => onPick('edit')
             })
         )
     );

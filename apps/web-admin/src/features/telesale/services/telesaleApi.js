@@ -69,5 +69,43 @@ export const telesaleApi = {
       headers: authHeader()
     });
     return response.data;
+  },
+
+  /**
+   * Lấy cấu hình Form động & lịch trình của nhóm
+   */
+  async getFormConfig({ groupId }) {
+    const response = await axios.get(`${API_URL}/admin/telesale/config?groupId=${groupId}`, {
+      headers: authHeader()
+    });
+    return response.data;
+  },
+
+  /**
+   * Cập nhật cấu hình Form động & lịch trình
+   */
+  async updateFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings }) {
+    const response = await axios.put(`${API_URL}/admin/telesale/config`, {
+      telegramGroupId,
+      groupName,
+      fields,
+      scheduleSettings,
+      sheetSettings
+    }, {
+      headers: authHeader()
+    });
+    return response.data;
+  },
+
+  /**
+   * Tự động đồng bộ Header sang Google Sheets
+   */
+  async syncSheetHeaders({ telegramGroupId }) {
+    const response = await axios.post(`${API_URL}/admin/telesale/sync-sheet-headers`, {
+      telegramGroupId
+    }, {
+      headers: authHeader()
+    });
+    return response.data;
   }
 };

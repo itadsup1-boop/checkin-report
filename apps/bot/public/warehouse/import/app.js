@@ -24,6 +24,7 @@ import { createScanSheet } from './steps/scan-sheet.js';
 import { createManualAddSheet } from './steps/manual-add-sheet.js';
 import { createItemsSheet } from './steps/items-sheet.js';
 import { createDoneScreen } from './steps/done-screen.js';
+import { createEditImportFlow } from './steps/edit-import-flow.js';
 
 configureWarehouseApi({ action: 'whimport' });
 
@@ -217,7 +218,8 @@ function renderStep() {
             onPick: code => {
                 state.branch = code;
                 renderFoot();
-            }
+            },
+            onEditImport: () => showEditImportFlow()
         }));
         return;
     }
@@ -308,6 +310,16 @@ function showFullScreen(node) {
     replaceChildren(mount, node);
 }
 
+function showEditImportFlow(initialTransactionId = '') {
+    showFullScreen(createEditImportFlow({
+        initialTransactionId,
+        onExit: () => {
+            showShell();
+            render();
+        }
+    }));
+}
+
 /* ---------- Khởi động ---------- */
 
 async function start() {
@@ -325,6 +337,12 @@ async function start() {
     try {
         state.products = await loadProducts();
         state.barcodeOwners = toBarcodeOwners(state.products);
+        const urlParams = new URLSearchParams(location.search);
+        const queryTransId = urlParams.get('trans_id') || urlParams.get('transaction_id') || urlParams.get('edit_id') || '';
+        if (queryTransId) {
+            showEditImportFlow(queryTransId);
+            return;
+        }
         showShell();
         render();
     } catch (error) {

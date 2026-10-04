@@ -15,23 +15,27 @@ import { registerTelesaleCrons } from './interfaces/cron/register-telesale-crons
 
 import { registerTelesaleAdminRoutes } from './interfaces/admin-api/telesale-admin-routes.js';
 
-export function registerTelesaleAdminModule({ app, pool, adminAuth, bot = null }) {
+export function registerTelesaleAdminModule({ app, pool, adminAuth, bot = null, getDocById = null }) {
     const telesaleRepository = createTelesaleRepository({ pool });
     const sendTelesaleReminder = createSendTelesaleReminder({
         telesaleRepository,
         bot
     });
 
+    const telesaleSheetSync = getDocById ? createTelesaleSheetSync({ getDocById }) : null;
+
     registerTelesaleAdminRoutes({
         app,
         telesaleRepository,
         sendTelesaleReminder,
-        adminAuth
+        adminAuth,
+        telesaleSheetSync
     });
 
     return {
         telesaleRepository,
-        sendTelesaleReminder
+        sendTelesaleReminder,
+        telesaleSheetSync
     };
 }
 
@@ -91,6 +95,7 @@ export function registerTelesaleModule({
     // 3. Đăng ký Cron tự động
     const crons = registerTelesaleCrons({
         cron,
+        telesaleRepository,
         sendTelesaleReminder,
         scanTelesaleDeadline,
         summarizeDailyTelesale

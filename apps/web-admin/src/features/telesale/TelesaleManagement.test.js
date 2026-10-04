@@ -41,3 +41,26 @@ test('Thẻ thống kê Telesale hiển thị đủ các chỉ số nghiệp v�
   assert.match(statsSource, /Đã nộp báo cáo/);
   assert.match(statsSource, /Chưa nộp \(Đi làm\)/);
 });
+
+test('TelesaleManagement chứa 3 Tab chuyên biệt: Đấu nối, Cấu hình Form và Thời gian', () => {
+  assert.match(managementSource, /Nhân sự &amp; Đấu nối/);
+  assert.match(managementSource, /Cấu hình Form &amp; Chỉ số/);
+  assert.match(managementSource, /Thời gian &amp; Quét phạt/);
+});
+
+test('TelesaleFormBuilderTab và TelesaleScheduleTab tồn tại và có đầy đủ chức năng tùy biến', () => {
+  const formBuilderSource = fs.readFileSync(new URL('./components/TelesaleFormBuilderTab.jsx', import.meta.url), 'utf8');
+  const scheduleSource = fs.readFileSync(new URL('./components/TelesaleScheduleTab.jsx', import.meta.url), 'utf8');
+
+  assert.match(formBuilderSource, /Cấu hình Danh sách Trường Báo Cáo/);
+  assert.match(formBuilderSource, /Thêm trường mới/);
+  assert.match(formBuilderSource, /Mốc Khen thưởng \/ Cảnh báo/);
+  assert.match(formBuilderSource, /Tính lũy kế cộng dồn cả tháng/);
+
+  assert.match(scheduleSource, /Cài đặt Thời Gian, Quét Phạt &amp; Báo Cáo Tổng/);
+  assert.match(scheduleSource, /Bật tin nhắn nhắc nhở nộp báo cáo/);
+  assert.match(scheduleSource, /Bật quét phạt nộp muộn tự động/);
+  assert.match(scheduleSource, /Bật gửi Báo cáo tổng kết ngày toàn đội/);
+  assert.match(scheduleSource, /Đồng bộ Header Google Sheets/);
+});
+

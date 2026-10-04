@@ -210,19 +210,7 @@ export function registerStartCommands({ bot, pool, requireGroupRole, timekeepHel
                     );
                 } else if (botRole === 'telesale') {
                     await ctx.reply(
-                        `📊 <b>HỆ THỐNG BÁO CÁO TELESALE</b>\n\n` +
-                        `Vui lòng nhấn nút bên dưới để mở Mini App điền báo cáo, hoặc sao chép mẫu gửi trực tiếp vào nhóm:\n\n` +
-                        `👇 <b>Chạm vào khung bên dưới để sao chép mẫu báo cáo:</b>\n` +
-                        `<code>Nhân sự: \n` +
-                        `Số nhận: \n` +
-                        `Số trùng / KNC/ Văng: \n` +
-                        `Số lịch PV mới: \n` +
-                        `Số lịch PV cũ: \n` +
-                        `Lịch hẹn ngày mai: \n` +
-                        `Tổng tới hôm nay: \n` +
-                        `Tổng bong hôm nay: \n` +
-                        `TỔNG DS hnay: </code>\n\n` +
-                        `<i>(Điền đúng tên của bạn tại mục "Nhân sự:" và gửi trực tiếp vào nhóm để hệ thống tự ghi nhận)</i>`,
+                        `📊 <b>HỆ THỐNG BÁO CÁO TELESALE</b>`,
                         {
                             parse_mode: 'HTML',
                             reply_markup: {

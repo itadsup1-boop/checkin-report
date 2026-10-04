@@ -423,6 +423,53 @@
             display: none;
         }
         .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+
+        /* Dynamic form styles */
+        .calc-row {
+            background: rgba(37, 99, 235, 0.02);
+        }
+        .calc-field-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .calc-val {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .calc-unit {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--hint);
+        }
+        .threshold-badge {
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .badge-reward, .badge-success {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        .badge-warning {
+            background: #fef3c7;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+        .badge-danger {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+        }
     </style>
 </head>
 <body>
@@ -558,6 +605,9 @@
         let employeeInfo = null;
         let monthlyPrevRevenue = 0;
         let availableServices = [];
+        let dynamicFieldsConfig = null;
+        let dynamicInputFields = [];
+        let dynamicCalcFields = [];
 
         function getParam(name) {
             const urlParams = new URLSearchParams(window.location.search);
@@ -570,7 +620,6 @@
             if (!digits) return '0';
             return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
         }
-
 
         function updateSummary() {
             const pvMoi = Number(document.getElementById('lich_pv_moi')?.value || 0);
@@ -590,14 +639,345 @@
             if (elDs) elDs.innerText = dsTrieu + 'tr';
         }
 
+        // Formula Engine & Shunting-Yard Client
+        function evaluateFormulaClient(formula, contextValues = {}) {
+            if (!formula || typeof formula !== 'string') return 0;
+            let expr = formula.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+                const val = contextValues[key];
+                const num = Number(val);
+                return isNaN(num) ? '0' : String(num);
+            });
+            const tokens = tokenizeMathClient(expr);
+            if (!tokens.length) return 0;
+            const rpn = shuntingYardClient(tokens);
+            return executeRpnClient(rpn);
+        }
+
+        function tokenizeMathClient(str) {
+            const tokens = [];
+            let i = 0;
+            const clean = str.replace(/\s+/g, '');
+            while (i < clean.length) {
+                const ch = clean[i];
+                if (ch === '+' || ch === '*' || ch === '/' || ch === '(' || ch === ')') {
+                    tokens.push(ch);
+                    i++;
+                } else if (ch === '-') {
+                    const prev = tokens[tokens.length - 1];
+                    const isUnary = !prev || prev === '(' || prev === '+' || prev === '-' || prev === '*' || prev === '/';
+                    if (isUnary) {
+                        let numStr = '-';
+                        i++;
+                        while (i < clean.length && /[\d.]/.test(clean[i])) {
+                            numStr += clean[i];
+                            i++;
+                        }
+                        const n = parseFloat(numStr);
+                        tokens.push(isNaN(n) ? 0 : n);
+                    } else {
+                        tokens.push('-');
+                        i++;
+                    }
+                } else if (/[\d.]/.test(ch)) {
+                    let numStr = '';
+                    while (i < clean.length && /[\d.]/.test(clean[i])) {
+                        numStr += clean[i];
+                        i++;
+                    }
+                    const n = parseFloat(numStr);
+                    tokens.push(isNaN(n) ? 0 : n);
+                } else {
+                    i++;
+                }
+            }
+            return tokens;
+        }
+
+        const PRECEDENCE_CLIENT = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+        function shuntingYardClient(tokens) {
+            const output = [];
+            const opStack = [];
+            for (const t of tokens) {
+                if (typeof t === 'number') {
+                    output.push(t);
+                } else if (t === '(') {
+                    opStack.push(t);
+                } else if (t === ')') {
+                    while (opStack.length && opStack[opStack.length - 1] !== '(') {
+                        output.push(opStack.pop());
+                    }
+                    opStack.pop();
+                } else if (PRECEDENCE_CLIENT[t]) {
+                    while (
+                        opStack.length &&
+                        PRECEDENCE_CLIENT[opStack[opStack.length - 1]] &&
+                        PRECEDENCE_CLIENT[opStack[opStack.length - 1]] >= PRECEDENCE_CLIENT[t]
+                    ) {
+                        output.push(opStack.pop());
+                    }
+                    opStack.push(t);
+                }
+            }
+            while (opStack.length) {
+                output.push(opStack.pop());
+            }
+            return output;
+        }
+
+        function executeRpnClient(rpn) {
+            const stack = [];
+            for (const t of rpn) {
+                if (typeof t === 'number') {
+                    stack.push(t);
+                } else if (PRECEDENCE_CLIENT[t]) {
+                    const b = stack.pop() ?? 0;
+                    const a = stack.pop() ?? 0;
+                    if (t === '+') stack.push(a + b);
+                    else if (t === '-') stack.push(a - b);
+                    else if (t === '*') stack.push(a * b);
+                    else if (t === '/') {
+                        if (b <= 0 || isNaN(b)) {
+                            stack.push(0);
+                        } else {
+                            stack.push(a / b);
+                        }
+                    }
+                }
+            }
+            const res = stack.pop() ?? 0;
+            return isNaN(res) || !isFinite(res) ? 0 : Number(res.toFixed(2));
+        }
+
+        function matchThresholdClient(val, thresholds = []) {
+            if (!Array.isArray(thresholds) || !thresholds.length) return null;
+            const num = Number(val) || 0;
+            for (const t of thresholds) {
+                const thresholdVal = Number(t.value);
+                if (isNaN(thresholdVal)) continue;
+                let matched = false;
+                switch (t.operator) {
+                    case '>=': matched = num >= thresholdVal; break;
+                    case '>': matched = num > thresholdVal; break;
+                    case '<=': matched = num <= thresholdVal; break;
+                    case '<': matched = num < thresholdVal; break;
+                    case '==': matched = num === thresholdVal; break;
+                }
+                if (matched) return t;
+            }
+            return null;
+        }
+
+        function renderDynamicForm(fields) {
+            const activeFields = fields.filter(f => !f.is_hidden).sort((a,b) => (a.order_index || 0) - (b.order_index || 0));
+            if (!activeFields.length) return false;
+
+            dynamicFieldsConfig = activeFields;
+            dynamicInputFields = activeFields.filter(f => f.category === 'INPUT');
+            dynamicCalcFields = activeFields.filter(f => f.category === 'CALCULATED');
+
+            let html = '';
+
+            // Section 1: Input fields
+            if (dynamicInputFields.length > 0) {
+                html += `
+                <div class="section-block">
+                    <div class="section-title">Số Liệu Nhập Hôm Nay</div>
+                    <div class="card-group">
+                `;
+                dynamicInputFields.forEach((f, idx) => {
+                    const reqStar = f.required ? '<span style="color:#ef4444; margin-left:2px;">*</span>' : '';
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="revenue-field-box">
+                                <input type="text" id="dyn_input_${f.key}" class="field-input-revenue dyn-input dyn-currency" data-key="${f.key}" value="0" inputmode="numeric" placeholder="0">
+                                <span class="unit-badge">đ</span>
+                            </div>
+                        </div>
+                        `;
+                    } else if (f.data_type === 'percentage' || f.type === 'percentage') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="num-input-wrap">
+                                <input type="number" id="dyn_input_${f.key}" class="field-input-num dyn-input" data-key="${f.key}" min="0" value="0" inputmode="numeric">
+                                <span class="unit-badge" style="margin-left: 4px;">%</span>
+                            </div>
+                        </div>
+                        `;
+                    } else if (f.data_type === 'text' || f.type === 'text') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <input type="text" id="dyn_input_${f.key}" class="dyn-input" data-key="${f.key}" style="padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 13px; text-align: right; width: 140px;">
+                        </div>
+                        `;
+                    } else {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="num-input-wrap">
+                                <input type="number" id="dyn_input_${f.key}" class="field-input-num dyn-input" data-key="${f.key}" min="0" value="0" inputmode="numeric">
+                            </div>
+                        </div>
+                        `;
+                    }
+                });
+                html += `</div></div>`;
+            }
+
+            // Section 2: Calculated fields
+            if (dynamicCalcFields.length > 0) {
+                html += `
+                <div class="section-block">
+                    <div class="section-title">Chỉ Số Tự Động Tính</div>
+                    <div class="card-group">
+                `;
+                dynamicCalcFields.forEach((f) => {
+                    const unit = (f.data_type === 'percentage' || f.type === 'percentage') ? '%' : ((f.data_type === 'currency' || f.type === 'currency') ? 'đ' : '');
+                    html += `
+                    <div class="row-item calc-row" id="row_calc_${f.key}">
+                        <div class="row-label" style="display:flex; flex-direction:column;">
+                            <span>${escapeAttr(f.label)}</span>
+                            ${f.formula ? `<span style="font-size: 10px; color: var(--hint); font-family: monospace;">${escapeAttr(f.formula)}</span>` : ''}
+                        </div>
+                        <div class="calc-field-wrap">
+                            <span class="calc-val" id="dyn_calc_${f.key}">0</span>
+                            ${unit ? `<span class="calc-unit">${unit}</span>` : ''}
+                            <span class="threshold-badge" id="dyn_badge_${f.key}" style="display: none;"></span>
+                        </div>
+                    </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            // Section 3: Services toggle
+            html += `
+            <div class="service-toggle-card">
+                <label class="toggle-container" for="chkByService">
+                    <input type="checkbox" id="chkByService" onchange="toggleServiceSection()">
+                    <span class="toggle-label">🔍 Chia chi tiết theo Dịch Vụ</span>
+                </label>
+            </div>
+            <div id="serviceSection" class="service-section" style="display: none;">
+                <div class="service-header">
+                    <span class="service-title">📋 Phân Bổ Dịch Vụ</span>
+                    <span class="service-hint">Tự cộng dồn lên các ô Tổng</span>
+                </div>
+                <div id="serviceList"></div>
+                <button type="button" class="btn-add-service" onclick="addServiceRow()">
+                    ➕ Thêm Dịch Vụ
+                </button>
+            </div>
+            `;
+
+            const form = document.getElementById('reportForm');
+            form.innerHTML = html;
+
+            // Bind listeners for dyn-inputs
+            form.querySelectorAll('.dyn-input').forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.select();
+                });
+                input.addEventListener('input', function() {
+                    if (this.classList.contains('dyn-currency')) {
+                        const digits = this.value.replace(/\D/g, '');
+                        this.value = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+                    }
+                    recalcDynamicForm();
+                });
+                input.addEventListener('blur', function() {
+                    if (this.value === '' && !this.classList.contains('dyn-currency')) this.value = '0';
+                    recalcDynamicForm();
+                });
+            });
+
+            return true;
+        }
+
+        function recalcDynamicForm() {
+            if (!dynamicFieldsConfig) return;
+
+            const values = {};
+
+            // 1. Gather all input values
+            dynamicInputFields.forEach(f => {
+                const el = document.getElementById(`dyn_input_${f.key}`);
+                if (!el) return;
+                if (f.data_type === 'currency' || f.type === 'currency') {
+                    values[f.key] = Number(el.value.replace(/\D/g, '') || 0);
+                } else if (f.data_type === 'text' || f.type === 'text') {
+                    values[f.key] = el.value.trim();
+                } else {
+                    values[f.key] = Number(el.value || 0);
+                }
+            });
+
+            // 2. Evaluate all calculated fields
+            dynamicCalcFields.forEach(f => {
+                let computed = 0;
+                if (f.formula) {
+                    computed = evaluateFormulaClient(f.formula, values);
+                }
+                if (f.is_monthly_cumulative) {
+                    computed += monthlyPrevRevenue;
+                }
+                values[f.key] = computed;
+
+                const valEl = document.getElementById(`dyn_calc_${f.key}`);
+                if (valEl) {
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        valEl.innerText = formatThousand(Math.round(computed));
+                    } else if (f.data_type === 'percentage' || f.type === 'percentage') {
+                        valEl.innerText = computed.toFixed(1);
+                    } else {
+                        valEl.innerText = formatThousand(Math.round(computed));
+                    }
+                }
+
+                // Check thresholds
+                const badgeEl = document.getElementById(`dyn_badge_${f.key}`);
+                if (badgeEl) {
+                    const rule = matchThresholdClient(computed, f.threshold_rules || f.thresholds);
+                    if (rule) {
+                        badgeEl.style.display = 'inline-flex';
+                        badgeEl.innerText = rule.badge || '';
+                        badgeEl.className = 'threshold-badge ' + (
+                            rule.type === 'reward' || rule.type === 'success' || rule.color === 'success' ? 'badge-reward' :
+                            rule.type === 'warning' || rule.color === 'warning' ? 'badge-warning' : 'badge-danger'
+                        );
+                    } else {
+                        badgeEl.style.display = 'none';
+                    }
+                }
+            });
+
+            // Update summary bar
+            const tongLich = values.tong_lich !== undefined ? values.tong_lich : (Number(values.lich_pv_moi || 0) + Number(values.lich_pv_cu || 0));
+            const tyLeToi = values.ty_le_toi !== undefined ? values.ty_le_toi : (tongLich > 0 ? Math.round(((values.tong_toi_hnay || 0) / tongLich) * 100) : 0);
+            const ds = Number(values.tong_ds_hnay || 0);
+            const dsTrieu = (ds / 1e6).toFixed(ds % 1e6 === 0 ? 0 : 1);
+
+            const elLich = document.getElementById('sumLich');
+            const elToi = document.getElementById('sumToi');
+            const elDs = document.getElementById('sumDs');
+            if (elLich) elLich.innerText = tongLich;
+            if (elToi) elToi.innerText = tyLeToi + '%';
+            if (elDs) elDs.innerText = dsTrieu + 'tr';
+        }
+
         // Quản lý phân bổ dịch vụ
         function toggleServiceSection() {
-            const isChecked = document.getElementById('chkByService').checked;
+            const isChecked = document.getElementById('chkByService')?.checked;
             const section = document.getElementById('serviceSection');
+            if (!section) return;
             section.style.display = isChecked ? 'block' : 'none';
             if (isChecked) {
                 const list = document.getElementById('serviceList');
-                if (list.children.length === 0) {
+                if (list && list.children.length === 0) {
                     addServiceRow();
                 }
             }
@@ -605,6 +985,7 @@
 
         function addServiceRow(data = null) {
             const list = document.getElementById('serviceList');
+            if (!list) return;
             const row = document.createElement('div');
             row.className = 'service-row-card';
 
@@ -697,7 +1078,7 @@
         }
 
         function recalcServices() {
-            if (!document.getElementById('chkByService').checked) return;
+            if (!document.getElementById('chkByService')?.checked) return;
 
             let sumLich = 0;
             let sumToi = 0;
@@ -721,18 +1102,34 @@
             });
 
             if (hasAnyService) {
-                document.getElementById('tong_ds_hnay').value = formatThousand(sumDs);
-                if (sumToi > 0) document.getElementById('tong_toi_hnay').value = sumToi;
-                if (sumLich > 0) document.getElementById('lich_pv_moi').value = sumLich;
+                if (dynamicFieldsConfig) {
+                    const dsEl = document.getElementById('dyn_input_tong_ds_hnay');
+                    const toiEl = document.getElementById('dyn_input_tong_toi_hnay');
+                    const lichEl = document.getElementById('dyn_input_lich_pv_moi');
+                    if (dsEl) dsEl.value = formatThousand(sumDs);
+                    if (toiEl && sumToi > 0) toiEl.value = sumToi;
+                    if (lichEl && sumLich > 0) lichEl.value = sumLich;
+                    recalcDynamicForm();
+                } else {
+                    document.getElementById('tong_ds_hnay').value = formatThousand(sumDs);
+                    if (sumToi > 0) document.getElementById('tong_toi_hnay').value = sumToi;
+                    if (sumLich > 0) document.getElementById('lich_pv_moi').value = sumLich;
+                    updateSummary();
+                }
+            } else {
+                if (dynamicFieldsConfig) {
+                    recalcDynamicForm();
+                } else {
+                    updateSummary();
+                }
             }
-            updateSummary();
         }
 
         function escapeAttr(str) {
             return String(str || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         }
 
-        // Đăng ký event input các trường số thường (tự động select khi focus, cập nhật summary)
+        // Đăng ký event input các trường số thường fallback (tự động select khi focus, cập nhật summary)
         ['so_nhan', 'so_trung_knc_vang', 'lich_pv_moi', 'lich_pv_cu', 'lich_ngay_mai', 'tong_toi_hnay', 'tong_bong_hnay'].forEach(id => {
             const input = document.getElementById(id);
             if (input) {
@@ -747,7 +1144,7 @@
             }
         });
 
-        // Đăng ký event input trường Doanh số
+        // Đăng ký event input trường Doanh số fallback
         const dsInput = document.getElementById('tong_ds_hnay');
         if (dsInput) {
             dsInput.addEventListener('input', function() {
@@ -800,29 +1197,57 @@
 
                 document.getElementById('headerMeta').innerText = `👤 ${employeeInfo.full_name || tgFullName} • 📅 Ngày ${displayDate}`;
 
-                // Nếu đã có báo cáo trong ngày -> Nạp số liệu để sửa trong 10s
-                if (data.existingReport) {
-                    const r = data.existingReport;
-                    document.getElementById('so_nhan').value = r.so_nhan || 0;
-                    document.getElementById('so_trung_knc_vang').value = r.so_trung_knc_vang || 0;
-                    document.getElementById('lich_pv_moi').value = r.lich_pv_moi || 0;
-                    document.getElementById('lich_pv_cu').value = r.lich_pv_cu || 0;
-                    document.getElementById('lich_ngay_mai').value = r.lich_ngay_mai || 0;
-                    document.getElementById('tong_toi_hnay').value = r.tong_toi_hnay || 0;
-                    document.getElementById('tong_bong_hnay').value = r.tong_bong_hnay || 0;
-                    document.getElementById('tong_ds_hnay').value = formatThousand(r.tong_ds_hnay || 0);
-
-                    // Khôi phục chi tiết dịch vụ nếu có
-                    if (r.services && r.services.length > 0) {
-                        document.getElementById('chkByService').checked = true;
-                        toggleServiceSection();
-                        document.getElementById('serviceList').innerHTML = '';
-                        r.services.forEach(s => addServiceRow(s));
+                // Check if dynamic form config is present
+                if (data.formConfig?.fields && data.formConfig.fields.length > 0) {
+                    const rendered = renderDynamicForm(data.formConfig.fields);
+                    if (rendered && data.existingReport) {
+                        const r = data.existingReport;
+                        const vals = r.reportValues || r;
+                        dynamicInputFields.forEach(f => {
+                            const el = document.getElementById(`dyn_input_${f.key}`);
+                            if (el && vals[f.key] !== undefined) {
+                                if (f.data_type === 'currency' || f.type === 'currency') {
+                                    el.value = formatThousand(vals[f.key]);
+                                } else {
+                                    el.value = vals[f.key];
+                                }
+                            }
+                        });
+                        if (r.services && r.services.length > 0) {
+                            const chk = document.getElementById('chkByService');
+                            if (chk) {
+                                chk.checked = true;
+                                toggleServiceSection();
+                                document.getElementById('serviceList').innerHTML = '';
+                                r.services.forEach(s => addServiceRow(s));
+                            }
+                        }
+                        document.getElementById('btnSubmit').innerText = '⚡️ CẬP NHẬT BÁO CÁO';
                     }
+                    recalcDynamicForm();
+                } else {
+                    // Fallback to static form pre-fill
+                    if (data.existingReport) {
+                        const r = data.existingReport;
+                        document.getElementById('so_nhan').value = r.so_nhan || 0;
+                        document.getElementById('so_trung_knc_vang').value = r.so_trung_knc_vang || 0;
+                        document.getElementById('lich_pv_moi').value = r.lich_pv_moi || 0;
+                        document.getElementById('lich_pv_cu').value = r.lich_pv_cu || 0;
+                        document.getElementById('lich_ngay_mai').value = r.lich_ngay_mai || 0;
+                        document.getElementById('tong_toi_hnay').value = r.tong_toi_hnay || 0;
+                        document.getElementById('tong_bong_hnay').value = r.tong_bong_hnay || 0;
+                        document.getElementById('tong_ds_hnay').value = formatThousand(r.tong_ds_hnay || 0);
 
-                    document.getElementById('btnSubmit').innerText = '⚡️ CẬP NHẬT BÁO CÁO';
+                        if (r.services && r.services.length > 0) {
+                            document.getElementById('chkByService').checked = true;
+                            toggleServiceSection();
+                            document.getElementById('serviceList').innerHTML = '';
+                            r.services.forEach(s => addServiceRow(s));
+                        }
+                        document.getElementById('btnSubmit').innerText = '⚡️ CẬP NHẬT BÁO CÁO';
+                    }
+                    updateSummary();
                 }
-                updateSummary();
             } catch (err) {
                 console.error(err);
                 showError('Không thể kết nối máy chủ. Vui lòng thử lại sau.');
@@ -846,7 +1271,7 @@
             btn.innerText = 'ĐANG GỬI BÁO CÁO...';
 
             const services = [];
-            if (document.getElementById('chkByService').checked) {
+            if (document.getElementById('chkByService')?.checked) {
                 document.querySelectorAll('.service-row-card').forEach(card => {
                     const select = card.querySelector('.service-select');
                     const custom = card.querySelector('.service-custom-input');
@@ -863,18 +1288,48 @@
             const tgUser = tg?.initDataUnsafe?.user;
             const tgFullName = [tgUser?.first_name, tgUser?.last_name].filter(Boolean).join(' ') || tgUser?.username || 'Nhân sự Telesale';
 
-            const payloadData = {
-                employee_name: employeeInfo?.full_name || tgFullName,
-                so_nhan: document.getElementById('so_nhan').value,
-                so_trung_knc_vang: document.getElementById('so_trung_knc_vang').value,
-                lich_pv_moi: document.getElementById('lich_pv_moi').value,
-                lich_pv_cu: document.getElementById('lich_pv_cu').value,
-                lich_ngay_mai: document.getElementById('lich_ngay_mai').value,
-                tong_toi_hnay: document.getElementById('tong_toi_hnay').value,
-                tong_bong_hnay: document.getElementById('tong_bong_hnay').value,
-                tong_ds_hnay: document.getElementById('tong_ds_hnay').value.replace(/\D/g, '') || '0',
-                services
-            };
+            let payloadData = {};
+            if (dynamicFieldsConfig) {
+                const report_values = {};
+                dynamicInputFields.forEach(f => {
+                    const el = document.getElementById(`dyn_input_${f.key}`);
+                    if (!el) return;
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        report_values[f.key] = Number(el.value.replace(/\D/g, '') || 0);
+                    } else if (f.data_type === 'text' || f.type === 'text') {
+                        report_values[f.key] = el.value.trim();
+                    } else {
+                        report_values[f.key] = Number(el.value || 0);
+                    }
+                });
+                // Legacy fields mapping for backward compatibility
+                payloadData = {
+                    employee_name: employeeInfo?.full_name || tgFullName,
+                    so_nhan: report_values.so_nhan ?? 0,
+                    so_trung_knc_vang: report_values.so_trung_knc_vang ?? 0,
+                    lich_pv_moi: report_values.lich_pv_moi ?? 0,
+                    lich_pv_cu: report_values.lich_pv_cu ?? 0,
+                    lich_ngay_mai: report_values.lich_ngay_mai ?? 0,
+                    tong_toi_hnay: report_values.tong_toi_hnay ?? 0,
+                    tong_bong_hnay: report_values.tong_bong_hnay ?? 0,
+                    tong_ds_hnay: String(report_values.tong_ds_hnay ?? 0),
+                    report_values,
+                    services
+                };
+            } else {
+                payloadData = {
+                    employee_name: employeeInfo?.full_name || tgFullName,
+                    so_nhan: document.getElementById('so_nhan')?.value || 0,
+                    so_trung_knc_vang: document.getElementById('so_trung_knc_vang')?.value || 0,
+                    lich_pv_moi: document.getElementById('lich_pv_moi')?.value || 0,
+                    lich_pv_cu: document.getElementById('lich_pv_cu')?.value || 0,
+                    lich_ngay_mai: document.getElementById('lich_ngay_mai')?.value || 0,
+                    tong_toi_hnay: document.getElementById('tong_toi_hnay')?.value || 0,
+                    tong_bong_hnay: document.getElementById('tong_bong_hnay')?.value || 0,
+                    tong_ds_hnay: document.getElementById('tong_ds_hnay')?.value.replace(/\D/g, '') || '0',
+                    services
+                };
+            }
 
             try {
                 const res = await fetch('/api/telesale/submit', {

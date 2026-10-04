@@ -292,11 +292,105 @@ export function startWarehouseOutboxWorker({
             return;
         }
 
+        if (event.event_type === 'IMPORT_EDITED') {
+            const payload = event.payload;
+            const txRes = await pool.query(
+                `SELECT t.*, p.product_name, p.barcode, g.telegram_group_id,
+                        e.full_name AS editor_name
+                 FROM tk_warehouse_transactions t
+                 JOIN tk_products p ON p.id = t.product_id
+                 JOIN telegram_groups g ON g.id = t.group_id
+                 LEFT JOIN employees e ON e.telegram_id = $2
+                 WHERE t.id = $1`,
+                [payload.transactionId, String(payload.editorTelegramId || '')]
+            );
+            const tx = txRes.rows[0];
+            if (tx) {
+                await syncWarehouseSheets(tx.product_id, tx.id);
+
+                const editorName = tx.editor_name || 'Nhân viên';
+                const sign = payload.delta > 0 ? '+' : '';
+                const noticeMsg = `✏️ <b>[PHIẾU NHẬP KHO ĐÃ ĐƯỢC CHỈNH SỬA]</b>\n\n` +
+                    `🆔 <b>Mã phiếu:</b> <code>${escapeHtml(tx.id.slice(0, 8).toUpperCase())}</code>\n` +
+                    `📦 <b>Sản phẩm:</b> ${escapeHtml(tx.product_name)}\n` +
+                    `🏢 <b>Cơ sở:</b> ${escapeHtml(tx.branch)}\n` +
+                    `📊 <b>Số lượng:</b> ${payload.oldQuantity} ➔ <b>${payload.newQuantity}</b> (${sign}${payload.delta})\n` +
+                    `👤 <b>Người sửa:</b> ${escapeHtml(editorName)}\n` +
+                    `📝 <b>Lý do:</b> ${escapeHtml(payload.editReason || 'Không có')}`;
+
+                await sendMessageToRoleGroup(
+                    bot,
+                    tx.telegram_group_id,
+                    'warehouse',
+                    noticeMsg,
+                    { parse_mode: 'HTML' },
+                    'warehouse_import_edited'
+                );
+            }
+            return;
+        }
+
         const order = await warehouseOrderService.repository.getOrderDetail(event.aggregate_id);
         if (!order) throw new Error(`Không tìm thấy order ${event.aggregate_id}`);
 
         if (event.event_type === 'SYNC_ORDER_SHEET' || event.event_type === 'SYNC_ORDER_REVERSAL_SHEET') {
             return syncWarehouseOrder(order.id);
+        }
+
+        if (event.event_type === 'ORDER_EDITED') {
+            const payload = event.payload;
+            await syncWarehouseOrder(order.id);
+
+            const editorRes = await pool.query(
+                'SELECT full_name FROM employees WHERE telegram_id = $1 LIMIT 1',
+                [String(payload.editorTelegramId || '')]
+            );
+            const editorName = editorRes.rows[0]?.full_name || 'Nhân viên';
+            const editTime = moment().utcOffset(7).format('HH:mm DD/MM/YYYY');
+
+            if (order.telegram_message_id) {
+                try {
+                    let updatedMessage = buildApprovedMessage(order, escapeHtml);
+                    updatedMessage += `\n\n✏️ <i>Đơn đã được sửa bởi ${escapeHtml(editorName)} lúc ${editTime}.\nLý do: ${escapeHtml(payload.editReason || '')}</i>`;
+                    await bot.telegram.editMessageText(
+                        order.telegram_group_id,
+                        order.telegram_message_id,
+                        undefined,
+                        updatedMessage,
+                        { parse_mode: 'HTML', reply_markup: { inline_keyboard: [] } }
+                    );
+                } catch (error) {
+                    if (!isTelegramMessageAlreadyUpdated(error)) {
+                        console.warn('[Warehouse Outbox] Không sửa được tin Telegram cũ:', error.message);
+                    }
+                }
+            }
+
+            let changesText = '';
+            if (Array.isArray(payload.deltas) && payload.deltas.length > 0) {
+                changesText = '\n📦 <b>Thay đổi mặt hàng:</b>\n' + payload.deltas.map(d => {
+                    const sign = d.delta > 0 ? '+' : '';
+                    return `  • ${escapeHtml(d.productName || 'Sản phẩm')}: ${d.oldQuantity} ➔ <b>${d.newQuantity}</b> (${sign}${d.delta})`;
+                }).join('\n');
+            }
+
+            const alertMsg = `✏️ <b>[ĐƠN XUẤT KHO ĐÃ ĐƯỢC CHỈNH SỬA]</b>\n\n` +
+                `🆔 <b>Mã đơn:</b> <code>${escapeHtml(order.order_code)}</code>\n` +
+                `👤 <b>Người sửa:</b> ${escapeHtml(editorName)}\n` +
+                `🙋 <b>Khách:</b> ${escapeHtml(order.customer_name)}\n` +
+                `🏢 <b>Cơ sở:</b> ${escapeHtml(order.branch)}\n` +
+                `📝 <b>Lý do:</b> ${escapeHtml(payload.editReason || 'Không có')}` +
+                changesText;
+
+            await sendMessageToRoleGroup(
+                bot,
+                order.telegram_group_id,
+                'warehouse',
+                alertMsg,
+                { parse_mode: 'HTML' },
+                'warehouse_order_edited'
+            );
+            return;
         }
 
         if (event.event_type === 'ORDER_PENDING_APPROVAL') {

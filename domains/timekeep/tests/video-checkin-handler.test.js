@@ -840,6 +840,122 @@ test('Marketing Check-in: Có đơn xin đi muộn đã duyệt (+60p) -> Mốc 
     assert.match(replies[0].text, /Có đơn xin đi muộn hợp lệ/);
 });
 
+test('Marketing Check-in: Check-in lúc 08:33 (sau 08:30 nhưng trong 5 phút ân hạn) -> Đúng giờ, 1.0 công, 0đ phạt', async () => {
+    let handler = null;
+    const bot = { on(events, fn) { handler = fn; } };
+    const insertedCheckins = [];
+    const latePenalties = [];
+    const checkinRepository = {
+        async findGroupPolicy() {
+            return {
+                attendance_policy: 'MARKETING',
+                effective_start_date: '2026-09-24',
+                marketing_checkin_deadline: '08:30:00',
+                marketing_late_cutoff: '09:30:00',
+                marketing_checkin_penalty: 50000
+            };
+        },
+        async findCheckInOfDay() { return null; },
+        async findUserScheduleOfDay() { return null; },
+        async findApprovedLateLeaveRequest() { return null; },
+        async insertCheckIn(data) { insertedCheckins.push(data); },
+        async insertLatePenalty(data) { latePenalties.push(data); }
+    };
+    const findEmployeeContext = async () => ({
+        id: 'emp-long-1',
+        group_id: 'grp-namdong-1',
+        full_name: 'Vũ Quang Long',
+        role: 'Marketing'
+    });
+
+    registerVideoCheckinHandler({ bot, checkinRepository, findEmployeeContext, syncSheets: async () => {}, moment });
+
+    // Check in lúc 08:33:02 ngày 2026-09-29
+    const ts0833 = moment('2026-09-29 08:33:02 +07:00', 'YYYY-MM-DD HH:mm:ss Z').unix();
+    const replies = [];
+    const ctx = {
+        chat: { id: -100999, type: 'group' },
+        message: {
+            message_id: 993,
+            from: { id: 8239, first_name: 'Long' },
+            date: ts0833,
+            caption: 'check in',
+            video: { file_id: 'vid-long-0833' }
+        },
+        reply: async (text, opts) => replies.push({ text, opts })
+    };
+
+    await handler(ctx, () => {});
+
+    assert.equal(insertedCheckins.length, 1);
+    assert.equal(insertedCheckins[0].workCredit, 1.0, 'Được tính đủ 1.0 công do trong 5 phút ân hạn');
+    assert.equal(insertedCheckins[0].checkinPenaltyAmount, 0, '0đ phạt');
+    assert.equal(latePenalties.length, 0, 'Không ghi nhận phạt');
+    assert.match(replies[0].text, /CHECK-IN HỢP LỆ/);
+    assert.match(replies[0].text, /Đúng giờ/);
+});
+
+test('Marketing Check-in: Có đơn xin đi muộn 30 phút (hạn 09:00), check-in lúc 09:02 -> Đi muộn (không cộng thêm 5 phút)', async () => {
+    let handler = null;
+    const bot = { on(events, fn) { handler = fn; } };
+    const insertedCheckins = [];
+    const latePenalties = [];
+    const checkinRepository = {
+        async findGroupPolicy() {
+            return {
+                attendance_policy: 'MARKETING',
+                effective_start_date: '2026-09-24',
+                marketing_checkin_deadline: '08:30:00',
+                marketing_late_cutoff: '09:30:00',
+                marketing_checkin_penalty: 50000
+            };
+        },
+        async findCheckInOfDay() { return null; },
+        async findUserScheduleOfDay() { return null; },
+        async findApprovedLateLeaveRequest() {
+            return {
+                id: 'leave-30m',
+                leave_type: 'LATE',
+                status: 'APPROVED',
+                late_minutes: 30
+            };
+        },
+        async insertCheckIn(data) { insertedCheckins.push(data); },
+        async insertLatePenalty(data) { latePenalties.push(data); }
+    };
+    const findEmployeeContext = async () => ({
+        id: 'emp-viet-2',
+        group_id: 'grp-viet-2',
+        full_name: 'Trịnh Quốc Việt',
+        role: 'Marketing'
+    });
+
+    registerVideoCheckinHandler({ bot, checkinRepository, findEmployeeContext, syncSheets: async () => {}, moment });
+
+    // Check in lúc 09:02:00 ngày 2026-09-28 (quá 09:00:00)
+    const ts0902 = moment('2026-09-28 09:02:00 +07:00', 'YYYY-MM-DD HH:mm:ss Z').unix();
+    const replies = [];
+    const ctx = {
+        chat: { id: -100999, type: 'group' },
+        message: {
+            message_id: 994,
+            from: { id: 8888, first_name: 'Việt' },
+            date: ts0902,
+            caption: 'check in',
+            video: { file_id: 'vid-viet-overdue' }
+        },
+        reply: async (text, opts) => replies.push({ text, opts })
+    };
+
+    await handler(ctx, () => {});
+
+    assert.equal(insertedCheckins.length, 1);
+    assert.equal(insertedCheckins[0].checkinPenaltyAmount, 50000, 'Phạt 50.000đ do quá hạn 09:00');
+    assert.equal(latePenalties.length, 1, 'Ghi nhận phạt muộn');
+    assert.match(replies[0].text, /GHI NHẬN ĐI MUỘN/);
+    assert.match(replies[0].text, /Quá thời gian xin đi muộn/);
+});
+
 
 
 

@@ -128,7 +128,8 @@ export function createAttendanceCronRepository({ pool }) {
             SELECT DISTINCT ON (c.user_id)
                    c.id, c.group_id, c.user_id, c.date::text, c.check_in_time,
                    u.full_name, g.telegram_group_id,
-                   s.shift_type, gs.shift_1_time, gs.shift_2_time
+                   s.shift_type, gs.shift_1_time, gs.shift_2_time,
+                   COALESCE(gs.attendance_policy, 'CLINIC') AS attendance_policy
             FROM tk_check_ins c
             JOIN employees u ON c.user_id = u.id
             JOIN telegram_groups g ON c.group_id = g.id
@@ -137,6 +138,7 @@ export function createAttendanceCronRepository({ pool }) {
             LEFT JOIN employee_group_memberships gm
               ON gm.employee_id = u.id AND gm.telegram_group_id = g.telegram_group_id
             WHERE c.date = $1
+              AND COALESCE(gs.attendance_policy, 'CLINIC') = 'CLINIC'
               AND COALESCE(u.is_exempt_checkin, false) = false
               AND COALESCE(u.is_active, true) = true
               AND COALESCE(gm.status, 'ACTIVE') = 'ACTIVE'

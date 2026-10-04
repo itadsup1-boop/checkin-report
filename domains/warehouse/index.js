@@ -9,6 +9,10 @@ import { createWarehouseOrderService } from './application/warehouse-order-servi
 import { createSetProductPriceUseCase } from './application/set-product-price.js';
 import { createPricingRepository } from './infrastructure/postgres/pricing-repository.js';
 import { createTransactionRunner } from './application/_shared/with-transaction.js';
+import { createOrderEditRepository } from './infrastructure/postgres/order-edit-repository.js';
+import { createGetOrderEditDetailUseCase } from './application/get-order-edit-detail.js';
+import { createEditCustomerOrderUseCase } from './application/edit-customer-order.js';
+import { createEditWarehouseImportUseCase } from './application/edit-warehouse-import.js';
 
 /**
  * Cổng vào công khai DUY NHẤT của domain kho.
@@ -53,6 +57,10 @@ export {
 export { validateStockReceiptInput } from './domain/stock-receipt-rules.js';
 export { createWarehouseOrderService } from './application/warehouse-order-service.js';
 export { createWarehouseQueryRepository } from './infrastructure/postgres/warehouse-query-repository.js';
+export { createOrderEditRepository } from './infrastructure/postgres/order-edit-repository.js';
+export { createGetOrderEditDetailUseCase } from './application/get-order-edit-detail.js';
+export { createEditCustomerOrderUseCase } from './application/edit-customer-order.js';
+export { createEditWarehouseImportUseCase } from './application/edit-warehouse-import.js';
 
 /**
  * Lắp toàn bộ phần kho vào Telegram Bot: route Mini App, callback duyệt đơn,
@@ -85,12 +93,28 @@ export function registerWarehouseModule(dependencies) {
         adminIds: process.env.ADMIN_IDS
     });
     const pricingRepo = createPricingRepository(pool);
+    const withTransaction = createTransactionRunner(pool);
     const setProductPrice = createSetProductPriceUseCase({
         pool,
         pricingRepo,
-        withTransaction: createTransactionRunner(pool),
+        withTransaction,
         sheetSync: pricingSheetSync
     }).setProductPrice;
+    const orderEditRepo = createOrderEditRepository(pool);
+    const getOrderEditDetail = createGetOrderEditDetailUseCase({
+        orderEditRepo,
+        warehouseOrderService
+    });
+    const editCustomerOrder = createEditCustomerOrderUseCase({
+        orderEditRepo,
+        warehouseOrderService,
+        withTransaction
+    });
+    const editWarehouseImport = createEditWarehouseImportUseCase({
+        orderEditRepo,
+        warehouseOrderService,
+        withTransaction
+    });
     const receiveWarehouseImages = dependencies.receiveWarehouseImages
         || createWarehouseImageReceiver({
             uploadDir: dependencies.warehouseTempUploadDir
@@ -102,6 +126,10 @@ export function registerWarehouseModule(dependencies) {
         warehouseOrderService,
         pricingRepo,
         setProductPrice,
+        orderEditRepo,
+        getOrderEditDetail,
+        editCustomerOrder,
+        editWarehouseImport,
         syncWarehouseSheets: sheetSync.syncWarehouseSheets
     });
 

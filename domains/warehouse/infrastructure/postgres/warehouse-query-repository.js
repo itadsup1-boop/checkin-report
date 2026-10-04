@@ -4,7 +4,7 @@ export function createWarehouseQueryRepository(pool) {
     async function getActiveGroup(chatId, db = pool) {
         const result = await db.query(
             `SELECT id, telegram_group_id, group_name, bot_role,
-                    warehouse_service_order_enabled, pricing_sheet_id
+                    warehouse_service_order_enabled, pricing_sheet_id, approval_settings
              FROM telegram_groups
              WHERE telegram_group_id = $1
                AND bot_role = 'warehouse'

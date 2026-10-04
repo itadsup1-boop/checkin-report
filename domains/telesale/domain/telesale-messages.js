@@ -17,7 +17,48 @@ export function escapeHtml(str) {
 /**
  * Soạn tin nhắn báo cáo cá nhân chuẩn xác theo mẫu chỉ đạo.
  */
-export function buildTelesaleReportMessage({ employeeName, dateStr, stats, sheetUrl }) {
+export function buildDynamicTelesaleReportMessage({ employeeName, dateStr, fields, dynamicResult, sheetUrl, customers = [] }) {
+    let msg = `📊 <b>BÁO CÁO TELE HÀNG NGÀY</b>\n`;
+    if (dateStr) msg += `📅 Ngày: ${escapeHtml(dateStr)}\n`;
+    msg += `Nhân sự: <b>${escapeHtml(employeeName) || 'Chưa xác định'}</b>\n\n`;
+
+    const activeFields = (fields || []).filter(f => !f.is_hidden).sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+    const inputFields = activeFields.filter(f => f.category === 'INPUT');
+    const calcFields = activeFields.filter(f => f.category !== 'INPUT');
+
+    for (const f of inputFields) {
+        const valFormatted = dynamicResult.formatted?.[f.key] ?? dynamicResult.values?.[f.key] ?? 0;
+        msg += `${escapeHtml(f.label)}: <b>${valFormatted}</b>\n`;
+    }
+
+    if (customers && customers.length > 0) {
+        msg += `\n📋 <b>Chi tiết khách hàng:</b>\n`;
+        customers.forEach((c, idx) => {
+            const cName = escapeHtml(c.name || `Khách hàng ${idx + 1}`);
+            const cAmount = c.amount ? ` - <b>${formatVnd(c.amount)}</b>` : '';
+            msg += `${idx + 1}. ${cName}${cAmount}\n`;
+        });
+    }
+
+    if (calcFields.length > 0) {
+        msg += `\n<b>🤖 BOT tự tính toán:</b>\n`;
+        for (const f of calcFields) {
+            const valFormatted = dynamicResult.formatted?.[f.key] ?? dynamicResult.values?.[f.key] ?? 0;
+            const badgeObj = dynamicResult.badges?.[f.key];
+            const badgeText = badgeObj ? ` ${escapeHtml(badgeObj.badge)}` : '';
+            msg += `• ${escapeHtml(f.label)}: <b>${valFormatted}</b>${badgeText}\n`;
+        }
+    }
+
+    return msg;
+}
+
+export function buildTelesaleReportMessage({ employeeName, dateStr, stats, sheetUrl, fields = null, dynamicResult = null, customers = [] }) {
+    if (fields && Array.isArray(fields) && fields.length > 0 && dynamicResult) {
+        const custList = customers?.length ? customers : (stats?.services?.length ? stats.services.map((s, idx) => ({ index: idx + 1, name: s.service_name, amount: s.ds })) : []);
+        return buildDynamicTelesaleReportMessage({ employeeName, dateStr, fields, dynamicResult, sheetUrl, customers: custList });
+    }
+
     let lichStatus = '✅';
     if (stats.isLichWarning) {
         lichStatus = '⚠️ (Cảnh báo &lt; 25%)';
@@ -72,15 +113,24 @@ Tổng bong hôm nay:
 TỔNG DS hnay: `;
 
 /**
- * Soạn tin nhắn nhắc nộp báo cáo lúc 18:00.
+ * Soạn tin nhắn nhắc nộp báo cáo lúc 18:00 (hoặc giờ cấu hình theo nhóm).
  */
-export function buildTelesaleReminderMessage({ groupName, pendingStaff = [] }) {
+export function buildTelesaleReminderMessage({
+    groupName,
+    pendingStaff = [],
+    formTemplate = null,
+    fields = null,
+    remindTime = '18:00',
+    deadlineTime = '19:00',
+    penaltyAmount = 50000
+}) {
     let msg = `⏰ <b>NHẮC NỘP BÁO CÁO TELESALE HÀNG NGÀY</b>\n`;
     if (groupName) msg += `Nhóm: <b>${escapeHtml(groupName)}</b>\n`;
     msg += `━━━━━━━━━━━━━━━━\n`;
-    msg += `• Thời gian báo cáo: trước <b>18:00</b>\n`;
-    msg += `• Cập nhật muộn nhất: <b>19:00</b>\n`;
-    msg += `• Quá 19:00: Phạt <b>50.000đ/lần</b> theo quy định (trừ nhân sự có lịch OFF / không đi làm).\n\n`;
+    msg += `• Thời gian báo cáo: trước <b>${escapeHtml(remindTime)}</b>\n`;
+    msg += `• Cập nhật muộn nhất: <b>${escapeHtml(deadlineTime)}</b>\n`;
+    const penaltyStr = `${new Intl.NumberFormat('vi-VN').format(penaltyAmount)}đ`;
+    msg += `• Quá ${escapeHtml(deadlineTime)}: Phạt <b>${penaltyStr}/lần</b> theo quy định (trừ nhân sự có lịch OFF / không đi làm).\n\n`;
 
     if (Array.isArray(pendingStaff) && pendingStaff.length > 0) {
         msg += `📋 <b>Nhân sự đi làm hôm nay chưa nộp báo cáo:</b>\n`;
@@ -93,40 +143,104 @@ export function buildTelesaleReminderMessage({ groupName, pendingStaff = [] }) {
         msg += `<i>(Nhân sự nghỉ ca OFF / có phép đã được tự động miễn nhắc)</i>\n\n`;
     }
 
+    let template = formTemplate;
+    if (!template && fields && Array.isArray(fields) && fields.length > 0) {
+        const inputFields = fields.filter(f => !f.is_hidden && f.category === 'INPUT').sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+        template = `Nhân sự: \n` + inputFields.map(f => `${f.label}: `).join('\n');
+    }
+    if (!template) template = TELESALE_FORM_TEMPLATE;
+
     msg += `👇 <b>Chạm vào khung bên dưới để sao chép mẫu báo cáo:</b>\n`;
-    msg += `<code>${escapeHtml(TELESALE_FORM_TEMPLATE)}</code>\n\n`;
+    msg += `<code>${escapeHtml(template)}</code>\n\n`;
     msg += `<i>(Mọi người điền đúng tên của mình và gửi trực tiếp vào nhóm nhé)</i>`;
     return msg;
 }
 
 /**
- * Soạn tin nhắn phạt muộn nộp báo cáo (sau 19:00).
+ * Soạn tin nhắn phạt muộn nộp báo cáo (sau 19:00 hoặc giờ tuỳ biến).
  */
-export function buildTelesalePenaltyNotice({ employeeName, telegramId, dateStr, penaltyAmount = 50000 }) {
+export function buildTelesalePenaltyNotice({ employeeName, telegramId, dateStr, penaltyAmount = 50000, deadlineTime = '19:00' }) {
     const safeName = escapeHtml(employeeName);
     const mention = telegramId ? `<a href="tg://user?id=${telegramId}">${safeName}</a>` : `<b>${safeName}</b>`;
-    let msg = `⚠️ <b>QUÁ HẠN BÁO CÁO TELESALE (SAU 19:00)</b>\n`;
+    let msg = `⚠️ <b>QUÁ HẠN BÁO CÁO TELESALE (SAU ${escapeHtml(deadlineTime)})</b>\n`;
     msg += `━━━━━━━━━━━━━━━━\n`;
     msg += `Nhân sự: ${mention}\n`;
     msg += `Ngày vi phạm: <b>${escapeHtml(dateStr)}</b>\n`;
-    msg += `Lỗi vi phạm: Chưa nộp báo cáo Telesale trước 19:00 (không có lịch nghỉ OFF).\n`;
+    msg += `Lỗi vi phạm: Chưa nộp báo cáo Telesale trước ${escapeHtml(deadlineTime)} (không có lịch nghỉ OFF).\n`;
     msg += `Mức phạt: <b>${formatVnd(penaltyAmount)}</b> (đã ghi nhận vào sổ phạt).`;
     return msg;
 }
 
 /**
- * Soạn tin tổng kết toàn đội trong ngày (chốt lúc 19:00).
+ * Soạn tin tổng kết toàn đội trong ngày (chốt lúc 19:00 hoặc giờ tuỳ biến).
  */
-export function buildTelesaleDailyTeamSummary({ dateStr, teamTotals, memberSummaries = [], sheetUrl }) {
+export function buildTelesaleDailyTeamSummary({
+    dateStr,
+    teamTotals,
+    memberSummaries = [],
+    sheetUrl,
+    dynamicFields = null,
+    summaryFields = null,
+    dynamicTotals = {}
+}) {
     let msg = `📊 <b>TỔNG KẾT TELESALE TOÀN ĐỘI NGÀY ${escapeHtml(dateStr)}</b>\n`;
     msg += `━━━━━━━━━━━━━━━━\n`;
-    msg += `📥 Tổng số nhận: <b>${teamTotals.so_nhan}</b>\n`;
-    msg += `🌪 Tổng khách văng/knc: <b>${teamTotals.tong_vang || teamTotals.so_trung_knc_vang || 0}</b>\n`;
-    msg += `🗓 Tổng lịch chốt: <b>${teamTotals.tong_lich}</b>\n`;
-    msg += `🚶‍♂️ Tổng khách tới: <b>${teamTotals.tong_toi}</b>\n`;
-    msg += `❌ Tổng khách bong: <b>${teamTotals.tong_bong}</b>\n`;
-    msg += `📅 Tổng lịch hẹn ngày mai: <b>${teamTotals.lich_ngay_mai || 0}</b>\n`;
-    msg += `💰 <b>TỔNG DOANH SỐ: ${formatVnd(teamTotals.tong_ds)}</b>\n`;
+
+    if (dynamicFields && Array.isArray(dynamicFields) && summaryFields && Array.isArray(summaryFields) && summaryFields.length > 0) {
+        let effectiveSummaryFields = [...summaryFields];
+        if (!effectiveSummaryFields.includes('so_trung_knc_vang') && dynamicFields.some(f => f.key === 'so_trung_knc_vang')) {
+            const soNhanIdx = effectiveSummaryFields.indexOf('so_nhan');
+            if (soNhanIdx !== -1) {
+                effectiveSummaryFields.splice(soNhanIdx + 1, 0, 'so_trung_knc_vang');
+            } else {
+                effectiveSummaryFields.unshift('so_trung_knc_vang');
+            }
+        }
+
+        if (!effectiveSummaryFields.includes('lich_ngay_mai') && dynamicFields.some(f => f.key === 'lich_ngay_mai')) {
+            const tongToiIdx = effectiveSummaryFields.indexOf('tong_toi');
+            if (tongToiIdx !== -1) {
+                effectiveSummaryFields.splice(tongToiIdx + 1, 0, 'lich_ngay_mai');
+            } else {
+                const tongLichIdx = effectiveSummaryFields.indexOf('tong_lich');
+                if (tongLichIdx !== -1) {
+                    effectiveSummaryFields.splice(tongLichIdx + 1, 0, 'lich_ngay_mai');
+                } else {
+                    effectiveSummaryFields.push('lich_ngay_mai');
+                }
+            }
+        }
+
+        for (const fKey of effectiveSummaryFields) {
+            const f = dynamicFields.find(field => field.key === fKey);
+            if (!f) continue;
+            const rawVal = dynamicTotals[fKey] ?? teamTotals[fKey] ?? (fKey === 'so_trung_knc_vang' ? (teamTotals.tong_vang || teamTotals.so_trung_knc_vang || 0) : (fKey === 'lich_ngay_mai' ? (teamTotals.lich_ngay_mai || 0) : 0));
+            let valStr = '';
+            if (f.data_type === 'currency' || f.type === 'currency') {
+                valStr = formatVnd(rawVal);
+            } else if (f.data_type === 'percentage' || f.type === 'percentage') {
+                valStr = `${Number(rawVal).toFixed(1)}%`;
+            } else {
+                valStr = new Intl.NumberFormat('vi-VN').format(Number(rawVal) || 0);
+            }
+            let label = f.label;
+            if (fKey === 'so_trung_knc_vang' || fKey === 'tong_vang') {
+                if (!label.startsWith('🌪')) {
+                    label = `🌪 Tổng khách văng/knc`;
+                }
+            }
+            msg += `• ${escapeHtml(label)}: <b>${valStr}</b>\n`;
+        }
+    } else {
+        msg += `📥 Tổng số nhận: <b>${teamTotals.so_nhan}</b>\n`;
+        msg += `🌪 Tổng khách văng/knc: <b>${teamTotals.tong_vang || teamTotals.so_trung_knc_vang || 0}</b>\n`;
+        msg += `🗓 Tổng lịch chốt: <b>${teamTotals.tong_lich}</b>\n`;
+        msg += `🚶‍♂️ Tổng khách tới: <b>${teamTotals.tong_toi}</b>\n`;
+        msg += `❌ Tổng khách bong: <b>${teamTotals.tong_bong}</b>\n`;
+        msg += `📅 Tổng lịch hẹn ngày mai: <b>${teamTotals.lich_ngay_mai || 0}</b>\n`;
+        msg += `💰 <b>TỔNG DOANH SỐ: ${formatVnd(teamTotals.tong_ds)}</b>\n`;
+    }
+
     msg += `━━━━━━━━━━━━━━━━\n`;
     msg += `<b>Chi tiết từng nhân sự:</b>\n`;
 

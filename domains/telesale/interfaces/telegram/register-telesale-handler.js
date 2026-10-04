@@ -177,8 +177,16 @@ export function registerTelesaleTelegramHandler({
                 return next();
             }
 
+            // Lấy cấu hình form động của nhóm (nếu có)
+            let formConfig = null;
+            if (telesaleRepository.getFormConfig) {
+                try {
+                    formConfig = await telesaleRepository.getFormConfig(groupId);
+                } catch (_) {}
+            }
+
             // Bóc tách nội dung báo cáo
-            const parsed = parseTelesaleTextMessage(text);
+            const parsed = parseTelesaleTextMessage(text, formConfig?.fields);
             if (!parsed.isValid) {
                 return next();
             }
@@ -253,6 +261,18 @@ export function registerTelesaleTelegramHandler({
                 tong_toi_hnay: parsed.tong_toi_hnay,
                 tong_bong_hnay: parsed.tong_bong_hnay,
                 tong_ds_hnay: parsed.tong_ds_hnay,
+                ...(parsed.customValues || {}),
+                report_values: {
+                    ...parsed,
+                    ...(parsed.customValues || {})
+                },
+                services: parsed.customers?.length ? parsed.customers.map(c => ({
+                    service_name: c.name,
+                    lich: 1,
+                    toi: 1,
+                    ds: c.amount || 0
+                })) : [],
+                customers: parsed.customers || [],
                 raw_text: text
             };
 

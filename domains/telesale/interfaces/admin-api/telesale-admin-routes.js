@@ -136,4 +136,85 @@ export function registerTelesaleAdminRoutes({
             res.status(500).json({ success: false, error: err.message || 'Lỗi gửi nhắc nhở' });
         }
     });
+
+    // 6. Lấy cấu hình Form động & lịch trình của nhóm
+    app.get('/api/admin/telesale/config', authMiddleware, requireGeneral, async (req, res) => {
+        try {
+            const { groupId } = req.query;
+            if (!groupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu groupId' });
+            }
+            const config = await telesaleRepository.getFormConfig(groupId);
+            res.json({ success: true, config });
+        } catch (err) {
+            console.error('[Telesale Admin API] Lỗi lấy cấu hình form:', err.message || err);
+            res.status(500).json({ success: false, error: err.message || 'Lỗi lấy cấu hình form Telesale' });
+        }
+    });
+
+    // 7. Lưu/Cập nhật cấu hình Form động & lịch trình của nhóm
+    app.put('/api/admin/telesale/config', authMiddleware, requireGeneral, async (req, res) => {
+        try {
+            const { telegramGroupId, groupName, fields, scheduleSettings, sheetSettings } = req.body;
+            if (!telegramGroupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu telegramGroupId' });
+            }
+            const saved = await telesaleRepository.saveFormConfig({
+                telegramGroupId,
+                groupName,
+                fields,
+                scheduleSettings,
+                sheetSettings
+            });
+
+            // Tự động đồng bộ header Sheet nếu bật auto_sync_headers
+            if (sheetSettings?.auto_sync_headers && telesaleSheetSync?.syncGroupHeaders) {
+                try {
+                    const groups = await telesaleRepository.findActiveTelesaleGroups();
+                    const g = groups.find(item => String(item.telegram_group_id) === String(telegramGroupId));
+                    const sheetId = g?.customer_sheet_id || g?.kpi_sheet_id;
+                    await telesaleSheetSync.syncGroupHeaders({ spreadsheetId: sheetId, fields });
+                } catch (sheetErr) {
+                    console.warn('[Telesale Sheet Header Auto-sync Warning]:', sheetErr.message);
+                }
+            }
+
+            res.json({ success: true, message: 'Đã lưu cấu hình Form Telesale thành công', config: saved });
+        } catch (err) {
+            console.error('[Telesale Admin API] Lỗi lưu cấu hình form:', err.message || err);
+            res.status(500).json({ success: false, error: err.message || 'Lỗi lưu cấu hình form Telesale' });
+        }
+    });
+
+    // 8. Đồng bộ thủ công dòng tiêu đề (Headers) lên Google Sheet
+    app.post('/api/admin/telesale/sync-sheet-headers', authMiddleware, requireGeneral, async (req, res) => {
+        try {
+            const { telegramGroupId } = req.body;
+            if (!telegramGroupId) {
+                return res.status(400).json({ success: false, error: 'Thiếu telegramGroupId' });
+            }
+            if (!telesaleSheetSync?.syncGroupHeaders) {
+                return res.status(501).json({ success: false, error: 'Chức năng đồng bộ Google Sheet chưa sẵn sàng' });
+            }
+
+            const config = await telesaleRepository.getFormConfig(telegramGroupId);
+            const groups = await telesaleRepository.findActiveTelesaleGroups();
+            const g = groups.find(item => String(item.telegram_group_id) === String(telegramGroupId));
+            const sheetId = g?.customer_sheet_id || g?.kpi_sheet_id;
+
+            const syncResult = await telesaleSheetSync.syncGroupHeaders({
+                spreadsheetId: sheetId,
+                fields: config.fields || []
+            });
+
+            res.json({
+                success: true,
+                message: 'Đã cập nhật dòng tiêu đề Google Sheet thành công!',
+                syncResult
+            });
+        } catch (err) {
+            console.error('[Telesale Admin API] Lỗi đồng bộ tiêu đề Sheet:', err.message || err);
+            res.status(500).json({ success: false, error: err.message || 'Lỗi khi đồng bộ tiêu đề Google Sheet' });
+        }
+    });
 }

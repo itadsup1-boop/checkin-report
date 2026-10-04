@@ -4,6 +4,7 @@
 
 import { calculateTelesaleStats } from '../domain/telesale-rules.js';
 import { buildTelesaleReportMessage } from '../domain/telesale-messages.js';
+import { calculateDynamicForm } from '../domain/safe-formula-engine.js';
 
 export function createSubmitTelesaleReport({
     telesaleRepository,
@@ -64,8 +65,25 @@ export function createSubmitTelesaleReport({
         // Lấy doanh số luỹ kế của các ngày trước trong tháng
         const monthlyPrevRevenue = await telesaleRepository.getMonthlyPreviousRevenue(telegramGroupId, emp.id, dateStr);
 
-        // Tính toán toàn bộ chỉ số
+        // Tính toán toàn bộ chỉ số theo quy tắc chuẩn
         const stats = calculateTelesaleStats(payload, monthlyPrevRevenue);
+
+        // Tính toán theo form động (nếu nhóm có cấu hình)
+        let formConfig = null;
+        let dynamicResult = null;
+        if (telesaleRepository.getFormConfig) {
+            try {
+                formConfig = await telesaleRepository.getFormConfig(telegramGroupId);
+                if (formConfig && formConfig.fields && Array.isArray(formConfig.fields) && formConfig.fields.length > 0) {
+                    const monthlyPrevObj = {
+                        tong_ds_thang: monthlyPrevRevenue
+                    };
+                    dynamicResult = calculateDynamicForm(formConfig.fields, payload.report_values || payload, monthlyPrevObj);
+                }
+            } catch (cfgErr) {
+                console.warn('[Submit Telesale Warning] Không lấy được formConfig:', cfgErr.message);
+            }
+        }
 
         // Lưu vào cơ sở dữ liệu
         const savedReport = await telesaleRepository.upsertDailyReport({
@@ -87,7 +105,8 @@ export function createSubmitTelesaleReport({
             tyLeKhachToiDs: stats.ty_le_khach_toi_ds,
             tyLeLich: stats.ty_le_lich,
             tyLeToi: stats.ty_le_toi,
-            rawPayload: payload
+            rawPayload: payload,
+            reportValues: dynamicResult ? dynamicResult.values : (payload.report_values || null)
         });
 
         // Đồng bộ sang Google Sheet
@@ -98,7 +117,8 @@ export function createSubmitTelesaleReport({
                 dateStr: displayDate,
                 timeStr,
                 employeeName,
-                stats
+                stats,
+                fields: formConfig?.fields || null
             });
         }
 
@@ -108,7 +128,9 @@ export function createSubmitTelesaleReport({
                 employeeName,
                 dateStr: displayDate,
                 stats,
-                sheetUrl
+                sheetUrl,
+                fields: formConfig?.fields || null,
+                dynamicResult
             });
 
             try {

@@ -10,7 +10,7 @@ export function createScanTelesaleDeadline({
     bot,
     now = () => new Date()
 }) {
-    return async function scanTelesaleDeadline() {
+    return async function scanTelesaleDeadline(targetGroupId = null, customPenaltyAmount = null) {
         try {
             const currentDate = now();
             const vnDateObj = new Date(currentDate.getTime() + 7 * 3600 * 1000);
@@ -21,23 +21,57 @@ export function createScanTelesaleDeadline({
             const groups = await telesaleRepository.findActiveTelesaleGroups();
             if (!groups || groups.length === 0) return;
 
+            const targetGroups = targetGroupId
+                ? groups.filter(g => String(g.telegram_group_id) === String(targetGroupId))
+                : groups;
+
+            if (targetGroups.length === 0) return;
+
             // Lấy danh sách ID nhân viên có lịch OFF hoặc đơn nghỉ hôm nay
             const offDutyIds = new Set(await telesaleRepository.findOffDutyEmployeeIds(dateStr));
             const onLeaveIds = new Set(await telesaleRepository.findOnLeaveEmployeeIds(dateStr));
 
-            for (const g of groups) {
+            for (const g of targetGroups) {
                 const groupId = g.telegram_group_id;
+
+                let penaltyEnabled = true;
+                let penaltyAmount = 50000;
+                let deadlineTime = '19:00';
+
+                if (typeof telesaleRepository.getFormConfig === 'function') {
+                    try {
+                        const formConfig = await telesaleRepository.getFormConfig(groupId);
+                        const sched = formConfig?.schedule_settings || {};
+                        if (sched.penalty_enabled === false) {
+                            penaltyEnabled = false;
+                        }
+                        if (sched.penalty_amount) {
+                            penaltyAmount = Number(sched.penalty_amount) || 50000;
+                        }
+                        if (sched.deadline_time) {
+                            deadlineTime = sched.deadline_time;
+                        }
+                    } catch (e) {
+                        // ignore config error
+                    }
+                }
+
+                if (!penaltyEnabled) continue;
+                if (customPenaltyAmount) {
+                    penaltyAmount = Number(customPenaltyAmount) || penaltyAmount;
+                }
+
                 const members = await telesaleRepository.findMembersInTelesaleGroup(groupId);
                 if (!members || members.length === 0) continue;
 
                 const reportedIds = new Set(await telesaleRepository.findReportedEmployeeIds(groupId, dateStr));
 
                 for (const member of members) {
-                    // Đã nộp -> bỏ qua
-                    if (reportedIds.has(member.id)) continue;
-
                     const effectiveEmpId = member.linked_employee_id || member.id;
                     const effectiveTgId = member.linked_telegram_id || member.telegram_id;
+
+                    // Đã nộp -> bỏ qua
+                    if (reportedIds.has(member.id) || (effectiveEmpId && reportedIds.has(effectiveEmpId))) continue;
 
                     // Được nghỉ theo lịch OFF hoặc có đơn nghỉ phép -> bỏ qua
                     if (
@@ -62,45 +96,61 @@ export function createScanTelesaleDeadline({
                         }
                     }
 
-                    // Vi phạm quá 19:00 không nộp -> Tạo phạt 50.000đ
+                    const reason = `Chậm nộp báo cáo Telesale sau ${deadlineTime}`;
+
+                    // Vi phạm quá hạn -> Tạo phạt
                     const penalty = await telesaleRepository.createPenalty({
                         telegramGroupId: groupId,
                         employeeId: member.id,
                         dateStr,
-                        amount: 50000,
-                        reason: 'Chậm nộp báo cáo Telesale sau 19:00'
+                        amount: penaltyAmount,
+                        reason
                     });
 
-                    if (telesaleSheetSync && typeof telesaleSheetSync.syncPenalty === 'function') {
-                        telesaleSheetSync.syncPenalty({
-                            spreadsheetId: g.customer_sheet_id,
-                            dateStr: displayDate,
-                            employeeName: member.full_name,
-                            penaltyAmount: 50000,
-                            reason: 'Chậm nộp báo cáo Telesale sau 19:00',
-                            recordedTimeStr: `${displayDate} 19:00:00`
-                        }).catch(err => console.error('[Telesale Sheet Sync Penalty Err]:', err.message || err));
+                    // Kiểm tra chống gửi trùng tin nhắn phạt (cho cả đa tiến trình PM2/dev lẫn cron chạy lại)
+                    const dedupKey = `penalty:${groupId}:${member.id}:${dateStr}`;
+                    let canSendNotice = penalty && penalty.isNew !== false;
+                    if (typeof telesaleRepository.acquireNotificationLock === 'function') {
+                        const acquired = await telesaleRepository.acquireNotificationLock(dedupKey);
+                        if (!acquired) {
+                            canSendNotice = false;
+                            console.log(`[Telesale] Thông báo phạt cho ${member.full_name} (${dateStr}) đã được gửi trước đó, bỏ qua gửi tin.`);
+                        }
                     }
 
-                    // Gửi tin thông báo phạt lên nhóm
-                    if (bot && penalty) {
-                        const notice = buildTelesalePenaltyNotice({
-                            employeeName: member.full_name,
-                            telegramId: effectiveTgId || member.telegram_id,
-                            dateStr: displayDate,
-                            penaltyAmount: 50000
-                        });
+                    if (canSendNotice) {
+                        if (telesaleSheetSync && typeof telesaleSheetSync.syncPenalty === 'function') {
+                            telesaleSheetSync.syncPenalty({
+                                spreadsheetId: g.customer_sheet_id,
+                                dateStr: displayDate,
+                                employeeName: member.full_name,
+                                penaltyAmount,
+                                reason,
+                                recordedTimeStr: `${displayDate} ${deadlineTime}:00`
+                            }).catch(err => console.error('[Telesale Sheet Sync Penalty Err]:', err.message || err));
+                        }
 
-                        await bot.telegram.sendMessage(groupId, notice, {
-                            parse_mode: 'HTML'
-                        }).catch(err => {
-                            console.error(`[Telesale] Lỗi gửi thông báo phạt nhân sự ${member.full_name}:`, err.message);
-                        });
+                        // Gửi tin thông báo phạt lên nhóm
+                        if (bot) {
+                            const notice = buildTelesalePenaltyNotice({
+                                employeeName: member.full_name,
+                                telegramId: effectiveTgId || member.telegram_id,
+                                dateStr: displayDate,
+                                penaltyAmount,
+                                deadlineTime
+                            });
+
+                            await bot.telegram.sendMessage(groupId, notice, {
+                                parse_mode: 'HTML'
+                            }).catch(err => {
+                                console.error(`[Telesale] Lỗi gửi thông báo phạt nhân sự ${member.full_name}:`, err.message);
+                            });
+                        }
                     }
                 }
             }
         } catch (err) {
-            console.error('[Telesale] Lỗi tiến trình quét hạn chót 19:00:', err.message || err);
+            console.error('[Telesale] Lỗi tiến trình quét hạn chót:', err.message || err);
         }
     };
 }

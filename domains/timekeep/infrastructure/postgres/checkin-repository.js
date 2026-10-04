@@ -13,7 +13,18 @@ export function createCheckinRepository({ pool }) {
                 checkin_penalty_amount = EXCLUDED.checkin_penalty_amount`,
             [groupId, userId, date, checkInTime, videoUrl, workCredit, checkinPenaltyAmount]
         );
+        const attendanceResult = checkinPenaltyAmount > 0 ? 'LATE' : 'ON_TIME';
+        await pool.query(
+            `INSERT INTO tk_attendance_daily_status (group_id, user_id, date, result, finalized_at, updated_at)
+             VALUES ($1, $2, $3, $4, NOW(), NOW())
+             ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                result = $4,
+                finalized_at = COALESCE(tk_attendance_daily_status.finalized_at, NOW()),
+                updated_at = NOW()`,
+            [groupId, userId, date, attendanceResult]
+        );
     }
+
 
     async function recordCheckOut({ userId, date, checkoutTime, mediaFileId = null, checkoutStatus = 'HOAN_THANH', penaltyAmount = 0 }) {
         const result = await pool.query(

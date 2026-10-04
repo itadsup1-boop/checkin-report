@@ -13,6 +13,7 @@ import { createEntryScreen } from './flows/entry-screen.js';
 import { createQuickExportFlow } from './flows/quick-export.js';
 import { createCustomerOrderFlow } from './flows/order/index.js';
 import { createStockTransferFlow } from './flows/stock-transfer.js';
+import { createEditOrderFlow } from './flows/edit-order.js';
 
 const mount = el('app');
 let catalog = null;
@@ -36,6 +37,7 @@ function showEntry() {
             onPick: flow => {
                 if (flow === 'customer') return showCustomerFlow();
                 if (flow === 'transfer') return showStockTransferFlow();
+                if (flow === 'edit') return showEditFlow();
                 return showQuickFlow();
             }
         })
@@ -54,8 +56,14 @@ function showStockTransferFlow() {
     show(createStockTransferFlow({ catalog, onExit: showEntry }));
 }
 
+function showEditFlow(initialOrderId = '') {
+    show(createEditOrderFlow({ catalog, initialOrderId, onExit: showEntry }));
+}
+
 async function start() {
     const { chatId } = getLaunchParams();
+    const urlParams = new URLSearchParams(location.search);
+    const queryOrderId = urlParams.get('order_id') || urlParams.get('orderId') || '';
 
     if (!chatId || !isInsideTelegram()) {
         show(
@@ -71,7 +79,11 @@ async function start() {
 
     try {
         catalog = await loadCatalog();
-        showEntry();
+        if (queryOrderId) {
+            showEditFlow(queryOrderId);
+        } else {
+            showEntry();
+        }
     } catch (error) {
         show(errorScreen({ message: error.message, onRetry: start }));
     }

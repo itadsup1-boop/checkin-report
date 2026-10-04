@@ -39,10 +39,10 @@ export function createSendTelesaleReminder({
                 // Lọc danh sách nhân sự ĐI LÀM HÔM NAY nhưng CHƯA NỘP BÁO CÁO
                 const pendingWorkingStaff = [];
                 for (const member of members) {
-                    if (reportedIds.has(member.id)) continue;
-
                     const effectiveEmpId = member.linked_employee_id || member.id;
                     const effectiveTgId = member.linked_telegram_id || member.telegram_id;
+
+                    if (reportedIds.has(member.id) || (effectiveEmpId && reportedIds.has(effectiveEmpId))) continue;
 
                     let workedToday = true;
                     if (typeof telesaleRepository.hasEmployeeWorkedToday === 'function') {
@@ -58,9 +58,21 @@ export function createSendTelesaleReminder({
                     }
                 }
 
+                let formConfig = null;
+                if (telesaleRepository.getFormConfig) {
+                    try {
+                        formConfig = await telesaleRepository.getFormConfig(groupId);
+                    } catch (_) {}
+                }
+
+                const sched = formConfig?.schedule_settings || {};
                 const text = buildTelesaleReminderMessage({
                     groupName: g.group_name,
-                    pendingStaff: pendingWorkingStaff
+                    pendingStaff: pendingWorkingStaff,
+                    fields: formConfig?.fields,
+                    remindTime: sched.remind_time || '18:00',
+                    deadlineTime: sched.deadline_time || '19:00',
+                    penaltyAmount: sched.penalty_amount || 50000
                 });
 
                 const botUsername = bot?.botInfo?.username || process.env.BOT_USERNAME || 'baocao_kpi_adsup_bot';
@@ -71,7 +83,17 @@ export function createSendTelesaleReminder({
                 const sig = crypto.createHmac('sha256', token).update(dataString).digest('hex');
                 const telesaleUrl = `https://t.me/${botUsername}/${appShortName}?startapp=telesale_${groupId}_${ts}_${sig}`;
 
-                if (bot?.telegram?.sendMessage) {
+                const reminderDedupKey = `reminder:${groupId}:${dateStr}`;
+                let canSendReminder = true;
+                if (typeof telesaleRepository.acquireNotificationLock === 'function') {
+                    const acquired = await telesaleRepository.acquireNotificationLock(reminderDedupKey);
+                    if (!acquired) {
+                        canSendReminder = false;
+                        console.log(`[Telesale] Tin nhắc nhở nhóm ${groupId} ngày ${dateStr} đã được gửi trước đó, bỏ qua.`);
+                    }
+                }
+
+                if (canSendReminder && bot?.telegram?.sendMessage) {
                     await bot.telegram.sendMessage(groupId, text, {
                         parse_mode: 'HTML',
                         reply_markup: {

@@ -100,7 +100,7 @@ test('module đăng ký đúng 15 endpoint cũ và không chạm database lúc k
     assert.equal(Object.isFrozen(h.moduleApi), true);
 });
 
-test('cron giữ đúng 7 lịch chạy nền (xuất Sheet 23:00, chấm công mỗi phút, 5 mốc Chủ Nhật)', () => {
+test('cron giữ đúng 8 lịch chạy nền (xuất Sheet 23:00, chấm công mỗi phút, tổng kết phạt tuần, 5 mốc Chủ Nhật)', () => {
     assert.deepEqual(createHarness().crons.map(c => c.expression), [
         '0 23 * * *',
         '*/1 * * * *',
@@ -108,7 +108,8 @@ test('cron giữ đúng 7 lịch chạy nền (xuất Sheet 23:00, chấm công 
         '0 18 * * 0',
         '0 19 * * 0',
         '50 19 * * 0',
-        '0 20 * * 0'
+        '0 20 * * 0',
+        '*/1 * * * *'
     ]);
 });
 

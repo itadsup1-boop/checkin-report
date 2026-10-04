@@ -1,6 +1,7 @@
 import {
     evaluateMarketingCheckin, isMarketingCheckoutEligible, isCheckoutTrigger,
-    isMarketingPolicy, formatMarketingCheckinReply, formatMarketingCheckoutReply
+    isMarketingPolicy, formatMarketingCheckinReply, formatMarketingCheckoutReply,
+    resolveMarketingCheckinDeadlines
 } from '../../domain/marketing-attendance-rules.js';
 
 export function registerVideoCheckinHandler({ bot, checkinRepository, findEmployeeContext, syncSheets, moment }) {
@@ -71,32 +72,24 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                     if (currentDate < effectiveDate) return next();
 
                     if (!isMarketingCheckoutEligible(currentTimeStr, checkoutMin)) {
-                        await ctx.reply(
-                            `⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, chưa đến giờ kết thúc ca làm việc (sau ${checkoutMinDisplay})!\nVui lòng thực hiện check-out sau ${checkoutMinDisplay} để được ghi nhận hợp lệ.`,
-                            { parse_mode: 'HTML', reply_to_message_id: msg.message_id }
-                        );
+                        await ctx.reply(`⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, chưa đến giờ kết thúc ca làm việc (sau ${checkoutMinDisplay})!\nVui lòng thực hiện check-out sau ${checkoutMinDisplay} để được ghi nhận hợp lệ.`, { parse_mode: 'HTML', reply_to_message_id: msg.message_id });
                         return next();
                     }
 
                     const user = await findEmployeeContext(telegramId, telegramGroupId);
                     if (!user) {
-                        await ctx.reply(
-                            `⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, bạn chưa đăng ký tài khoản nhân sự trong hệ thống!\nVui lòng đăng ký tài khoản trước.`,
-                            { parse_mode: 'HTML', reply_to_message_id: msg.message_id }
-                        );
+                        await ctx.reply(`⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, bạn chưa đăng ký tài khoản nhân sự trong hệ thống!\nVui lòng đăng ký tài khoản trước.`, { parse_mode: 'HTML', reply_to_message_id: msg.message_id });
                         return next();
                     }
 
                     if (typeof checkinRepository.findCheckInOfDay === 'function') {
                         const existingCheckin = await checkinRepository.findCheckInOfDay({ userId: user.id, date: currentDate });
                         if (!existingCheckin) {
-                            await ctx.reply(
-                                `⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, bạn chưa thực hiện check-in ca làm việc hôm nay!\nVui lòng liên hệ quản lý nếu có sự cố.`,
-                                { parse_mode: 'HTML', reply_to_message_id: msg.message_id }
-                            );
+                            await ctx.reply(`⚠️ <b>${msg.from.first_name || 'Bạn'}</b> ơi, bạn chưa thực hiện check-in ca làm việc hôm nay!\nVui lòng liên hệ quản lý nếu có sự cố.`, { parse_mode: 'HTML', reply_to_message_id: msg.message_id });
                             return next();
                         }
                     }
+
 
                     if (typeof checkinRepository.recordCheckOut === 'function') {
                         await checkinRepository.recordCheckOut({
@@ -218,29 +211,9 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
 
                 const currentTimeStr = msgMoment.format('HH:mm:ss');
                 const isSunday = msgMoment.day() === 0;
-                const hasSundaySpecial = isSunday && (Boolean(policyInfo?.marketing_sunday_checkin_deadline) || telegramGroupId === '-5470063387');
-                
-                let deadline;
-                let lateCutoff;
-                if (isCa2) {
-                    deadline = '09:30:00';
-                    lateCutoff = '10:30:00';
-                } else {
-                    deadline = hasSundaySpecial
-                        ? (policyInfo?.marketing_sunday_checkin_deadline || '09:00:00')
-                        : (policyInfo?.marketing_checkin_deadline || '08:30:00');
-                    lateCutoff = hasSundaySpecial
-                        ? (policyInfo?.marketing_sunday_late_cutoff || '10:00:00')
-                        : (policyInfo?.marketing_late_cutoff || '09:30:00');
-                }
-
-                // Nếu có đơn xin đi muộn đã duyệt: cộng dồn thời gian xin đi muộn vào mốc ca làm
-                if (approvedLateLeave && approvedMinutes > 0) {
-                    const baseShiftMoment = moment(`${currentDate} ${deadline}`, 'YYYY-MM-DD HH:mm:ss');
-                    const extendedDeadlineMoment = baseShiftMoment.clone().add(approvedMinutes, 'minutes');
-                    deadline = extendedDeadlineMoment.format('HH:mm:ss');
-                    lateCutoff = extendedDeadlineMoment.clone().add(60, 'minutes').format('HH:mm:ss');
-                }
+                const { deadline, lateCutoff, shiftStartTime } = resolveMarketingCheckinDeadlines({
+                    policyInfo, telegramGroupId, isSunday, isCa2, approvedLateLeave, approvedMinutes
+                });
 
                 let evalRes;
                 if (currentDate < effectiveDate) {
@@ -253,12 +226,11 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                 }
 
                 if (approvedLateLeave) {
-                    if (!evalRes.isLate) {
-                        evalRes.reason = `Check-in hợp lệ (Đã duyệt đơn xin đi muộn${approvedMinutes > 0 ? ` +${approvedMinutes} phút` : ''})`;
-                    } else {
-                        evalRes.reason = `Quá thời gian xin đi muộn (hạn sau ${deadline.slice(0, 5)}) - Phạt ${evalRes.penalty.toLocaleString('vi-VN')}đ`;
-                    }
+                    evalRes.reason = !evalRes.isLate
+                        ? `Check-in hợp lệ (Đã duyệt đơn xin đi muộn${approvedMinutes > 0 ? ` +${approvedMinutes} phút` : ''})`
+                        : `Quá thời gian xin đi muộn (hạn sau ${deadline.slice(0, 5)}) - Phạt ${evalRes.penalty.toLocaleString('vi-VN')}đ`;
                 }
+
 
                 await checkinRepository.insertCheckIn({
                     groupId: user.group_id, userId: user.id, date: currentDate, checkInTime,
@@ -266,7 +238,7 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                 });
 
                 if (evalRes.penalty > 0 && typeof checkinRepository.insertLatePenalty === 'function') {
-                    const shiftStartMoment = moment(`${currentDate} ${deadline}`, 'YYYY-MM-DD HH:mm:ss');
+                    const shiftStartMoment = moment(`${currentDate} ${shiftStartTime}`, 'YYYY-MM-DD HH:mm:ss');
                     const lateMinutes = Math.max(0, msgMoment.diff(shiftStartMoment, 'minutes'));
                     await checkinRepository.insertLatePenalty({
                         groupId: user.group_id, userId: user.id, date: currentDate, lateMinutes,

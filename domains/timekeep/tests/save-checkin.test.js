@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import moment from 'moment';
 import { createSaveCheckin } from '../application/save-checkin.js';
 
-function createHarness({ existingCheckin = null, policy = null, userSchedule = null, leaveRequest = null } = {}) {
+function createHarness({ existingCheckin = null, policy = null, userSchedule = null, leaveRequest = null, customMoment = moment } = {}) {
     const insertedCheckins = [];
     const recordedCheckouts = [];
     const clearedPenalties = [];
@@ -51,7 +51,7 @@ function createHarness({ existingCheckin = null, policy = null, userSchedule = n
         scheduleRepository,
         findEmployeeContext,
         isSystemAdmin,
-        moment,
+        moment: customMoment,
         fs: { mkdirSync: () => {}, writeFileSync: () => {} },
         path: {
             extname: (file) => {
@@ -309,6 +309,84 @@ test('saveCheckin - Có đơn xin đi muộn đã duyệt: Mốc chốt được
     await result.runBackgroundTask();
     assert.equal(h.sentPhotos.length, 1);
     assert.match(h.sentPhotos[0].options.caption, /Xin muộn \+60p/);
+});
+
+test('saveCheckin - Marketing policy: Thêm 5 phút ân hạn cho check-in (08:33 chấp nhận đúng giờ)', async () => {
+    const policy = {
+        attendance_policy: 'MARKETING',
+        marketing_checkin_deadline: '08:30:00',
+        marketing_late_cutoff: '09:30:00',
+        marketing_checkin_penalty: 50000,
+        effective_start_date: '2026-01-01'
+    };
+    // Mock moment at 08:33:02
+    const fakeMoment = (...args) => {
+        if (args.length === 0) {
+            return moment('2026-09-29 08:33:02 +07:00', 'YYYY-MM-DD HH:mm:ss Z');
+        }
+        return moment(...args);
+    };
+    Object.assign(fakeMoment, moment);
+
+    const h = createHarness({ existingCheckin: null, policy, customMoment: fakeMoment });
+
+    const req = {
+        body: { chat_id: '-1001', telegram_id: 'user1' },
+        file: { path: '/tmp/checkin_0833.jpg', filename: 'checkin_0833.jpg' }
+    };
+
+    const result = await h.saveCheckin(req);
+    assert.equal(result.ok, true);
+    assert.equal(result.isCheckout, false);
+    assert.equal(h.insertedCheckins.length, 1);
+    assert.equal(h.insertedCheckins[0].workCredit, 1.0, 'Được tính đủ 1.0 công do trong 5 phút ân hạn');
+    assert.equal(h.insertedCheckins[0].checkinPenaltyAmount, 0, '0đ phạt khi check-in lúc 08:33');
+    assert.match(result.message, /đúng giờ/);
+
+    await result.runBackgroundTask();
+    assert.equal(h.sentPhotos.length, 1);
+    assert.match(h.sentPhotos[0].options.caption, /Đúng giờ/);
+});
+
+test('saveCheckin - Marketing policy: Có đơn xin đi muộn (+30p) thì chỉ cộng 30p, không cộng thêm 5p ân hạn', async () => {
+    const policy = {
+        attendance_policy: 'MARKETING',
+        marketing_checkin_deadline: '08:30:00',
+        marketing_late_cutoff: '09:30:00',
+        marketing_checkin_penalty: 50000,
+        effective_start_date: '2026-01-01'
+    };
+    const leaveRequest = {
+        id: 'leave-miniapp-30',
+        leave_type: 'LATE',
+        status: 'APPROVED',
+        late_minutes: 30
+    };
+    // Mock moment at 09:02:00 (quá hạn 09:00:00, không được cộng thêm 5 phút)
+    const fakeMoment = (...args) => {
+        if (args.length === 0) {
+            return moment('2026-09-29 09:02:00 +07:00', 'YYYY-MM-DD HH:mm:ss Z');
+        }
+        return moment(...args);
+    };
+    Object.assign(fakeMoment, moment);
+
+    const h = createHarness({ existingCheckin: null, policy, leaveRequest, customMoment: fakeMoment });
+
+    const req = {
+        body: { chat_id: '-1001', telegram_id: 'user1' },
+        file: { path: '/tmp/checkin_leave_overdue.jpg', filename: 'checkin_leave_overdue.jpg' }
+    };
+
+    const result = await h.saveCheckin(req);
+    assert.equal(result.ok, true);
+    assert.equal(h.insertedCheckins.length, 1);
+    assert.equal(h.insertedCheckins[0].checkinPenaltyAmount, 50000, 'Bị phạt 50.000đ do quá hạn 09:00');
+    assert.match(result.message, /Đi muộn/);
+
+    await result.runBackgroundTask();
+    assert.equal(h.sentPhotos.length, 1);
+    assert.match(h.sentPhotos[0].options.caption, /Quá thời gian xin đi muộn/);
 });
 
 

@@ -7,6 +7,7 @@
  */
 
 import { isExcludedSheetEmployee } from '../../../../packages/shared/excluded-employees.js';
+import { formatFieldValue } from '../../domain/safe-formula-engine.js';
 
 const DEFAULT_SPREADSHEET_ID = '1gQYXoylEysKKqUpYMxAzLw1nA7KC89eC-FO4kSzhlYU';
 const MASTER_TAB_NAME = 'TỔNG HỢP';
@@ -125,7 +126,8 @@ export function createTelesaleSheetSync({ getDocById }) {
         dateStr,
         timeStr,
         employeeName,
-        stats
+        stats,
+        fields = null
     }) {
         if (isExcludedSheetEmployee(employeeName)) {
             console.log(`[Telesale Sheet] Bỏ qua ghi Sheet cho nhân sự loại trừ: ${employeeName}`);
@@ -157,25 +159,41 @@ export function createTelesaleSheetSync({ getDocById }) {
             const rowData = {
                 'Ngày': dateStr,
                 'Thời gian nộp': timeStr,
-                'Nhân sự': employeeName,
-                'Số nhận': stats.so_nhan,
-                'Số trùng / KNC / Văng': stats.so_trung_knc_vang,
-                'Số lịch PV mới': stats.lich_pv_moi,
-                'Số lịch PV cũ': stats.lich_pv_cu,
-                'Tổng lịch': stats.tong_lich,
-                'Lịch hẹn ngày mai': stats.lich_ngay_mai,
-                'Tổng tới hôm nay': stats.tong_toi_hnay,
-                'Tổng bong hôm nay': stats.tong_bong_hnay,
-                'TỔNG DS hnay': stats.tong_ds_hnay,
-                'Tổng DS cộng dồn tháng': stats.tong_ds_thang,
-                'Tỷ lệ khách tới / doanh số': stats.ty_le_khach_toi_ds,
-                'Tỷ lệ lịch (%)': `${stats.ty_le_lich}%`,
-                'Tỉ lệ tới (%)': `${stats.ty_le_toi}%`,
-                'Đánh giá': danhGia,
-                'Chi tiết dịch vụ': stats.services && stats.services.length > 0
-                    ? stats.services.map(s => `${s.service_name}: ${s.lich} lịch, ${s.toi} tới, ${s.ds}đ`).join('; ')
-                    : ''
+                'Nhân sự': employeeName
             };
+
+            if (fields && Array.isArray(fields) && fields.length > 0) {
+                const activeFields = fields.filter(f => !f.is_hidden).sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+                for (const f of activeFields) {
+                    const rawVal = stats[f.key] ?? stats.values?.[f.key] ?? 0;
+                    if (f.type === 'currency') {
+                        rowData[f.label] = formatFieldValue(rawVal, 'currency');
+                    } else if (f.type === 'percentage') {
+                        rowData[f.label] = formatFieldValue(rawVal, 'percentage');
+                    } else {
+                        rowData[f.label] = rawVal;
+                    }
+                }
+            } else {
+                rowData['Số nhận'] = stats.so_nhan;
+                rowData['Số trùng / KNC / Văng'] = stats.so_trung_knc_vang;
+                rowData['Số lịch PV mới'] = stats.lich_pv_moi;
+                rowData['Số lịch PV cũ'] = stats.lich_pv_cu;
+                rowData['Tổng lịch'] = stats.tong_lich;
+                rowData['Lịch hẹn ngày mai'] = stats.lich_ngay_mai;
+                rowData['Tổng tới hôm nay'] = stats.tong_toi_hnay;
+                rowData['Tổng bong hôm nay'] = stats.tong_bong_hnay;
+                rowData['TỔNG DS hnay'] = stats.tong_ds_hnay;
+                rowData['Tổng DS cộng dồn tháng'] = stats.tong_ds_thang;
+                rowData['Tỷ lệ khách tới / doanh số'] = stats.ty_le_khach_toi_ds;
+                rowData['Tỷ lệ lịch (%)'] = `${stats.ty_le_lich}%`;
+                rowData['Tỉ lệ tới (%)'] = `${stats.ty_le_toi}%`;
+            }
+
+            rowData['Đánh giá'] = danhGia;
+            rowData['Chi tiết dịch vụ'] = stats.services && stats.services.length > 0
+                ? stats.services.map(s => `${s.service_name}: ${s.lich} lịch, ${s.toi} tới, ${s.ds}đ`).join('; ')
+                : '';
 
             // 1. Ghi vào Sheet Tổng Hợp
             const masterSheet = await ensureSheetWithHeaders(doc, MASTER_TAB_NAME);
@@ -273,8 +291,48 @@ export function createTelesaleSheetSync({ getDocById }) {
         }
     }
 
+    /**
+     * Đồng bộ lại dòng tiêu đề (Header row) trên Google Sheet theo danh sách trường của nhóm.
+     */
+    async function syncGroupHeaders({ spreadsheetId, fields = [] }) {
+        const targetSheetId = spreadsheetId || DEFAULT_SPREADSHEET_ID;
+        const doc = await getDocById(targetSheetId);
+        if (!doc) {
+            throw new Error(`Không thể kết nối Google Spreadsheet: ${targetSheetId}`);
+        }
+        await doc.loadInfo();
+
+        const activeFields = (fields || [])
+            .filter(f => !f.is_hidden)
+            .sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+
+        const dynamicHeaders = [
+            'Ngày',
+            'Thời gian nộp',
+            'Nhân sự',
+            ...activeFields.map(f => f.label),
+            'Đánh giá',
+            'Chi tiết dịch vụ'
+        ];
+
+        let masterSheet = doc.sheetsByTitle[MASTER_TAB_NAME];
+        if (!masterSheet) {
+            masterSheet = await doc.addSheet({ headerValues: dynamicHeaders, title: MASTER_TAB_NAME });
+        } else {
+            await masterSheet.setHeaderRow(dynamicHeaders);
+        }
+
+        return {
+            success: true,
+            tabName: MASTER_TAB_NAME,
+            headers: dynamicHeaders,
+            sheetUrl: `https://docs.google.com/spreadsheets/d/${targetSheetId}`
+        };
+    }
+
     return {
         syncDailyReport,
-        syncPenalty
+        syncPenalty,
+        syncGroupHeaders
     };
 }

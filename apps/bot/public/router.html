@@ -86,9 +86,9 @@
                 targetPage = 'form.html';
             } else if (startParam.startsWith('customer')) {
                 targetPage = 'customer_form.html';
-            } else if (startParam.startsWith('whimport')) {
+            } else if (startParam.startsWith('whimport') || startParam.startsWith('wheditimport')) {
                 targetPage = 'warehouse_import.html';
-            } else if (startParam.startsWith('whexport')) {
+            } else if (startParam.startsWith('whexport') || startParam.startsWith('wheditexport')) {
                 targetPage = 'warehouse_export.html';
             } else if (startParam.startsWith('whinventory')) {
                 targetPage = 'warehouse_inventory.html';

@@ -1,7 +1,4 @@
-/**
- * Repository tầng infrastructure cho module Báo Cáo Telesale.
- * Mọi câu lệnh SQL đối với PostgreSQL nằm ở đây.
- */
+import { DEFAULT_TELESALE_FIELDS, DEFAULT_SCHEDULE_SETTINGS } from '../../domain/safe-formula-engine.js';
 
 export function createTelesaleRepository({ pool }) {
     /**
@@ -26,7 +23,8 @@ export function createTelesaleRepository({ pool }) {
         tyLeKhachToiDs,
         tyLeLich,
         tyLeToi,
-        rawPayload = {}
+        rawPayload = {},
+        reportValues = null
     }) {
         const query = `
             INSERT INTO telesale_daily_reports (
@@ -34,9 +32,9 @@ export function createTelesaleRepository({ pool }) {
                 report_date, so_nhan, so_trung_knc_vang, lich_pv_moi, lich_pv_cu,
                 lich_ngay_mai, tong_toi_hnay, tong_bong_hnay, tong_ds_hnay,
                 tong_lich, tong_ds_thang, ty_le_khach_toi_ds, ty_le_lich, ty_le_toi,
-                raw_payload, submitted_at, updated_at
+                raw_payload, report_values, submitted_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW()
             )
             ON CONFLICT (telegram_group_id, employee_id, report_date) DO UPDATE SET
                 telegram_user_id = EXCLUDED.telegram_user_id,
@@ -55,6 +53,7 @@ export function createTelesaleRepository({ pool }) {
                 ty_le_lich = EXCLUDED.ty_le_lich,
                 ty_le_toi = EXCLUDED.ty_le_toi,
                 raw_payload = EXCLUDED.raw_payload,
+                report_values = EXCLUDED.report_values,
                 updated_at = NOW()
             RETURNING *;
         `;
@@ -78,7 +77,8 @@ export function createTelesaleRepository({ pool }) {
             tyLeKhachToiDs || 0,
             tyLeLich || 0,
             tyLeToi || 0,
-            JSON.stringify(rawPayload)
+            JSON.stringify(rawPayload),
+            JSON.stringify(reportValues || rawPayload || {})
         ];
 
         const result = await pool.query(query, values);
@@ -809,7 +809,7 @@ export function createTelesaleRepository({ pool }) {
         );
 
         if (existRes.rows.length > 0) {
-            return existRes.rows[0];
+            return { ...existRes.rows[0], isNew: false };
         }
 
         const insertRes = await pool.query(
@@ -818,7 +818,27 @@ export function createTelesaleRepository({ pool }) {
              RETURNING *;`,
             [internalGroupId, employeeId, dateStr, amount, reason || 'Chậm nộp báo cáo Telesale sau 19:00']
         );
-        return insertRes.rows[0];
+        return { ...insertRes.rows[0], isNew: true };
+    }
+
+    /**
+     * Khóa chống trùng lặp tin nhắn cron telesale (nhắc nhở 18:00, phạt 19:00, tổng kết 19:01).
+     * Trả về true nếu lock thành công (lần đầu gửi), false nếu đã được gửi trước đó.
+     */
+    async function acquireNotificationLock(dedupKey) {
+        try {
+            const res = await pool.query(
+                `INSERT INTO telesale_cron_dedup (dedup_key)
+                 VALUES ($1)
+                 ON CONFLICT (dedup_key) DO NOTHING
+                 RETURNING dedup_key;`,
+                [dedupKey]
+            );
+            return res.rowCount > 0;
+        } catch (e) {
+            console.error('[Telesale Dedup Error]:', e.message);
+            return true;
+        }
     }
 
     /**
@@ -835,21 +855,120 @@ export function createTelesaleRepository({ pool }) {
         );
 
         const rows = result.rows;
+        const dynamicTotals = {};
         const totals = rows.reduce((acc, row) => {
             acc.so_nhan += Number(row.so_nhan || 0);
             acc.tong_vang += Number(row.so_trung_knc_vang || 0);
+            acc.so_trung_knc_vang = acc.tong_vang;
             acc.tong_lich += Number(row.tong_lich || 0);
             acc.tong_toi += Number(row.tong_toi_hnay || 0);
             acc.tong_bong += Number(row.tong_bong_hnay || 0);
             acc.lich_ngay_mai += Number(row.lich_ngay_mai || 0);
             acc.tong_ds += Number(row.tong_ds_hnay || 0);
+
+            const vals = row.report_values || {};
+            for (const [k, v] of Object.entries(vals)) {
+                const num = Number(v);
+                if (!isNaN(num)) {
+                    dynamicTotals[k] = (dynamicTotals[k] || 0) + num;
+                }
+            }
+
             return acc;
-        }, { so_nhan: 0, tong_vang: 0, tong_lich: 0, tong_toi: 0, tong_bong: 0, lich_ngay_mai: 0, tong_ds: 0 });
+        }, { so_nhan: 0, tong_vang: 0, so_trung_knc_vang: 0, tong_lich: 0, tong_toi: 0, tong_bong: 0, lich_ngay_mai: 0, tong_ds: 0 });
+
+        if (dynamicTotals['so_trung_knc_vang'] === undefined) {
+            dynamicTotals['so_trung_knc_vang'] = totals.tong_vang;
+        }
 
         return {
             reports: rows,
-            totals
+            totals,
+            dynamicTotals
         };
+    }
+
+    /**
+     * Lấy cấu hình form động và lịch trình của nhóm Telesale.
+     */
+    async function getFormConfig(telegramGroupId) {
+        const res = await pool.query(
+            `SELECT * FROM telesale_form_configs WHERE telegram_group_id = $1`,
+            [String(telegramGroupId)]
+        );
+        if (res.rows.length > 0) {
+            const config = res.rows[0];
+            let needsUpdate = false;
+            let fields = config.fields;
+            let scheduleSettings = config.schedule_settings;
+
+            if (!fields || (Array.isArray(fields) && fields.length === 0)) {
+                fields = DEFAULT_TELESALE_FIELDS;
+                config.fields = DEFAULT_TELESALE_FIELDS;
+                needsUpdate = true;
+            }
+            if (!scheduleSettings || (typeof scheduleSettings === 'object' && Object.keys(scheduleSettings).length === 0)) {
+                scheduleSettings = DEFAULT_SCHEDULE_SETTINGS;
+                config.schedule_settings = DEFAULT_SCHEDULE_SETTINGS;
+                needsUpdate = true;
+            }
+
+            if (needsUpdate) {
+                await pool.query(
+                    `UPDATE telesale_form_configs
+                     SET fields = $1, schedule_settings = $2, updated_at = NOW()
+                     WHERE telegram_group_id = $3`,
+                    [JSON.stringify(fields), JSON.stringify(scheduleSettings), String(telegramGroupId)]
+                );
+            }
+            return config;
+        }
+
+        const groupRes = await pool.query(
+            `SELECT group_name FROM telegram_groups WHERE telegram_group_id = $1`,
+            [String(telegramGroupId)]
+        );
+        const groupName = groupRes.rows[0]?.group_name || 'Nhóm Telesale';
+
+        const insertRes = await pool.query(
+            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (telegram_group_id) DO UPDATE
+             SET group_name = EXCLUDED.group_name
+             RETURNING *`,
+            [
+                String(telegramGroupId),
+                groupName,
+                JSON.stringify(DEFAULT_TELESALE_FIELDS),
+                JSON.stringify(DEFAULT_SCHEDULE_SETTINGS)
+            ]
+        );
+        return insertRes.rows[0];
+    }
+
+    /**
+     * Lưu/Cập nhật cấu hình form động, lịch trình hoặc cài đặt Sheet của nhóm Telesale.
+     */
+    async function saveFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings }) {
+        const res = await pool.query(
+            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings, sheet_settings, updated_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())
+             ON CONFLICT (telegram_group_id) DO UPDATE SET
+                group_name = COALESCE(EXCLUDED.group_name, telesale_form_configs.group_name),
+                fields = COALESCE(EXCLUDED.fields, telesale_form_configs.fields),
+                schedule_settings = COALESCE(EXCLUDED.schedule_settings, telesale_form_configs.schedule_settings),
+                sheet_settings = COALESCE(EXCLUDED.sheet_settings, telesale_form_configs.sheet_settings),
+                updated_at = NOW()
+             RETURNING *`,
+            [
+                String(telegramGroupId),
+                groupName || null,
+                fields ? JSON.stringify(fields) : null,
+                scheduleSettings ? JSON.stringify(scheduleSettings) : null,
+                sheetSettings ? JSON.stringify(sheetSettings) : null
+            ]
+        );
+        return res.rows[0];
     }
 
     return {
@@ -873,6 +992,9 @@ export function createTelesaleRepository({ pool }) {
         getTelesaleMappings,
         getAvailableCheckinEmployees,
         updateTelesaleMapping,
-        autoMatchTelesaleMappings
+        autoMatchTelesaleMappings,
+        getFormConfig,
+        saveFormConfig,
+        acquireNotificationLock
     };
 }

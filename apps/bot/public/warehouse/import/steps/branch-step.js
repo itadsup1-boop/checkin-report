@@ -29,7 +29,15 @@ export function createBranchStep({ branch, onPick }) {
                     render();
                     onPick(code);
                 }
-            }))
+            })),
+            onEditImport ? h('div', { style: { marginTop: '24px', textAlign: 'center' } },
+                h('button', {
+                    type: 'button',
+                    class: 'btn btn--ghost',
+                    style: { fontSize: '13px', color: 'var(--color-brand)' },
+                    onClick: onEditImport
+                }, '✏️ Sửa phiếu nhập trong 24h')
+            ) : null
         );
     }
 

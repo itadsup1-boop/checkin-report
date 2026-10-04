@@ -77,8 +77,8 @@ export function createSendSundayScheduleReminder({ repository, bot, moment, cryp
             await bot.telegram.sendMessage(group.telegram_group_id, message, { parse_mode: 'HTML' });
         }
 
-        await repository.closeScheduleRegistration(group.id);
-        console.log(`[Cron] Đã đóng đăng ký lịch cho nhóm ${groupName}`);
+        // Giữ cờ đăng ký luôn mở để nhân sự có thể đăng ký lịch tuần sau bất kỳ lúc nào trong tuần
+        console.log(`[Cron] Đã tự động xếp ca sáng cho nhân sự chưa đăng ký nhóm ${groupName}`);
     }
 
     async function sendSundayScheduleReminder(type) {

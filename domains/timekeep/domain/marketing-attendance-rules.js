@@ -4,6 +4,7 @@
  */
 
 export const MARKETING_CHECKIN_DEADLINE = '08:30:00';
+export const MARKETING_CHECKIN_GRACE_MINUTES = 5;
 export const MARKETING_LATE_HALF_DAY_DEADLINE = '09:30:00';
 export const MARKETING_SUNDAY_CHECKIN_DEADLINE = '09:00:00';
 export const MARKETING_SUNDAY_LATE_HALF_DAY_DEADLINE = '10:00:00';
@@ -159,3 +160,67 @@ export function formatMissedCheckoutNotification({ dateFormatted, employees, pen
         `<i>Quy định: Quên check-out phạt ${penaltyFormatted}đ/lần. Dữ liệu đã lưu vào hệ thống chấm công.</i>`
     );
 }
+
+function timeToMinutes(timeStr) {
+    if (!timeStr) return 0;
+    const parts = timeStr.split(':');
+    return parseInt(parts[0], 10) * 60 + parseInt(parts[1] || '0', 10);
+}
+
+function minutesToTime(totalMinutes) {
+    const h = Math.floor(totalMinutes / 60) % 24;
+    const m = totalMinutes % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+}
+
+/**
+ * Tính toán mốc deadline, lateCutoff và shiftStartTime cho Marketing check-in:
+ * - Có đơn xin đi muộn (approvedLateLeave): chỉ cộng approvedMinutes, không cộng thêm 5 phút ân hạn.
+ * - Không có đơn xin đi muộn: cộng thêm 5 phút ân hạn vào deadline (8h30 -> 8h35),
+ *   nhưng shiftStartTime giữ nguyên mốc ca (8h30) để tính phạt nếu check-in muộn quá 8h35.
+ */
+export function resolveMarketingCheckinDeadlines({
+    policyInfo,
+    telegramGroupId,
+    isSunday = false,
+    isCa2 = false,
+    approvedLateLeave = null,
+    approvedMinutes = 0
+}) {
+    const hasSundaySpecial = isSunday && (Boolean(policyInfo?.marketing_sunday_checkin_deadline) || String(telegramGroupId) === '-5470063387');
+    let baseDeadline;
+    let lateCutoff;
+    if (isCa2) {
+        baseDeadline = '09:30:00';
+        lateCutoff = '10:30:00';
+    } else {
+        baseDeadline = hasSundaySpecial
+            ? (policyInfo?.marketing_sunday_checkin_deadline || '09:00:00')
+            : (policyInfo?.marketing_checkin_deadline || '08:30:00');
+        lateCutoff = hasSundaySpecial
+            ? (policyInfo?.marketing_sunday_late_cutoff || '10:00:00')
+            : (policyInfo?.marketing_late_cutoff || '09:30:00');
+    }
+
+    const graceMinutes = policyInfo?.marketing_checkin_grace_minutes !== undefined
+        ? Number(policyInfo.marketing_checkin_grace_minutes)
+        : MARKETING_CHECKIN_GRACE_MINUTES;
+
+    let deadline = baseDeadline;
+    let shiftStartTime = baseDeadline;
+
+    if (approvedLateLeave) {
+        if (approvedMinutes > 0) {
+            const baseMin = timeToMinutes(baseDeadline);
+            shiftStartTime = minutesToTime(baseMin + approvedMinutes);
+            deadline = shiftStartTime;
+            lateCutoff = minutesToTime(baseMin + approvedMinutes + 60);
+        }
+    } else if (graceMinutes > 0) {
+        const baseMin = timeToMinutes(baseDeadline);
+        deadline = minutesToTime(baseMin + graceMinutes);
+    }
+
+    return { deadline, lateCutoff, shiftStartTime, baseDeadline };
+}
+

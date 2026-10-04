@@ -46,13 +46,21 @@ export function createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup, 
         let attendanceSheetDirty = false;
         if (!LATE_ELIGIBLE_SHIFTS.includes(checkin.shift_type)) return attendanceSheetDirty;
 
+        if (checkin.attendance_policy && checkin.attendance_policy !== 'CLINIC') {
+            return attendanceSheetDirty;
+        }
+
         const shiftStart = shiftStartTimeOf(checkin);
         const checkInTimeStr = moment(checkin.check_in_time).utcOffset(7).format('HH:mm:ss');
         const checkInMoment = moment(checkInTimeStr, 'HH:mm:ss');
         const shiftStartMoment = moment(shiftStart, 'HH:mm:ss');
 
         const lateMinutes = checkInMoment.diff(shiftStartMoment, 'minutes');
-        if (lateMinutes <= LATE_GRACE_MINUTES) {
+
+        const approvedLateLeave = await repository.findApprovedLateLeaveRequest(checkin.user_id, checkin.date);
+        const declaredMinutes = Number(approvedLateLeave?.late_minutes) || 0;
+
+        if (lateMinutes <= LATE_GRACE_MINUTES || (declaredMinutes > 0 && lateMinutes <= declaredMinutes)) {
             await repository.upsertAttendanceResult(checkin.group_id, checkin.user_id, checkin.date, 'ON_TIME');
             return true;
         }
@@ -62,15 +70,12 @@ export function createRunLatePenaltyCheck({ repository, sendMessageToRoleGroup, 
             const prevCount = await repository.findLatePenaltyCountInMonth(checkin.user_id, currentMonth, currentYear);
             let { amount, reason } = computePenaltyAmount(lateMinutes, prevCount, currentMonth, currentYear);
 
-            const approvedLateLeave = await repository.findApprovedLateLeaveRequest(checkin.user_id, checkin.date);
-            if (approvedLateLeave && amount > 0) {
-                const declaredMinutes = Number(approvedLateLeave.late_minutes) || 0;
-                if (declaredMinutes > 0 && lateMinutes <= declaredMinutes) {
-                    amount = 0;
-                    reason = `Đã báo trước đi muộn ${declaredMinutes} phút, đến đúng trong thời gian đã báo (Miễn phạt)`;
+            if (approvedLateLeave) {
+                if (amount > 0) {
+                    amount = Math.round(amount / 2);
+                    reason += ` (Đã giảm 50% do có đơn báo trước ${declaredMinutes}p nhưng đến muộn ${lateMinutes}p)`;
                 } else {
-                    amount = amount / 2;
-                    reason += ' (Đã giảm 50% do có đơn báo trước)';
+                    reason = `Đi muộn lần 1 trong tháng ${currentMonth}/${currentYear} (Miễn phạt - Quá hạn xin muộn ${declaredMinutes}p)`;
                 }
             } else if (amount > 0 && extraUnannouncedLatePenaltyEnabled) {
                 amount += 100000;

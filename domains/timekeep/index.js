@@ -19,6 +19,7 @@ import { createGroupSettingsRepository } from './infrastructure/postgres/group-s
 import { createAttendanceRepository } from './infrastructure/postgres/attendance-repository.js';
 import { createAttendanceCronRepository } from './infrastructure/postgres/attendance-cron-repository.js';
 import { createCheckinRepository } from './infrastructure/postgres/checkin-repository.js';
+import { createWeeklyPenaltyRepository } from './infrastructure/postgres/weekly-penalty-repository.js';
 import { createSundayReminderRepository } from './infrastructure/postgres/sunday-reminder-repository.js';
 import { createRegistrationReviewRepository } from './infrastructure/postgres/registration-review-repository.js';
 import { createDailyExportSheet } from './infrastructure/google-sheet/daily-export-sheet.js';
@@ -40,6 +41,7 @@ import { createRunLatePenaltyCheck } from './application/run-late-penalty-check.
 import { createSendSundayScheduleReminder } from './application/send-sunday-schedule-reminder.js';
 import { createExportAttendanceExcel } from './application/export-attendance-excel.js';
 import { createScanMarketingCheckout } from './application/scan-marketing-checkout.js';
+import { createRunWeeklyPenaltySummary } from './application/run-weekly-penalty-summary.js';
 import { createReviewRegistrationService } from './application/review-registration.js';
 import {
     finalizeUnauthorizedAbsences, getPendingAbsenceNotifications, markAbsenceNotificationsSent,
@@ -62,6 +64,7 @@ import { registerLateReportHandler } from './interfaces/telegram/register-late-r
 import { registerTimekeepCrons } from './interfaces/cron/register-export-cron.js';
 import { registerAttendanceCron } from './interfaces/cron/register-attendance-cron.js';
 import { registerSundayReminderCrons } from './interfaces/cron/register-sunday-reminder-crons.js';
+import { registerWeeklyPenaltyCron } from './interfaces/cron/register-weekly-penalty-cron.js';
 
 export function registerTimekeepModule({
     botApp,
@@ -97,6 +100,7 @@ export function registerTimekeepModule({
     const attendance = createAttendanceRepository({ pool });
     const attendanceCron = createAttendanceCronRepository({ pool });
     const checkins = createCheckinRepository({ pool });
+    const weeklyPenalties = createWeeklyPenaltyRepository({ pool });
     const sundayReminders = createSundayReminderRepository({ pool });
     const exportSheet = createDailyExportSheet({ spreadsheetId });
 
@@ -155,6 +159,9 @@ export function registerTimekeepModule({
         repository: attendanceCron, sendMessageToRoleGroup, bot, moment, extraUnannouncedLatePenaltyEnabled
     });
     const { sendSundayScheduleReminder } = createSendSundayScheduleReminder({ repository: sundayReminders, bot, moment, crypto });
+    const { runWeeklyPenaltySummary } = createRunWeeklyPenaltySummary({
+        repository: weeklyPenalties, sendMessageToRoleGroup, bot, moment
+    });
     const { exportAttendanceExcel } = createExportAttendanceExcel({ repository: attendance, ExcelJS, moment });
 
     registerTimekeepRegistrationRoutes({ botApp, registerEmployee, toggleScheduleRegistration });
@@ -201,7 +208,8 @@ export function registerTimekeepModule({
                 pool, sendMessageToRoleGroup, bot, syncSheets: syncAllTimekeepSheets, moment,
                 isCompanyHoliday
             }),
-            ...registerSundayReminderCrons({ cron, sendSundayScheduleReminder })
+            ...registerSundayReminderCrons({ cron, sendSundayScheduleReminder }),
+            registerWeeklyPenaltyCron({ cron, runWeeklyPenaltySummary, moment })
         ]
         : [];
 
@@ -210,6 +218,7 @@ export function registerTimekeepModule({
         buildAttendanceDashboard, manageSchedules, exportDailySheet,
         getScheduleView, saveWeeklySchedule, saveLeaveRequest, reviewLeaveRequest, excusePenalty,
         saveCheckin, getPersonalStats, exportAttendanceExcel, sendSundayScheduleReminder, scanMarketingCheckout,
+        runWeeklyPenaltySummary,
         scheduledJobs
     });
 }

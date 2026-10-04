@@ -6,17 +6,22 @@ import {
   BellRing,
   Info,
   Users,
-  ShieldCheck,
-  Calendar
+  Clock,
+  FileText
 } from 'lucide-react';
 import { telesaleApi } from './services/telesaleApi.js';
 import TelesaleStatsCards from './components/TelesaleStatsCards.jsx';
 import TelesaleMappingTable from './components/TelesaleMappingTable.jsx';
+import TelesaleFormBuilderTab from './components/TelesaleFormBuilderTab.jsx';
+import TelesaleScheduleTab from './components/TelesaleScheduleTab.jsx';
+import { ORIGINAL_DEFAULT_FIELDS } from './constants/telesaleDefaults.js';
 
 export default function TelesaleManagement({
   selectedGroupId
 }) {
+  const [activeTab, setActiveTab] = useState('mapping'); // 'mapping' | 'form-builder' | 'schedule'
   const [loading, setLoading] = useState(true);
+  const [configLoading, setConfigLoading] = useState(false);
   const [data, setData] = useState({
     groupId: null,
     groupName: '',
@@ -24,6 +29,7 @@ export default function TelesaleManagement({
     members: [],
     availableEmployees: []
   });
+  const [formConfig, setFormConfig] = useState(null);
   const [error, setError] = useState(null);
   const [toast, setToast] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
@@ -54,10 +60,33 @@ export default function TelesaleManagement({
     }
   }, [selectedGroupId]);
 
+  const fetchFormConfig = useCallback(async (gId) => {
+    if (!gId) return;
+    setConfigLoading(true);
+    try {
+      const res = await telesaleApi.getFormConfig({ groupId: gId });
+      if (res.success) {
+        setFormConfig(res.config);
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải cấu hình form:', err);
+    } finally {
+      setConfigLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const timer = window.setTimeout(fetchData, 0);
     return () => window.clearTimeout(timer);
   }, [fetchData]);
+
+  useEffect(() => {
+    const targetGroupId = selectedGroupId || data.groupId;
+    if (targetGroupId && targetGroupId !== 'ALL') {
+      const timer = window.setTimeout(() => fetchFormConfig(targetGroupId), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [selectedGroupId, data.groupId, fetchFormConfig]);
 
   // Cập nhật đấu nối tài khoản thủ công
   const handleUpdateMapping = async ({ employeeId, linkedEmployeeId, notes }) => {
@@ -137,6 +166,50 @@ export default function TelesaleManagement({
     }
   };
 
+  // Lưu cấu hình form hoặc lịch trình
+  const handleSaveConfig = async (updateData) => {
+    if (!data.groupId) return;
+    setActionLoading(true);
+    try {
+      const payload = {
+        telegramGroupId: data.groupId,
+        groupName: data.groupName,
+        fields: updateData.fields !== undefined ? updateData.fields : formConfig?.fields,
+        scheduleSettings: updateData.scheduleSettings !== undefined ? updateData.scheduleSettings : formConfig?.schedule_settings,
+        sheetSettings: updateData.sheetSettings !== undefined ? updateData.sheetSettings : formConfig?.sheet_settings
+      };
+      const res = await telesaleApi.updateFormConfig(payload);
+      if (res.success) {
+        setFormConfig(res.config);
+        showToast(`✅ ${res.message || 'Lưu cấu hình thành công!'}`);
+      } else {
+        showToast(`❌ ${res.error || 'Lỗi khi lưu cấu hình'}`);
+      }
+    } catch (err) {
+      showToast(`❌ Lỗi: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // Đồng bộ tiêu đề Sheet
+  const handleSyncSheetHeaders = async () => {
+    if (!data.groupId) return;
+    setActionLoading(true);
+    try {
+      const res = await telesaleApi.syncSheetHeaders({ telegramGroupId: data.groupId });
+      if (res.success) {
+        showToast(`✅ ${res.message || 'Đồng bộ tiêu đề Google Sheet thành công!'}`);
+      } else {
+        showToast(`❌ ${res.error || 'Lỗi khi đồng bộ Google Sheet'}`);
+      }
+    } catch (err) {
+      showToast(`❌ Lỗi: ${err.response?.data?.error || err.message}`);
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -151,7 +224,7 @@ export default function TelesaleManagement({
                 Báo cáo &amp; Đấu nối Telesale
               </h1>
               <p className="text-xs text-slate-500 sm:text-sm">
-                Đấu nối tên nhân sự báo cáo Telesale với tài khoản điểm danh cá nhân để kiểm tra đi làm / nghỉ trước khi nhắc nhở và phạt vi phạm.
+                Đấu nối nhân sự, tùy biến các trường dữ liệu, công thức tính toán và lịch trình quét phạt tự động.
               </p>
             </div>
           </div>
@@ -159,50 +232,96 @@ export default function TelesaleManagement({
 
         {/* Action Buttons */}
         <div className="flex flex-wrap items-center gap-2.5">
-          <button
-            type="button"
-            onClick={handleAutoMatch}
-            disabled={loading || actionLoading || !data.groupId}
-            className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-2xs hover:bg-indigo-100 active:scale-95 transition disabled:opacity-50"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>Tự động khớp tên</span>
-          </button>
+          {activeTab === 'mapping' && (
+            <>
+              <button
+                type="button"
+                onClick={handleAutoMatch}
+                disabled={loading || actionLoading || !data.groupId}
+                className="inline-flex items-center gap-2 rounded-xl border border-indigo-200 bg-indigo-50 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-2xs hover:bg-indigo-100 active:scale-95 transition disabled:opacity-50"
+              >
+                <Sparkles className="h-4 w-4" />
+                <span>Tự động khớp tên</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSendReminder}
+                disabled={loading || actionLoading || !data.groupId}
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700 shadow-2xs hover:bg-amber-100 active:scale-95 transition disabled:opacity-50"
+              >
+                <BellRing className="h-4 w-4" />
+                <span>Gửi nhắc nhở ngay</span>
+              </button>
+            </>
+          )}
 
           <button
             type="button"
-            onClick={handleSendReminder}
-            disabled={loading || actionLoading || !data.groupId}
-            className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-xs font-semibold text-amber-700 shadow-2xs hover:bg-amber-100 active:scale-95 transition disabled:opacity-50"
-          >
-            <BellRing className="h-4 w-4" />
-            <span>Gửi nhắc nhở ngay</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={fetchData}
+            onClick={() => {
+              fetchData();
+              if (data.groupId) fetchFormConfig(data.groupId);
+            }}
             disabled={loading}
             className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition"
           >
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin text-blue-600' : ''}`} />
+            <RefreshCw className={`h-4 w-4 ${loading || configLoading ? 'animate-spin text-blue-600' : ''}`} />
             <span>Làm mới</span>
           </button>
         </div>
       </div>
 
-      {/* Info Notice Banner */}
-      <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/70 to-indigo-50/50 p-4 text-xs text-blue-900 shadow-2xs">
-        <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
-        <div className="space-y-1">
-          <p className="font-semibold text-blue-950">Quy tắc đối soát điểm danh tự động khi Nhắc nhở &amp; Phạt báo cáo Telesale:</p>
-          <ul className="list-disc pl-4 space-y-0.5 text-blue-800">
-            <li>Hệ thống đối soát với tài khoản điểm danh cá nhân được đấu nối bên dưới.</li>
-            <li>Nếu nhân sự <b>có check-in hôm nay</b>: Hệ thống sẽ nhắc nộp báo cáo lúc <b>18:00</b> và áp phạt <b>50.000đ</b> nếu chưa nộp sau <b>19:00</b>.</li>
-            <li>Nếu nhân sự <b>không check-in hôm nay</b> hoặc có <b>lịch nghỉ ca OFF / đơn nghỉ phép</b>: Hệ thống <b>tự động bỏ qua, không nhắc nhở và không áp phạt</b>.</li>
-          </ul>
-        </div>
+      {/* Tab Navigation */}
+      <div className="flex items-center gap-2 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setActiveTab('mapping')}
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition ${
+            activeTab === 'mapping'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Users className="h-4 w-4" />
+          <span>Nhân sự &amp; Đấu nối</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('form-builder')}
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition ${
+            activeTab === 'form-builder'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <FileText className="h-4 w-4" />
+          <span>Cấu hình Form &amp; Chỉ số</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('schedule')}
+          className={`flex items-center gap-2 py-3 px-4 text-xs font-bold border-b-2 transition ${
+            activeTab === 'schedule'
+              ? 'border-blue-600 text-blue-600'
+              : 'border-transparent text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Clock className="h-4 w-4" />
+          <span>Thời gian &amp; Quét phạt</span>
+        </button>
       </div>
+
+      {/* Group Info Indicator */}
+      {data.groupName && (
+        <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
+          <div>
+            Đang quản lý nhóm: <b className="text-slate-800">{data.groupName}</b> ({data.groupId})
+          </div>
+          <span>Hôm nay: {new Date().toLocaleDateString('vi-VN')}</span>
+        </div>
+      )}
 
       {/* Error state */}
       {error && (
@@ -211,39 +330,68 @@ export default function TelesaleManagement({
         </div>
       )}
 
-      {/* Stats Cards */}
-      <TelesaleStatsCards members={data.members} />
-
-      {/* Table Section */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-slate-500" />
-            <h2 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Danh sách nhân sự nhóm {data.groupName || data.groupId || ''}
-            </h2>
-          </div>
-          <span className="text-xs text-slate-500">
-            Hôm nay: {new Date().toLocaleDateString('vi-VN')}
-          </span>
-        </div>
-
-        {loading ? (
-          <div className="flex min-h-[300px] items-center justify-center rounded-2xl border border-slate-200 bg-white">
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
-              <span>Đang tải dữ liệu nhân sự Telesale...</span>
+      {/* TAB 1: NHÂN SỰ & ĐẤU NỐI */}
+      {activeTab === 'mapping' && (
+        <div className="space-y-6">
+          {/* Info Notice Banner */}
+          <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-gradient-to-r from-blue-50/70 to-indigo-50/50 p-4 text-xs text-blue-900 shadow-2xs">
+            <Info className="h-5 w-5 shrink-0 text-blue-600 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-semibold text-blue-950">Quy tắc đối soát điểm danh tự động khi Nhắc nhở &amp; Phạt báo cáo Telesale:</p>
+              <ul className="list-disc pl-4 space-y-0.5 text-blue-800">
+                <li>Hệ thống đối soát với tài khoản điểm danh cá nhân được đấu nối bên dưới.</li>
+                <li>Nếu nhân sự <b>có check-in hôm nay</b>: Hệ thống sẽ nhắc nộp báo cáo và áp phạt theo giờ cấu hình nếu chưa nộp.</li>
+                <li>Nếu nhân sự <b>không check-in hôm nay</b> hoặc có <b>lịch nghỉ ca OFF / đơn nghỉ phép</b>: Hệ thống <b>tự động bỏ qua, không nhắc nhở và không áp phạt</b>.</li>
+              </ul>
             </div>
           </div>
-        ) : (
-          <TelesaleMappingTable
-            members={data.members}
-            availableEmployees={data.availableEmployees}
-            onUpdateMapping={handleUpdateMapping}
-            updatingId={updatingId}
-          />
-        )}
-      </div>
+
+          {/* Stats Cards */}
+          <TelesaleStatsCards members={data.members} />
+
+          {/* Table Section */}
+          <div className="space-y-3">
+            {loading ? (
+              <div className="flex min-h-[300px] items-center justify-center rounded-2xl border border-slate-200 bg-white">
+                <div className="flex items-center gap-2 text-sm text-slate-500">
+                  <RefreshCw className="h-5 w-5 animate-spin text-blue-600" />
+                  <span>Đang tải dữ liệu nhân sự Telesale...</span>
+                </div>
+              </div>
+            ) : (
+              <TelesaleMappingTable
+                members={data.members}
+                availableEmployees={data.availableEmployees}
+                onUpdateMapping={handleUpdateMapping}
+                updatingId={updatingId}
+              />
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: CẤU HÌNH FORM & CHỈ SỐ */}
+      {activeTab === 'form-builder' && (
+        <TelesaleFormBuilderTab
+          key={`${formConfig?.telegram_group_id || data.groupId || selectedGroupId || 'builder'}-${formConfig?.updated_at || formConfig?.id || 'initial'}`}
+          config={formConfig || { telegram_group_id: data.groupId || selectedGroupId, fields: ORIGINAL_DEFAULT_FIELDS }}
+          onSaveConfig={handleSaveConfig}
+          loading={actionLoading}
+          showToast={showToast}
+        />
+      )}
+
+      {/* TAB 3: THỜI GIAN & QUÉT PHẠT */}
+      {activeTab === 'schedule' && (
+        <TelesaleScheduleTab
+          key={`${formConfig?.telegram_group_id || data.groupId || selectedGroupId || 'schedule'}-${formConfig?.updated_at || formConfig?.id || 'initial'}`}
+          config={formConfig || { telegram_group_id: data.groupId || selectedGroupId, fields: ORIGINAL_DEFAULT_FIELDS }}
+          onSaveConfig={handleSaveConfig}
+          onSyncSheetHeaders={handleSyncSheetHeaders}
+          loading={actionLoading}
+          showToast={showToast}
+        />
+      )}
 
       {/* Toast popup */}
       {toast && (

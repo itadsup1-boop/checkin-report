@@ -586,7 +586,8 @@ test('asset Mini App kho có cơ chế đổi URL theo phiên bản', () => {
         assert.match(html, new RegExp(`_v__ASSET_V__/${appDir}/theme\\.css`));
     }
 
-    const bot = fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url)), 'utf8');
+    const bot = fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/timekeep_bot.js', import.meta.url)), 'utf8')
+        + fs.readFileSync(fileURLToPath(new URL('../../../apps/bot/bootstrap/configure-bot-http.js', import.meta.url)), 'utf8');
     assert.match(bot, /__ASSET_V__/, 'bot phải thay token phiên bản vào shell');
     assert.match(bot, /getWarehouseAssetVersion/);
     assert.match(bot, /no-store/, 'shell kho phải trả no-store');

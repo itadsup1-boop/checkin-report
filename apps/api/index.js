@@ -6,6 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import pool from '../../packages/database/index.js';
 import { syncAllTimekeepSheets } from '../bot/syncTimekeepSheets.js';
+import { getDocById } from '../bot/sheetManager.js';
 import { applyApprovedLeavePenalties } from '../../domains/timekeep/application/attendance-penalties.js';
 import { rejectAutoAcceptedLeaveRequest } from '../../domains/timekeep/application/leave-request-service.js';
 import { initLogger, writeLog, loggerMiddleware, setupLogRotation, overrideGlobals } from '../../packages/shared/logger.js';
@@ -111,7 +112,7 @@ registerCompanyHolidayAdminModule({
     requireSuperAdmin: adminAuth.requireSuperAdmin
 });
 registerTelegramGroupAutomation({ app, pool, requireSuperAdmin: adminAuth.requireSuperAdmin });
-registerTelesaleAdminModule({ app, pool, adminAuth });
+registerTelesaleAdminModule({ app, pool, adminAuth, getDocById });
 
 // APIs Quản lý Tài khoản Admin (Dành cho Super Admin)
 // Thêm các endpoint khác theo tài liệu THIET_KE_HE_THONG.md ở đây

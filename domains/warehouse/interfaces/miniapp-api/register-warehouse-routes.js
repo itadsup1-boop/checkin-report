@@ -4,6 +4,7 @@ import { registerWarehouseExportRoutes } from './export-routes.js';
 import { registerWarehouseServiceOrderRoutes } from './service-order-routes.js';
 import { registerWarehouseStockTransferRoutes } from './stock-transfer-routes.js';
 import { registerWarehousePricingRoutes } from './pricing-routes.js';
+import { registerWarehouseOrderEditRoutes } from './order-edit-routes.js';
 
 /**
  * Composition root cho toàn bộ HTTP adapter của module kho.
@@ -15,4 +16,5 @@ export function registerWarehouseHttpRoutes(dependencies) {
     registerWarehouseServiceOrderRoutes(dependencies);
     registerWarehouseStockTransferRoutes(dependencies);
     registerWarehousePricingRoutes(dependencies);
+    registerWarehouseOrderEditRoutes(dependencies);
 }

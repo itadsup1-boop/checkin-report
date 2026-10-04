@@ -1,6 +1,7 @@
 import {
     evaluateMarketingCheckin, isMarketingPolicy,
-    formatMarketingCheckinReply, formatMarketingCheckoutReply
+    formatMarketingCheckinReply, formatMarketingCheckoutReply,
+    resolveMarketingCheckinDeadlines
 } from '../domain/marketing-attendance-rules.js';
 
 /**
@@ -43,14 +44,15 @@ export function createSaveCheckin({
         let isImage = true;
         if (mimeType) {
             const mimeLower = mimeType.toLowerCase();
-            if (mimeLower.includes('image/png')) { ext = 'png'; isImage = true; }
-            else if (mimeLower.includes('image/webp')) { ext = 'webp'; isImage = true; }
-            else if (mimeLower.includes('image/')) { ext = 'jpg'; isImage = true; }
-            else if (mimeLower.includes('mp4') || mimeLower.includes('quicktime') || mimeLower.includes('mov') || mimeLower.includes('m4v')) {
+            if (mimeLower.includes('image/')) {
+                ext = mimeLower.includes('png') ? 'png' : (mimeLower.includes('webp') ? 'webp' : 'jpg');
+                isImage = true;
+            } else if (mimeLower.includes('mp4') || mimeLower.includes('quicktime') || mimeLower.includes('mov') || mimeLower.includes('m4v')) {
                 ext = 'mp4'; isMp4 = true; isImage = false;
-            } else if (mimeLower.includes('3gp')) { ext = '3gp'; isImage = false; }
-            else if (mimeLower.includes('avi')) { ext = 'avi'; isImage = false; }
-            else if (mimeLower.includes('webm')) { ext = 'webm'; isImage = false; }
+            } else if (['3gp', 'avi', 'webm'].some(m => mimeLower.includes(m))) {
+                ext = mimeLower.includes('webm') ? 'webm' : (mimeLower.includes('avi') ? 'avi' : '3gp');
+                isImage = false;
+            }
         }
 
         const filename = `checkin_${telegramId}_${Date.now()}.${ext}`;
@@ -75,29 +77,12 @@ export function createSaveCheckin({
 
         const timestampStr = moment().utcOffset(7).format('HH:mm - DD/MM/YYYY');
         const mediaLabel = isImage ? 'ảnh' : 'video';
+        const caption = isCheckout
+            ? (isMarketing ? formatMarketingCheckoutReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr })
+                : `📸 <b>BÁO CÁO CHECK-OUT</b>\n\n👤 <b>Nhân viên:</b> ${user.full_name}\n💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n⏰ <b>Thời gian check-out:</b> ${timestampStr}\n\n<i>Hệ thống đã ghi nhận ${mediaLabel} check-out của bạn thành công!</i>`)
+            : (isMarketing && evaluation ? formatMarketingCheckinReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr, evaluation })
+                : `📸 <b>BÁO CÁO ĐIỂM DANH</b>\n\n👤 <b>Nhân viên:</b> ${user.full_name}\n💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n⏰ <b>Thời gian:</b> ${timestampStr}\n✅ <b>Trạng thái:</b> Ghi nhận điểm danh thành công!`);
 
-        let caption;
-        if (isCheckout) {
-            if (isMarketing) {
-                caption = formatMarketingCheckoutReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr });
-            } else {
-                caption = `📸 <b>BÁO CÁO CHECK-OUT</b>\n\n` +
-                          `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
-                          `💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n` +
-                          `⏰ <b>Thời gian check-out:</b> ${timestampStr}\n\n` +
-                          `<i>Hệ thống đã ghi nhận ${mediaLabel} check-out của bạn thành công!</i>`;
-            }
-        } else {
-            if (isMarketing && evaluation) {
-                caption = formatMarketingCheckinReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr, evaluation });
-            } else {
-                caption = `📸 <b>BÁO CÁO ĐIỂM DANH</b>\n\n` +
-                          `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
-                          `💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n` +
-                          `⏰ <b>Thời gian:</b> ${timestampStr}\n` +
-                          `✅ <b>Trạng thái:</b> Ghi nhận điểm danh thành công!`;
-            }
-        }
 
         try {
             if (isImage) {
@@ -238,29 +223,9 @@ export function createSaveCheckin({
 
         if (isMarketing) {
             const isSunday = moment().utcOffset(7).day() === 0;
-            const hasSundaySpecial = isSunday && (Boolean(policyInfo?.marketing_sunday_checkin_deadline) || String(telegramGroupId) === '-5470063387');
-            
-            let deadline;
-            let lateCutoff;
-            if (isCa2) {
-                deadline = '09:30:00';
-                lateCutoff = '10:30:00';
-            } else {
-                deadline = hasSundaySpecial
-                    ? (policyInfo?.marketing_sunday_checkin_deadline || '09:00:00')
-                    : (policyInfo?.marketing_checkin_deadline || '08:30:00');
-                lateCutoff = hasSundaySpecial
-                    ? (policyInfo?.marketing_sunday_late_cutoff || '10:00:00')
-                    : (policyInfo?.marketing_late_cutoff || '09:30:00');
-            }
-
-            // Nếu có đơn xin đi muộn đã duyệt: cộng dồn thời gian xin đi muộn vào mốc ca làm
-            if (approvedLateLeave && approvedMinutes > 0) {
-                const baseShiftMoment = moment(`${currentDate} ${deadline}`, 'YYYY-MM-DD HH:mm:ss');
-                const extendedDeadlineMoment = baseShiftMoment.clone().add(approvedMinutes, 'minutes');
-                deadline = extendedDeadlineMoment.format('HH:mm:ss');
-                lateCutoff = extendedDeadlineMoment.clone().add(60, 'minutes').format('HH:mm:ss');
-            }
+            const { deadline, lateCutoff, shiftStartTime } = resolveMarketingCheckinDeadlines({
+                policyInfo, telegramGroupId, isSunday, isCa2, approvedLateLeave, approvedMinutes
+            });
 
             if (currentDate < effectiveDate) {
                 evalRes = { isLate: false, penalty: 0, workCredit: 1.0, status: 'DUNG_GIO', reason: `Hướng dẫn / chạy thử (chưa áp dụng phạt trước ${effectiveDate})` };
@@ -272,11 +237,9 @@ export function createSaveCheckin({
             }
 
             if (approvedLateLeave) {
-                if (!evalRes.isLate) {
-                    evalRes.reason = `Check-in hợp lệ (Đã duyệt đơn xin đi muộn${approvedMinutes > 0 ? ` +${approvedMinutes} phút` : ''})`;
-                } else {
-                    evalRes.reason = `Quá thời gian xin đi muộn (hạn sau ${deadline.slice(0, 5)}) - Phạt ${evalRes.penalty.toLocaleString('vi-VN')}đ`;
-                }
+                evalRes.reason = !evalRes.isLate
+                    ? `Check-in hợp lệ (Đã duyệt đơn xin đi muộn${approvedMinutes > 0 ? ` +${approvedMinutes} phút` : ''})`
+                    : `Quá thời gian xin đi muộn (hạn sau ${deadline.slice(0, 5)}) - Phạt ${evalRes.penalty.toLocaleString('vi-VN')}đ`;
             }
 
             workCredit = evalRes.workCredit;
@@ -288,7 +251,7 @@ export function createSaveCheckin({
             });
 
             if (penaltyAmount > 0 && typeof checkinRepository.insertLatePenalty === 'function') {
-                const shiftStartMoment = moment(`${currentDate} ${deadline}`, 'YYYY-MM-DD HH:mm:ss');
+                const shiftStartMoment = moment(`${currentDate} ${shiftStartTime}`, 'YYYY-MM-DD HH:mm:ss');
                 const lateMinutes = Math.max(0, moment().utcOffset(7).diff(shiftStartMoment, 'minutes'));
                 await checkinRepository.insertLatePenalty({
                     groupId, userId: user.id, date: currentDate, lateMinutes,

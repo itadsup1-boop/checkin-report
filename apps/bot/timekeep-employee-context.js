@@ -4,7 +4,7 @@ export async function findEmployeeForTimekeepContext(pool, telegramId, chatId) {
             `SELECT employee.*
              FROM employees employee
              JOIN telegram_groups telegram_group ON telegram_group.id = employee.group_id
-             WHERE employee.telegram_id = $1
+             WHERE (employee.telegram_id = $1 OR $1 = ANY(string_to_array(employee.telegram_id, ',')))
                AND telegram_group.telegram_group_id = $2
              ORDER BY employee.created_at DESC, employee.id DESC
              LIMIT 1`,
@@ -17,7 +17,7 @@ export async function findEmployeeForTimekeepContext(pool, telegramId, chatId) {
 
     const fallbackResult = await pool.query(
         `SELECT * FROM employees
-         WHERE telegram_id = $1
+         WHERE (telegram_id = $1 OR $1 = ANY(string_to_array(telegram_id, ',')))
          ORDER BY created_at ASC, id ASC
          LIMIT 1`,
         [String(telegramId)]
