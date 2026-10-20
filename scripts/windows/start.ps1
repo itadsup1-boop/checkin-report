@@ -53,6 +53,12 @@ foreach ($loc in $nodeLocations) {
 # ---- Fix loi IPv6 Telegram ----
 $env:NODE_OPTIONS = '--dns-result-order=ipv4first --no-network-family-autoselection'
 
+# ---- Dam bao su dung dung pm2.cmd (tranh xung dot file khong duoi tren Windows) ----
+$pm2Cmd = Get-Command pm2.cmd -ErrorAction SilentlyContinue
+if ($pm2Cmd) {
+    Set-Alias -Name pm2 -Value $pm2Cmd.Source -Scope Script
+}
+
 # ==============================================================
 Write-Host ''
 Write-Host '==========================================================' -ForegroundColor Cyan
@@ -246,11 +252,18 @@ $pm2Output | ForEach-Object {
 Start-Sleep -Seconds 3
 
 # Kiem tra trang thai PM2
-$pm2Status = & pm2 jlist 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue
+$pm2Status = $null
+try {
+    $nodeCmd = "try { const { execSync } = require('child_process'); const list = JSON.parse(execSync('pm2.cmd jlist', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] })); console.log(JSON.stringify(list.map(p => ({ name: p.name, status: p.pm2_env ? p.pm2_env.status : '' })))); } catch { console.log('[]'); }"
+    $pm2Status = & node -e $nodeCmd | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    $pm2Status = $null
+}
+
 if ($pm2Status) {
     foreach ($proc in $pm2Status) {
         $name   = $proc.name
-        $status = $proc.pm2_env.status
+        $status = $proc.status
         $port   = if ($name -eq 'kpi-api') { '3001' } else { '3002' }
         if ($status -eq 'online') {
             Write-Ok "$name dang chay (port $port)."
@@ -300,20 +313,21 @@ while ($waited -lt $maxWait) {
 if ($cloudflareUrl) {
     Write-Ok "Cloudflare URL: $cloudflareUrl"
 
-    # Cap nhat MINI_APP_URL trong .env
-    $envContent = Get-Content $ENV_FILE -Raw
-    if ($envContent -match 'MINI_APP_URL=') {
-        $envContent = $envContent -replace 'MINI_APP_URL=.*', "MINI_APP_URL=$cloudflareUrl"
-    } else {
-        $envContent = $envContent.TrimEnd() + "`nMINI_APP_URL=$cloudflareUrl`n"
-    }
-    # Ghi lai file (khong them BOM, giu line ending goc)
-    [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
-    Write-Ok 'MINI_APP_URL da duoc cap nhat trong .env.'
+    # [VÔ HIỆU HOÁ BỞI AI] Không ghi đè URL nếu bạn đã có domain riêng
+    # $envContent = Get-Content $ENV_FILE -Raw
+    # if ($envContent -match 'MINI_APP_URL=') {
+    #     $envContent = $envContent -replace 'MINI_APP_URL=.*', "MINI_APP_URL=$cloudflareUrl"
+    # } else {
+    #     $envContent = $envContent.TrimEnd() + "`nMINI_APP_URL=$cloudflareUrl`n"
+    # }
+    # [System.IO.File]::WriteAllText($ENV_FILE, $envContent, [System.Text.UTF8Encoding]::new($false))
+    # Write-Ok 'MINI_APP_URL da duoc cap nhat trong .env.'
+    
+    Write-Ok 'Giữ nguyên MINI_APP_URL cũ trong .env (sử dụng domain thật của bạn).'
 
     # Restart PM2 de bot nhan URL moi (chi restart kpi-api va timekeep-bot)
     $null = & pm2 restart kpi-api timekeep-bot --update-env 2>&1
-    Write-Ok 'PM2 da duoc restart voi env moi.'
+    Write-Ok 'PM2 da duoc restart voi env hien tai.'
 } else {
     Write-Warn "Khong lay duoc Cloudflare URL sau $maxWait giay."
     Write-Info "Kiem tra log: Get-Content cf_err.log -Tail 20"

@@ -28,6 +28,7 @@ RUN npm ci --omit=dev
 # Copy source code
 COPY apps/api/ ./apps/api/
 COPY packages/ ./packages/
+COPY domains/ ./domains/
 
 # Copy built web-admin từ stage 1
 COPY --from=web-builder /build/web-admin/dist ./apps/web-admin/dist

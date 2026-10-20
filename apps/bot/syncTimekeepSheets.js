@@ -1,44 +1,107 @@
 import { getDocById } from './sheetManager.js';
 import pool from '../../packages/database/index.js';
+import { computeRowsHash, createSheetSyncState } from './sheet-sync-state.js';
+import { isExcludedSheetEmployee } from '../../packages/shared/excluded-employees.js';
 import moment from 'moment';
 
-const HEADERS = ['STT', 'Họ và tên', 'Nhóm / Chi nhánh', 'Chức vụ', 'Ngày', 'Giờ Check-in', 'Trạng thái', 'Ghi chú Admin'];
+
+const HEADERS = ['STT', 'Họ và tên', 'Nhóm / Chi nhánh', 'Chức vụ', 'Ngày', 'Giờ Check-in', 'Trạng thái', 'Ghi chú Admin', 'Tổng Tiền Phạt', 'Lý do Phạt'];
+
+const syncState = createSheetSyncState({ pool });
+
+// Gộp các lần gọi trùng nhau.
+//
+// syncAllTimekeepSheets() được gọi từ 8 chỗ (check-in, admin sửa giờ, thêm
+// check-in tay...). Mỗi lượt lại ghi lại sheet của TOÀN BỘ nhân sự, nên vài
+// người check-in liền nhau là vượt hạn mức 60 lệnh ghi/phút của Google và
+// nhận lỗi 429.
+//
+// Vì mỗi lượt đều ghi lại toàn bộ nên chạy một lượt là đủ cho mọi thay đổi
+// đang chờ. Ở đây: đang chạy thì các lời gọi mới dùng chung lượt đó và chỉ
+// đặt lịch chạy thêm đúng MỘT lượt nữa để bắt dữ liệu mới nhất.
+let inFlightSync = null;
+let rerunRequested = false;
 
 export async function syncAllTimekeepSheets() {
-    const spreadsheetId = process.env.TIMEKEEP_SPREADSHEET_ID;
-    if (!spreadsheetId || spreadsheetId === 'SPREADSHEET_ID_CHUA_CAI_DAT') {
-        console.log('[SHEET SYNC] Bỏ qua vì chưa cài đặt TIMEKEEP_SPREADSHEET_ID');
-        return { success: false, message: 'Chưa cài đặt TIMEKEEP_SPREADSHEET_ID trong .env' };
+    if (inFlightSync) {
+        rerunRequested = true;
+        return inFlightSync;
     }
 
-    try {
-        const doc = await getDocById(spreadsheetId);
-        if (!doc) {
-            return { success: false, message: 'Không kết nối được Google Sheet ID' };
+    inFlightSync = (async () => {
+        try {
+            let result = await runTimekeepSync();
+            while (rerunRequested) {
+                rerunRequested = false;
+                result = await runTimekeepSync();
+            }
+            return result;
+        } finally {
+            inFlightSync = null;
+            rerunRequested = false;
         }
-        await doc.loadInfo();
+    })();
 
-        const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
-
-        // 1. Đồng bộ Sheet Tổng
-        await syncMasterSheet(doc, todayStr);
-
-        // 2. Đồng bộ các Sheet cá nhân từng người (Chỉ các nhóm Chấm công: UK, US...)
-        await syncIndividualSheets(doc, todayStr);
-
-        console.log('[SHEET SYNC] Đồng bộ dữ liệu các nhóm Chấm công (UK, US...) thành công!');
-        return { success: true, message: 'Đã đồng bộ đúng dữ liệu các nhóm Chấm công (UK, US...) thành công!' };
-    } catch (error) {
-        console.error('[SHEET SYNC ERR]', error);
-        return { success: false, message: error.message };
-    }
+    return inFlightSync;
 }
 
-// Định dạng hàng tiêu đề: Nền màu VÀNG (#FFFF00), chữ in đậm
+async function runTimekeepSync() {
+    const spreadsheetId = process.env.TIMEKEEP_SPREADSHEET_ID;
+    const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
+
+    // 1. Đồng bộ Sheet Tổng hệ thống (nếu có cấu hình trong .env)
+    if (spreadsheetId && spreadsheetId !== 'SPREADSHEET_ID_CHUA_CAI_DAT') {
+        try {
+            const doc = await getDocById(spreadsheetId);
+            if (doc) {
+                await doc.loadInfo();
+                await syncMasterSheet(doc, todayStr);
+                await syncIndividualSheets(doc, todayStr);
+                console.log('[SHEET SYNC] Đồng bộ Master Sheet thành công!');
+            }
+        } catch (e) {
+            console.error('[SHEET SYNC Master Err]:', e.message);
+        }
+    }
+
+    // 2. Đồng bộ các Google Sheet riêng của từng nhóm (cấu hình qua kpi_sheet_id trên Web Admin)
+    try {
+        const customGroups = await pool.query(
+            `SELECT DISTINCT telegram_group_id, group_name, kpi_sheet_id
+             FROM telegram_groups
+             WHERE (bot_role = 'timekeep' OR bot_role IS NULL)
+               AND is_deleted = false
+               AND kpi_sheet_id IS NOT NULL
+               AND kpi_sheet_id != ''
+               AND kpi_sheet_id != $1`,
+            [spreadsheetId || '']
+        );
+
+        for (const g of customGroups.rows) {
+            try {
+                const groupDoc = await getDocById(g.kpi_sheet_id);
+                if (!groupDoc) continue;
+                await groupDoc.loadInfo();
+                await syncMasterSheet(groupDoc, todayStr, g.telegram_group_id);
+                await syncIndividualSheets(groupDoc, todayStr, g.telegram_group_id);
+                console.log(`[SHEET SYNC] Đã đồng bộ Google Sheet riêng cho nhóm ${g.group_name} (${g.kpi_sheet_id})`);
+            } catch (err) {
+                console.error(`[SHEET SYNC Group Err - ${g.group_name}]:`, err.message);
+            }
+        }
+    } catch (err) {
+        console.error('[SHEET SYNC Custom Groups Query Err]:', err.message);
+    }
+
+    return { success: true, message: 'Đã hoàn tất đồng bộ Google Sheets' };
+}
+
+// Định dạng hàng tiêu đề: Nền màu VÀNG (#FFFF00), chữ in đậm.
+// Tốn 2 lệnh ghi (setHeaderRow + saveUpdatedCells) nên CHỈ gọi khi tạo sheet mới.
 async function formatYellowHeader(sheet) {
     await sheet.setHeaderRow(HEADERS);
     try {
-        await sheet.loadCells('A1:H1');
+        await sheet.loadCells('A1:J1');
         for (let c = 0; c < HEADERS.length; c++) {
             const cell = sheet.getCell(0, c);
             cell.backgroundColor = { red: 1, green: 1, blue: 0 };
@@ -50,7 +113,67 @@ async function formatYellowHeader(sheet) {
     }
 }
 
-function parseAttendanceRow(shift_type, check_in_time, checkin_status) {
+/**
+ * Bảo đảm sheet có đúng hàng tiêu đề, tốn ÍT lệnh ghi nhất có thể.
+ *
+ * Trước đây mỗi lượt đồng bộ đều tô lại header cho từng nhân sự, tức 2 lệnh ghi
+ * × 18 người = 36 lệnh ghi hoàn toàn thừa (tiêu đề có đổi bao giờ đâu). Đó là
+ * nguyên nhân chính gây lỗi 429 Quota exceeded.
+ *
+ * Giờ: sheet mới thì tạo header + tô vàng; sheet cũ chỉ ĐỌC header, và chỉ ghi
+ * lại khi tiêu đề thực sự lệch.
+ */
+async function ensureHeaderRow(sheet, { isNew }) {
+    if (isNew) {
+        await formatYellowHeader(sheet);
+        return;
+    }
+
+    try {
+        await sheet.loadHeaderRow();
+        const current = sheet.headerValues || [];
+        const same = current.length >= HEADERS.length
+            && HEADERS.every((header, index) => current[index] === header);
+        if (!same) {
+            await sheet.setHeaderRow(HEADERS);
+        }
+    } catch (e) {
+        // Sheet chưa có hàng tiêu đề hợp lệ -> đặt lại.
+        await sheet.setHeaderRow(HEADERS);
+    }
+}
+
+function parseAttendanceRow(shift_type, check_in_time, checkin_status, attendanceResult) {
+    if (shift_type === 'OFF') {
+        return {
+            checkinTimeStr: '—',
+            statusStr: '🌴 Nghỉ (OFF)'
+        };
+    }
+
+    if (attendanceResult === 'ABSENT') {
+        return {
+            checkinTimeStr: 'Chưa check-in',
+            statusStr: '🚫 Không check-in / Tự ý nghỉ'
+        };
+    }
+
+    // LATE: đã check-in sau giờ vào ca. LATE_NOTIFIED: quá giờ nhưng vẫn chưa
+    // check-in. Cả hai đều phải hiện là đi muộn trên Sheet thay vì bị rơi về
+    // "Đã Check-in" hoặc "Quên check-in".
+    if (['LATE', 'LATE_NOTIFIED'].includes(attendanceResult)) {
+        let checkinTimeStr = 'Chưa check-in';
+        if (check_in_time) {
+            const d = new Date(check_in_time);
+            const pad = (n) => String(n).padStart(2, '0');
+            checkinTimeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+        }
+        return {
+            checkinTimeStr,
+            statusStr: '⏰ Đi muộn'
+        };
+    }
+
     if (check_in_time) {
         const d = new Date(check_in_time);
         const pad = (n) => String(n).padStart(2, '0');
@@ -61,10 +184,10 @@ function parseAttendanceRow(shift_type, check_in_time, checkin_status) {
         };
     }
 
-    if (shift_type === 'OFF') {
+    if (!shift_type) {
         return {
             checkinTimeStr: '—',
-            statusStr: '🌴 Nghỉ (OFF)'
+            statusStr: 'Không đăng ký lịch'
         };
     }
 
@@ -74,94 +197,188 @@ function parseAttendanceRow(shift_type, check_in_time, checkin_status) {
     };
 }
 
-// 1. Đồng bộ Sheet Tổng Hợp (Chỉ các nhóm Chấm công - bot_role = 'timekeep')
-async function syncMasterSheet(doc, todayStr) {
+// 1. Đồng bộ Sheet Tổng Hợp (Hỗ trợ lọc theo từng nhóm nếu có targetGroupId)
+async function syncMasterSheet(doc, todayStr, targetGroupId = null) {
     const query = `
         SELECT 
             e.full_name,
             e.role,
+            e.need_report,
+            e.is_exempt_checkin,
             g.group_name,
             d.date::date::text AS date,
             s.shift_type,
             s.updated_by,
             c.check_in_time,
             c.status AS checkin_status,
-            c.admin_note
+            c.admin_note,
+            ds.result AS attendance_result,
+            COALESCE(SUM(p.amount), 0) AS total_penalty,
+            STRING_AGG(p.reason, ' | ') AS penalty_reasons
         FROM employees e
         LEFT JOIN telegram_groups g ON e.telegram_group_id = g.telegram_group_id
         CROSS JOIN generate_series('2026-07-23'::date, $1::date, '1 day'::interval) d(date)
         LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
         LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
+        LEFT JOIN tk_penalties p ON e.id = p.user_id AND p.date = d.date::date
+        LEFT JOIN tk_attendance_daily_status ds
+          ON ds.group_id = e.group_id AND ds.user_id = e.id AND ds.date = d.date::date
+        LEFT JOIN employee_group_memberships gm
+          ON gm.employee_id = e.id AND gm.telegram_group_id = e.telegram_group_id
         WHERE e.is_active = true 
           AND e.full_name NOT LIKE '/%' 
-          AND e.full_name != 'tester'
+          AND LOWER(TRIM(e.full_name)) NOT IN ('boss', 'longg', 'test', 'tester', 'boss hỗ trợ', 'boss ho tro', 'bot test')
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
+          AND ($2::text IS NULL OR g.telegram_group_id = $2::text)
+          AND d.date > COALESCE(e.created_at::date, '2026-07-22'::date)
+          AND (
+              COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
+              OR d.date::date < COALESCE(gm.paused_at::date, CURRENT_DATE)
+          )
+        GROUP BY e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name, d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note, ds.result
         ORDER BY d.date::date ASC, g.group_name ASC, e.full_name ASC
     `;
-    const res = await pool.query(query, [todayStr]);
+    const res = await pool.query(query, [todayStr, targetGroupId]);
 
     let sheetMaster = doc.sheetsByTitle['Tổng Hợp Chấm Công'] || doc.sheetsByTitle['Lịch Tổng'];
+    let masterIsNew = false;
     if (!sheetMaster) {
-        sheetMaster = await doc.addSheet({
-            title: 'Tổng Hợp Chấm Công'
-        });
+        const firstSheet = doc.sheetsByIndex[0];
+        if (firstSheet && (firstSheet.title === 'Trang tính1' || firstSheet.title === 'Sheet1')) {
+            sheetMaster = firstSheet;
+            await sheetMaster.updateProperties({ title: 'Tổng Hợp Chấm Công' });
+            masterIsNew = true;
+        } else {
+            sheetMaster = await doc.addSheet({
+                title: 'Tổng Hợp Chấm Công'
+            });
+            masterIsNew = true;
+        }
     }
 
-    await formatYellowHeader(sheetMaster);
-    await sheetMaster.clearRows();
+    await ensureHeaderRow(sheetMaster, { isNew: masterIsNew });
 
-    const masterRows = res.rows.map((r, index) => {
-        const { checkinTimeStr, statusStr } = parseAttendanceRow(r.shift_type, r.check_in_time, r.checkin_status);
+    const masterRows = res.rows.reduce((acc, r) => {
+        // Lọc nhân sự loại trừ khỏi sheet
+        if (isExcludedSheetEmployee(r.full_name)) {
+            return acc;
+        }
+
+        // Lọc người được miễn điểm danh (chỉ in lên sheet khi có check_in_time)
+        if (r.is_exempt_checkin === true && !r.check_in_time) {
+            return acc;
+        }
+
+
+        const { checkinTimeStr, statusStr } = parseAttendanceRow(
+            r.shift_type,
+            r.check_in_time,
+            r.checkin_status,
+            r.attendance_result
+        );
         let note = r.admin_note || (r.updated_by ? `Đổi bởi ${r.updated_by}` : '');
 
-        return {
-            'STT': index + 1,
+        acc.push({
+            'STT': acc.length + 1,
             'Họ và tên': r.full_name || '',
             'Nhóm / Chi nhánh': r.group_name || 'Chưa xếp nhóm',
             'Chức vụ': r.role || '',
             'Ngày': r.date || '',
             'Giờ Check-in': checkinTimeStr,
             'Trạng thái': statusStr,
-            'Ghi chú Admin': note
-        };
-    });
+            'Ghi chú Admin': note,
+            'Tổng Tiền Phạt': r.total_penalty > 0 ? r.total_penalty : '',
+            'Lý do Phạt': r.penalty_reasons || ''
+        });
+        
+        return acc;
+    }, []);
 
-    if (masterRows.length > 0) {
-        await sheetMaster.addRows(masterRows);
+    // Chỉ ghi khi nội dung thực sự thay đổi — tránh tốn lệnh ghi (quota Google)
+    // cho những lượt sync không có dữ liệu mới.
+    const masterKey = `${doc.spreadsheetId}:master:${targetGroupId || 'all'}`;
+    const masterHash = computeRowsHash(masterRows);
+    if (!(await syncState.hasSameContent(masterKey, masterHash))) {
+        await sheetMaster.clearRows();
+        if (masterRows.length > 0) {
+            await sheetMaster.addRows(masterRows);
+        }
+        await syncState.saveContent(masterKey, masterHash);
     }
 }
 
 // 2. Đồng bộ các Sheet cá nhân từng người (Chỉ thuộc các nhóm Chấm công - bot_role = 'timekeep')
-async function syncIndividualSheets(doc, todayStr) {
+async function syncIndividualSheets(doc, todayStr, targetGroupId = null) {
     const empQuery = `
-        SELECT e.id, e.full_name, e.role, g.group_name
+        SELECT e.id, e.full_name, e.role, e.need_report, e.is_exempt_checkin, g.group_name
         FROM employees e
         LEFT JOIN telegram_groups g ON e.telegram_group_id = g.telegram_group_id
         WHERE e.is_active = true 
           AND e.full_name IS NOT NULL 
           AND e.full_name != '' 
           AND e.full_name NOT LIKE '/%' 
-          AND e.full_name != 'tester'
+          AND LOWER(TRIM(e.full_name)) NOT IN ('boss', 'longg', 'test', 'tester', 'boss hỗ trợ', 'boss ho tro', 'bot test')
           AND (g.bot_role = 'timekeep' OR g.bot_role IS NULL)
+          AND ($1::text IS NULL OR g.telegram_group_id = $1::text)
         ORDER BY g.group_name ASC, e.full_name ASC
     `;
-    const empRes = await pool.query(empQuery);
+    const empRes = await pool.query(empQuery, [targetGroupId]);
+
+    // Xóa các tab cá nhân thuộc danh sách loại trừ nếu từng được tạo trước đây
+    for (const [title, s] of Object.entries(doc.sheetsByTitle)) {
+        if (isExcludedSheetEmployee(title)) {
+            try {
+                console.log(`[SHEET SYNC] Đang xóa tab nhân sự loại trừ "${title}"`);
+                await s.delete();
+            } catch (err) {
+                console.warn(`[SHEET SYNC] Không thể xóa tab "${title}":`, err.message);
+            }
+        }
+    }
 
     for (const emp of empRes.rows) {
+        if (isExcludedSheetEmployee(emp.full_name)) continue;
+
         let cleanName = emp.full_name.replace(/[\/*?:\[\]]/g, '').trim().substring(0, 80);
         if (!cleanName) continue;
 
+
         try {
-            let sheetEmp = doc.sheetsByTitle[cleanName];
+            // Check case-insensitive to avoid Google API 400 error
+            let sheetEmp = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === cleanName.toLowerCase());
+            let sheetEmpIsNew = false;
+
+            // If it exists but we already processed someone with this name (or it's a duplicate),
+            // and we want separate sheets... actually if we just use the existing sheet, their data might mix.
+            // But to quickly fix the crash, if sheetEmp exists, we just use it (mixing data, but avoids 400 error).
+            // To be safe, if we haven't seen this name, we use it. If we have, we should append ID.
             if (!sheetEmp) {
-                sheetEmp = await doc.addSheet({
-                    title: cleanName
-                });
-                await new Promise(r => setTimeout(r, 1000));
+                try {
+                    sheetEmp = await doc.addSheet({
+                        title: cleanName
+                    });
+                    sheetEmpIsNew = true;
+                    await new Promise(r => setTimeout(r, 1000));
+                    // Add to sheetsByTitle to prevent next iteration from missing it
+                    doc.sheetsByTitle[cleanName] = sheetEmp;
+                } catch (addErr) {
+                    if (addErr.message && addErr.message.includes('already exists')) {
+                        // Fallback if google says it exists despite our check
+                        sheetEmp = Object.values(doc.sheetsByTitle).find(s => s.title.toLowerCase() === cleanName.toLowerCase());
+                        if (!sheetEmp) {
+                            cleanName = cleanName + ' - ' + emp.id.substring(0, 4);
+                            sheetEmp = await doc.addSheet({ title: cleanName });
+                            sheetEmpIsNew = true;
+                            doc.sheetsByTitle[cleanName] = sheetEmp;
+                            await new Promise(r => setTimeout(r, 1000));
+                        }
+                    } else {
+                        throw addErr;
+                    }
+                }
             }
 
-            await formatYellowHeader(sheetEmp);
-            await sheetEmp.clearRows();
+            await ensureHeaderRow(sheetEmp, { isNew: sheetEmpIsNew });
 
             const detailQuery = `
                 SELECT 
@@ -170,37 +387,72 @@ async function syncIndividualSheets(doc, todayStr) {
                     s.updated_by,
                     c.check_in_time, 
                     c.status AS checkin_status, 
-                    c.admin_note
+                    c.admin_note,
+                    ds.result AS attendance_result,
+                    COALESCE(SUM(p.amount), 0) AS total_penalty,
+                    STRING_AGG(p.reason, ' | ') AS penalty_reasons
                 FROM employees e
                 CROSS JOIN generate_series('2026-07-23'::date, $2::date, '1 day'::interval) d(date)
                 LEFT JOIN tk_schedules s ON e.id = s.user_id AND s.date = d.date::date
                 LEFT JOIN tk_check_ins c ON e.id = c.user_id AND c.date = d.date::date
+                LEFT JOIN tk_penalties p ON e.id = p.user_id AND p.date = d.date::date
+                LEFT JOIN tk_attendance_daily_status ds
+                  ON ds.group_id = e.group_id AND ds.user_id = e.id AND ds.date = d.date::date
+                LEFT JOIN employee_group_memberships gm
+                  ON gm.employee_id = e.id AND gm.telegram_group_id = e.telegram_group_id
                 WHERE e.id = $1
+                  AND d.date > COALESCE(e.created_at::date, '2026-07-22'::date)
+                  AND (
+                      COALESCE(gm.status, 'ACTIVE') <> 'PAUSED'
+                      OR d.date::date < COALESCE(gm.paused_at::date, CURRENT_DATE)
+                  )
+                GROUP BY d.date, s.shift_type, s.updated_by, c.check_in_time, c.status, c.admin_note, ds.result
                 ORDER BY d.date::date ASC
             `;
             const detailRes = await pool.query(detailQuery, [emp.id, todayStr]);
 
-            const empRows = detailRes.rows.map((r, index) => {
-                const { checkinTimeStr, statusStr } = parseAttendanceRow(r.shift_type, r.check_in_time, r.checkin_status);
+            const empRows = detailRes.rows.reduce((acc, r) => {
+                // Lọc người được miễn điểm danh (chỉ in lên sheet khi có check_in_time)
+                if (emp.is_exempt_checkin === true && !r.check_in_time) {
+                    return acc;
+                }
+
+                const { checkinTimeStr, statusStr } = parseAttendanceRow(
+                    r.shift_type,
+                    r.check_in_time,
+                    r.checkin_status,
+                    r.attendance_result
+                );
                 let note = r.admin_note || (r.updated_by ? `Đổi bởi ${r.updated_by}` : '');
 
-                return {
-                    'STT': index + 1,
+                acc.push({
+                    'STT': acc.length + 1,
                     'Họ và tên': emp.full_name || '',
                     'Nhóm / Chi nhánh': emp.group_name || 'Chưa xếp nhóm',
                     'Chức vụ': emp.role || '',
                     'Ngày': r.date || '',
                     'Giờ Check-in': checkinTimeStr,
                     'Trạng thái': statusStr,
-                    'Ghi chú Admin': note
-                };
-            });
+                    'Ghi chú Admin': note,
+                    'Tổng Tiền Phạt': r.total_penalty > 0 ? r.total_penalty : '',
+                    'Lý do Phạt': r.penalty_reasons || ''
+                });
 
-            if (empRows.length > 0) {
-                await sheetEmp.addRows(empRows);
+                return acc;
+            }, []);
+
+            // Chỉ ghi khi nội dung thay đổi (xem chú thích ở syncMasterSheet).
+            const empKey = `${doc.spreadsheetId}:emp:${emp.id}`;
+            const empHash = computeRowsHash(empRows);
+            if (!(await syncState.hasSameContent(empKey, empHash))) {
+                await sheetEmp.clearRows();
+                if (empRows.length > 0) {
+                    await sheetEmp.addRows(empRows);
+                }
+                await syncState.saveContent(empKey, empHash);
             }
 
-            await new Promise(r => setTimeout(r, 1000));
+            await new Promise(r => setTimeout(r, 2000));
         } catch (err) {
             console.error(`[SHEET SYNC] Lỗi sync cá nhân cho ${cleanName}:`, err.message);
         }

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+  <title>Hồ sơ khách hàng</title>
+
+  <!--
+    Shell của Mini App hồ sơ khách hàng (role customer / customer_record).
+
+    Toàn bộ giao diện và logic nằm trong /mini-app/customer/form/ dưới dạng ES
+    module, chia theo tầng domain / data / ui / sections, dùng chung hạ tầng ở
+    /mini-app/shared-ui/. File này chỉ nạp phụ thuộc và điểm vào —
+    xem customer/form/README.md.
+
+    URL này được giữ nguyên để nút "Điền Thông Tin Khách Hàng" của bot và
+    router.html không phải thay đổi.
+  -->
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <!--
+    __ASSET_V__ được timekeep_bot.js thay bằng token phiên bản khi phục vụ file
+    này. Cloudflare ghi đè Cache-Control thành 4 giờ nên phải đổi URL mới ép
+    được client tải lại code mới.
+  -->
+  <link rel="stylesheet" href="/mini-app/_v__ASSET_V__/customer/form/theme.css">
+</head>
+<body>
+  <div id="app">
+    <div class="loading-card" style="margin:40px auto">
+      <div class="spinner"></div>
+      <div class="loading-title">Đang mở hồ sơ khách hàng…</div>
+    </div>
+  </div>
+
+  <script type="module" src="/mini-app/_v__ASSET_V__/customer/form/app.js"></script>
+
+  <noscript>
+    <div class="loading-card" style="margin:40px auto">
+      <div class="loading-title">Cần bật JavaScript để dùng chức năng này.</div>
+    </div>
+  </noscript>
+</body>
+</html>

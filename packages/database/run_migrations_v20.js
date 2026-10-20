@@ -1,0 +1,19 @@
+import fs from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import pool from './index.js';
+
+async function run() {
+    const migrationUrl = new URL('./migrations/v20_timekeep_absence_penalties.sql', import.meta.url);
+    const sql = await fs.readFile(fileURLToPath(migrationUrl), 'utf8');
+    await pool.query(sql);
+    console.log('Migration v20 timekeep absence penalties completed.');
+}
+
+run()
+    .catch(error => {
+        console.error('Migration v20 failed:', error);
+        process.exitCode = 1;
+    })
+    .finally(async () => {
+        await pool.end();
+    });

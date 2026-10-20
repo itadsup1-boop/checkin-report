@@ -9,6 +9,7 @@ RUN apk add --no-cache ffmpeg && npm ci --omit=dev
 # Copy bot source và packages
 COPY apps/bot/ ./apps/bot/
 COPY packages/ ./packages/
+COPY domains/ ./domains/
 
 # Placeholder cho service_account.json
 # File thực sẽ được mount qua docker-compose volumes

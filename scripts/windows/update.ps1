@@ -170,10 +170,13 @@ if (-not (Get-Command pm2 -ErrorAction SilentlyContinue)) {
 }
 
 # Dem so tien trinh dang online
-$pm2Json = & pm2 jlist 2>$null | ConvertFrom-Json -ErrorAction SilentlyContinue
-$runningCount = if ($pm2Json) {
-    ($pm2Json | Where-Object { $_.pm2_env.status -eq 'online' }).Count
-} else { 0 }
+$runningCount = 0
+try {
+    $nodeCmd = "try { const { execSync } = require('child_process'); const list = JSON.parse(execSync('pm2 jlist', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] })); console.log(list.filter(p => p.pm2_env && p.pm2_env.status === 'online').length); } catch { console.log(0); }"
+    $runningCount = [int](& node -e $nodeCmd)
+} catch {
+    $runningCount = 0
+}
 
 if ($runningCount -gt 0) {
     Write-Info "$runningCount tien trinh dang chay - dang restart..."

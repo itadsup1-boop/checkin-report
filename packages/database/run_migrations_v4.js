@@ -29,17 +29,8 @@ async function run() {
         `);
         console.log('✅ Table admin_group_mappings checked/created.');
 
-        // 3. Seed default Super Admin account if not exists
-        const checkAdmin = await pool.query(`SELECT * FROM admin_accounts WHERE username = 'admin'`);
-        if (checkAdmin.rows.length === 0) {
-            await pool.query(`
-                INSERT INTO admin_accounts (username, password_hash, full_name, role)
-                VALUES ('admin', 'admin123', 'Super Administrator', 'SUPER_ADMIN')
-            `);
-            console.log('✅ Default Super Admin (admin / admin123) seeded.');
-        } else {
-            console.log('ℹ️ Admin account "admin" already exists.');
-        }
+        // Không seed mật khẩu mặc định trong source. Sau migration, quản trị viên
+        // phải chạy `npm run bootstrap:admin` với ADMIN_BOOTSTRAP_PASSWORD riêng.
 
         console.log('Migration v4 completed successfully.');
     } catch (e) {

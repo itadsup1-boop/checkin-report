@@ -1,0 +1,2434 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>Báo Cáo Telesale</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        :root {
+            --primary: var(--tg-theme-button-color, #2563eb);
+            --primary-hover: #1d4ed8;
+            --primary-text: var(--tg-theme-button-text-color, #ffffff);
+            --bg: var(--tg-theme-bg-color, #f8fafc);
+            --card-bg: var(--tg-theme-secondary-bg-color, #ffffff);
+            --text: var(--tg-theme-text-color, #0f172a);
+            --hint: var(--tg-theme-hint-color, #64748b);
+            --border: rgba(0, 0, 0, 0.07);
+            --input-bg: rgba(0, 0, 0, 0.025);
+            --input-border: rgba(0, 0, 0, 0.12);
+            --success: #16a34a;
+            --warning: #ea580c;
+            --danger: #dc2626;
+            --radius-card: 12px;
+            --radius-input: 7px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            padding: 12px 14px;
+            padding-bottom: 85px;
+            font-size: 13.5px;
+            line-height: 1.4;
+            max-width: 440px;
+            margin: 0 auto;
+        }
+
+        /* Header gọn gàng */
+        .header-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            padding: 10px 14px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+
+        .header-card h1 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .header-card .meta {
+            font-size: 12px;
+            color: var(--hint);
+            margin-top: 2px;
+            font-weight: 500;
+        }
+
+        /* Thanh tóm tắt nhanh */
+        .summary-bar {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            background: var(--card-bg);
+            border-radius: var(--radius-card);
+            border: 1px solid var(--border);
+            padding: 7px 4px;
+            margin-bottom: 11px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+        }
+
+        .summary-item {
+            text-align: center;
+        }
+
+        .summary-item:not(:last-child) {
+            border-right: 1px solid var(--border);
+        }
+
+        .summary-num {
+            display: block;
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--primary);
+            line-height: 1.2;
+        }
+
+        .summary-label {
+            font-size: 10.5px;
+            color: var(--hint);
+            font-weight: 500;
+        }
+
+        /* Section */
+        .section-block {
+            margin-bottom: 11px;
+        }
+
+        .section-title {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--hint);
+            margin: 0 4px 4px;
+        }
+
+        .card-group {
+            background: var(--card-bg);
+            border-radius: var(--radius-card);
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+
+        /* Mỗi mục 1 dòng */
+        .row-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 8px 12px;
+            min-height: 42px;
+            border-bottom: 1px solid var(--border);
+            gap: 10px;
+        }
+
+        .row-item:last-child {
+            border-bottom: none;
+        }
+
+        .row-label {
+            font-size: 13.5px;
+            font-weight: 500;
+            color: var(--text);
+            flex: 1;
+            line-height: 1.3;
+        }
+
+        /* Ô input số lượng nhỏ gọn, không có nút + / - */
+        .num-input-wrap {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            flex-shrink: 0;
+        }
+
+        .field-input-num {
+            width: 72px;
+            height: 32px;
+            padding: 0 8px;
+            border-radius: var(--radius-input);
+            border: 1px solid var(--input-border);
+            background: var(--input-bg);
+            color: var(--text);
+            font-size: 14px;
+            font-weight: 600;
+            text-align: center;
+            outline: none;
+            font-family: inherit;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+            -moz-appearance: textfield;
+        }
+
+        .field-input-num::-webkit-inner-spin-button,
+        .field-input-num::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+
+        .field-input-num:focus {
+            border-color: var(--primary);
+            background: #ffffff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+        }
+
+        /* Doanh số hôm nay: 1 dòng đồng bộ */
+        .revenue-field-box {
+            display: flex;
+            align-items: center;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: var(--radius-input);
+            padding: 0 8px;
+            height: 32px;
+            width: 140px;
+            flex-shrink: 0;
+            transition: border-color 0.15s, background-color 0.15s, box-shadow 0.15s;
+        }
+
+        .revenue-field-box:focus-within {
+            border-color: var(--primary);
+            background: #ffffff;
+            box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12);
+        }
+
+        .field-input-revenue {
+            width: 100%;
+            border: none;
+            outline: none;
+            background: transparent;
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text);
+            text-align: right;
+            padding-right: 4px;
+            font-family: inherit;
+        }
+
+        .unit-badge {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--hint);
+            user-select: none;
+            flex-shrink: 0;
+        }
+
+        /* Phân bổ Dịch vụ (Option nâng cao) */
+        .service-toggle-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            padding: 9px 12px;
+            margin-top: 10px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-container input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .toggle-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .service-section {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            padding: 10px 12px;
+            margin-bottom: 12px;
+        }
+
+        .service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .service-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--hint);
+            text-transform: uppercase;
+        }
+
+        .service-hint {
+            font-size: 10.5px;
+            color: var(--hint);
+        }
+
+        .service-row-card {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 10px;
+            margin-bottom: 6px;
+        }
+
+        .service-row-top {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 6px;
+            align-items: center;
+        }
+
+        .service-select, .service-custom-input {
+            flex: 1;
+            padding: 6px 8px;
+            border: 1px solid var(--input-border);
+            border-radius: 6px;
+            font-size: 12.5px;
+            font-weight: 600;
+            color: var(--text);
+            background: #fff;
+            outline: none;
+        }
+
+        .btn-del-service {
+            background: #fee2e2;
+            color: #ef4444;
+            border: none;
+            border-radius: 6px;
+            width: 28px;
+            height: 28px;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .service-row-bottom {
+            display: grid;
+            grid-template-columns: 1fr 1fr 2fr;
+            gap: 6px;
+        }
+
+        .mini-field {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mini-label {
+            font-size: 9.5px;
+            font-weight: 600;
+            color: var(--hint);
+            margin-bottom: 2px;
+            text-transform: uppercase;
+        }
+
+        .mini-input {
+            padding: 5px 6px;
+            border: 1px solid var(--input-border);
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            outline: none;
+            width: 100%;
+            background: #fff;
+        }
+
+        .btn-add-service {
+            width: 100%;
+            padding: 8px;
+            background: var(--bg);
+            color: var(--text);
+            border: 1px dashed var(--hint);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 4px;
+        }
+
+        /* Multi-service dynamic cards */
+        .multi-service-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            padding: 10px 12px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+
+        .multi-service-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px dashed var(--border);
+        }
+
+        .multi-service-title {
+            font-size: 12.5px;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .btn-del-multi-service {
+            background: #fee2e2;
+            color: #dc2626;
+            border: none;
+            border-radius: 6px;
+            padding: 3px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .btn-del-multi-service:active {
+            opacity: 0.7;
+        }
+
+        .service-select-row {
+            margin-bottom: 8px;
+        }
+
+        .btn-add-multi-service {
+            width: 100%;
+            padding: 10px;
+            background: rgba(37, 99, 235, 0.06);
+            color: var(--primary);
+            border: 1.5px dashed var(--primary);
+            border-radius: var(--radius-card);
+            font-size: 13px;
+            font-weight: 700;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            margin-top: 4px;
+            margin-bottom: 12px;
+            transition: all 0.15s ease;
+        }
+
+        .btn-add-multi-service:active {
+            transform: scale(0.98);
+            background: rgba(37, 99, 235, 0.12);
+        }
+
+        /* Fixed bottom bar */
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, var(--bg) 75%, transparent);
+            backdrop-filter: blur(6px);
+            padding: 8px 14px calc(8px + env(safe-area-inset-bottom));
+            z-index: 50;
+        }
+
+        .btn-submit {
+            width: 100%;
+            max-width: 440px;
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            height: 44px;
+            background: var(--primary);
+            color: var(--primary-text);
+            border: none;
+            border-radius: 10px;
+            font-size: 14.5px;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 3px 10px rgba(37, 99, 235, 0.22);
+            transition: transform 0.08s, opacity 0.15s;
+        }
+
+        .btn-submit:active {
+            transform: scale(0.98);
+        }
+
+        .btn-submit:disabled {
+            background: #94a3b8;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+
+        .alert-box {
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            margin-bottom: 10px;
+            display: none;
+        }
+        .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+
+        /* Dynamic form styles */
+        .calc-row {
+            background: rgba(37, 99, 235, 0.02);
+        }
+        .calc-field-wrap {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+        }
+        .calc-val {
+            font-size: 14.5px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        .calc-unit {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--hint);
+        }
+        .threshold-badge {
+            font-size: 11px;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-weight: 600;
+            white-space: nowrap;
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+        }
+        .badge-reward, .badge-success {
+            background: #dcfce7;
+            color: #15803d;
+            border: 1px solid #bbf7d0;
+        }
+        .badge-warning {
+            background: #fef3c7;
+            color: #b45309;
+            border: 1px solid #fde68a;
+        }
+        .badge-danger {
+            background: #fee2e2;
+            color: #b91c1c;
+            border: 1px solid #fca5a5;
+        }
+
+        /* Dimension selectors & Slot pills */
+        .dimension-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-card);
+            padding: 9px 12px;
+            margin-bottom: 10px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+        }
+        .dimension-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--hint);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 7px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .slot-pills {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+            gap: 6px;
+        }
+        .slot-pill {
+            padding: 7px 6px;
+            border: 1px solid var(--input-border);
+            border-radius: 8px;
+            background: var(--bg);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+            transition: all 0.15s ease;
+            position: relative;
+        }
+        .slot-pill.active {
+            background: var(--primary);
+            color: var(--primary-text);
+            border-color: var(--primary);
+            box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+        }
+        .slot-pill.has-data:after {
+            content: ' ✓';
+            color: #16a34a;
+            font-weight: 700;
+        }
+        .slot-pill.active.has-data:after {
+            color: #ffffff;
+        }
+        .dimension-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+        .dimension-select-box {
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .dimension-label {
+            font-size: 10.5px;
+            font-weight: 700;
+            color: var(--hint);
+            text-transform: uppercase;
+        }
+        .dimension-select {
+            width: 100%;
+            height: 34px;
+            padding: 0 8px;
+            border: 1px solid var(--input-border);
+            border-radius: var(--radius-input);
+            background: #fff;
+            color: var(--text);
+            font-size: 12.5px;
+            font-weight: 600;
+            outline: none;
+        }
+        .dimension-label-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 2px;
+        }
+        .btn-dim-action {
+            background: none;
+            border: none;
+            color: var(--primary, #0088cc);
+            font-size: 11px;
+            font-weight: 700;
+            cursor: pointer;
+            padding: 0 2px;
+            line-height: 1;
+            transition: opacity 0.15s ease;
+        }
+        .btn-dim-action:active {
+            opacity: 0.6;
+        }
+        .dimension-input-row {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .dimension-custom-input {
+            flex: 1;
+            min-width: 0;
+            height: 32px;
+            padding: 0 8px;
+            border: 1px solid var(--primary, #0088cc);
+            border-radius: var(--radius-input, 8px);
+            background: #fff;
+            color: var(--text);
+            font-size: 12px;
+            font-weight: 600;
+            outline: none;
+        }
+        .btn-dim-save {
+            height: 32px;
+            padding: 0 10px;
+            background: var(--primary, #0088cc);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-input, 8px);
+            font-size: 11.5px;
+            font-weight: 700;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.15s ease;
+        }
+        .btn-dim-save:active {
+            transform: scale(0.96);
+            opacity: 0.9;
+        }
+    </style>
+</head>
+<body>
+    <div class="header-card">
+        <h1 id="appHeaderTitle">📊 Báo Cáo Telesale</h1>
+        <div class="meta" id="headerMeta">Đang tải thông tin...</div>
+    </div>
+
+    <div class="summary-bar">
+        <div class="summary-item">
+            <span class="summary-num" id="sumLich">0</span>
+            <span class="summary-label" id="lblSum1">Lịch PV</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-num" id="sumToi">0%</span>
+            <span class="summary-label" id="lblSum2">Tỷ lệ tới</span>
+        </div>
+        <div class="summary-item">
+            <span class="summary-num" id="sumDs">0tr</span>
+            <span class="summary-label" id="lblSum3">Doanh số</span>
+        </div>
+    </div>
+
+    <div id="alertBox" class="alert-box alert-error"></div>
+
+    <!-- Khu vực Mốc Giờ và Dự Án / Dịch Vụ -->
+    <div id="dimensionContainer" style="display: none;"></div>
+
+    <form id="reportForm" onsubmit="return false;">
+        <!-- NGUỒN KHÁCH -->
+        <div class="section-block">
+            <div class="section-title">Nguồn Khách</div>
+            <div class="card-group">
+                <div class="row-item">
+                    <label class="row-label" for="so_nhan">1. Số nhận</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="so_nhan" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="row-item">
+                    <label class="row-label" for="so_trung_knc_vang">2. Trùng / KNC / Vắng</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="so_trung_knc_vang" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- LỊCH PHỎNG VẤN -->
+        <div class="section-block">
+            <div class="section-title">Lịch Phỏng Vấn</div>
+            <div class="card-group">
+                <div class="row-item">
+                    <label class="row-label" for="lich_pv_moi">3. Lịch PV mới</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="lich_pv_moi" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="row-item">
+                    <label class="row-label" for="lich_pv_cu">4. Lịch PV cũ</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="lich_pv_cu" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="row-item">
+                    <label class="row-label" for="lich_ngay_mai">5. Lịch hẹn ngày mai</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="lich_ngay_mai" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- KẾT QUẢ HÔM NAY -->
+        <div class="section-block">
+            <div class="section-title">Kết Quả Hôm Nay</div>
+            <div class="card-group">
+                <div class="row-item">
+                    <label class="row-label" for="tong_toi_hnay">6. Tổng tới hôm nay</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="tong_toi_hnay" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="row-item">
+                    <label class="row-label" for="tong_bong_hnay">7. Tổng bong hôm nay</label>
+                    <div class="num-input-wrap">
+                        <input type="number" id="tong_bong_hnay" class="field-input-num" min="0" value="0" inputmode="numeric">
+                    </div>
+                </div>
+                <div class="row-item">
+                    <label class="row-label" for="tong_ds_hnay">8. Tổng doanh số hôm nay</label>
+                    <div class="revenue-field-box">
+                        <input type="text" id="tong_ds_hnay" class="field-input-revenue" value="0" inputmode="numeric" placeholder="0">
+                        <span class="unit-badge">đ</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Option Tích chọn Chia theo dịch vụ (ẩn mặc định, chỉ mở khi cần) -->
+        <div class="service-toggle-card">
+            <label class="toggle-container" for="chkByService">
+                <input type="checkbox" id="chkByService" onchange="toggleServiceSection()">
+                <span class="toggle-label">🔍 Chia chi tiết theo Dịch Vụ</span>
+            </label>
+        </div>
+
+        <!-- Khung phân bổ dịch vụ -->
+        <div id="serviceSection" class="service-section" style="display: none;">
+            <div class="service-header">
+                <span class="service-title">📋 Phân Bổ Dịch Vụ</span>
+                <span class="service-hint">Tự cộng dồn lên các ô Tổng</span>
+            </div>
+            <div id="serviceList"></div>
+            <button type="button" class="btn-add-service" onclick="addServiceRow()">
+                ➕ Thêm Dịch Vụ
+            </button>
+        </div>
+
+    </form>
+
+    <div class="bottom-bar">
+        <button type="button" id="btnSubmit" class="btn-submit" onclick="submitReport()">
+            ⚡️ NỘP BÁO CÁO
+        </button>
+    </div>
+
+    <script>
+        const tg = window.Telegram?.WebApp;
+        if (tg) {
+            tg.ready();
+            tg.expand();
+        }
+
+        let currentGroupId = null;
+        let employeeInfo = null;
+        let monthlyPrevRevenue = 0;
+        let availableServices = [];
+        let dynamicFieldsConfig = null;
+        let dynamicInputFields = [];
+        let dynamicCalcFields = [];
+        let currentSlot = null;
+        let currentProject = '';
+        let currentService = '';
+        let todayReports = [];
+        let groupFormConfig = null;
+
+        function getParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+
+        function formatThousand(val) {
+            if (val === null || val === undefined || val === '') return '0';
+            const digits = String(val).replace(/\D/g, '');
+            if (!digits) return '0';
+            return digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+        }
+
+        function updateSummary() {
+            const pvMoi = Number(document.getElementById('lich_pv_moi')?.value || 0);
+            const pvCu = Number(document.getElementById('lich_pv_cu')?.value || 0);
+            const tongToi = Number(document.getElementById('tong_toi_hnay')?.value || 0);
+            const ds = Number(document.getElementById('tong_ds_hnay')?.value.replace(/\D/g, '') || 0);
+            
+            const tongLich = pvMoi + pvCu;
+            const tyLeToi = tongLich > 0 ? Math.round((tongToi / tongLich) * 100) : 0;
+            const dsTrieu = (ds / 1e6).toFixed(ds % 1e6 === 0 ? 0 : 1);
+
+            const elLich = document.getElementById('sumLich');
+            const elToi = document.getElementById('sumToi');
+            const elDs = document.getElementById('sumDs');
+            if (elLich) elLich.innerText = tongLich;
+            if (elToi) elToi.innerText = tyLeToi + '%';
+            if (elDs) elDs.innerText = dsTrieu + 'tr';
+        }
+
+        // Formula Engine & Shunting-Yard Client
+        function evaluateFormulaClient(formula, contextValues = {}) {
+            if (!formula || typeof formula !== 'string') return 0;
+            let expr = formula.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, key) => {
+                const val = contextValues[key];
+                const num = Number(val);
+                return isNaN(num) ? '0' : String(num);
+            });
+            const tokens = tokenizeMathClient(expr);
+            if (!tokens.length) return 0;
+            const rpn = shuntingYardClient(tokens);
+            return executeRpnClient(rpn);
+        }
+
+        function tokenizeMathClient(str) {
+            const tokens = [];
+            let i = 0;
+            const clean = str.replace(/\s+/g, '');
+            while (i < clean.length) {
+                const ch = clean[i];
+                if (ch === '+' || ch === '*' || ch === '/' || ch === '(' || ch === ')') {
+                    tokens.push(ch);
+                    i++;
+                } else if (ch === '-') {
+                    const prev = tokens[tokens.length - 1];
+                    const isUnary = !prev || prev === '(' || prev === '+' || prev === '-' || prev === '*' || prev === '/';
+                    if (isUnary) {
+                        let numStr = '-';
+                        i++;
+                        while (i < clean.length && /[\d.]/.test(clean[i])) {
+                            numStr += clean[i];
+                            i++;
+                        }
+                        const n = parseFloat(numStr);
+                        tokens.push(isNaN(n) ? 0 : n);
+                    } else {
+                        tokens.push('-');
+                        i++;
+                    }
+                } else if (/[\d.]/.test(ch)) {
+                    let numStr = '';
+                    while (i < clean.length && /[\d.]/.test(clean[i])) {
+                        numStr += clean[i];
+                        i++;
+                    }
+                    const n = parseFloat(numStr);
+                    tokens.push(isNaN(n) ? 0 : n);
+                } else {
+                    i++;
+                }
+            }
+            return tokens;
+        }
+
+        const PRECEDENCE_CLIENT = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+        function shuntingYardClient(tokens) {
+            const output = [];
+            const opStack = [];
+            for (const t of tokens) {
+                if (typeof t === 'number') {
+                    output.push(t);
+                } else if (t === '(') {
+                    opStack.push(t);
+                } else if (t === ')') {
+                    while (opStack.length && opStack[opStack.length - 1] !== '(') {
+                        output.push(opStack.pop());
+                    }
+                    opStack.pop();
+                } else if (PRECEDENCE_CLIENT[t]) {
+                    while (
+                        opStack.length &&
+                        PRECEDENCE_CLIENT[opStack[opStack.length - 1]] &&
+                        PRECEDENCE_CLIENT[opStack[opStack.length - 1]] >= PRECEDENCE_CLIENT[t]
+                    ) {
+                        output.push(opStack.pop());
+                    }
+                    opStack.push(t);
+                }
+            }
+            while (opStack.length) {
+                output.push(opStack.pop());
+            }
+            return output;
+        }
+
+        function executeRpnClient(rpn) {
+            const stack = [];
+            for (const t of rpn) {
+                if (typeof t === 'number') {
+                    stack.push(t);
+                } else if (PRECEDENCE_CLIENT[t]) {
+                    const b = stack.pop() ?? 0;
+                    const a = stack.pop() ?? 0;
+                    if (t === '+') stack.push(a + b);
+                    else if (t === '-') stack.push(a - b);
+                    else if (t === '*') stack.push(a * b);
+                    else if (t === '/') {
+                        if (b <= 0 || isNaN(b)) {
+                            stack.push(0);
+                        } else {
+                            stack.push(a / b);
+                        }
+                    }
+                }
+            }
+            const res = stack.pop() ?? 0;
+            return isNaN(res) || !isFinite(res) ? 0 : Number(res.toFixed(2));
+        }
+
+        function matchThresholdClient(val, thresholds = []) {
+            if (!Array.isArray(thresholds) || !thresholds.length) return null;
+            const num = Number(val) || 0;
+            for (const t of thresholds) {
+                const thresholdVal = Number(t.value);
+                if (isNaN(thresholdVal)) continue;
+                let matched = false;
+                switch (t.operator) {
+                    case '>=': matched = num >= thresholdVal; break;
+                    case '>': matched = num > thresholdVal; break;
+                    case '<=': matched = num <= thresholdVal; break;
+                    case '<': matched = num < thresholdVal; break;
+                    case '==': matched = num === thresholdVal; break;
+                }
+                if (matched) return t;
+            }
+            return null;
+        }
+
+        let serviceCardCounter = 0;
+
+        function addMultiServiceCard(data = null) {
+            const list = document.getElementById('multiServicesList');
+            if (!list) return;
+
+            serviceCardCounter++;
+            const cardId = `svc_card_${serviceCardCounter}_${Date.now()}`;
+            const inputFields = (dynamicInputFields || []).filter(f => f.key !== 'ghi_chu');
+
+            const currentCount = list.querySelectorAll('.multi-service-card').length;
+            const defService = (data && data.service_name) ? data.service_name : ((availableServices[currentCount % Math.max(availableServices.length, 1)]?.service_name || availableServices[currentCount % Math.max(availableServices.length, 1)]) || '');
+            const isCustom = Boolean(defService && !availableServices.some(s => (s.service_name || s.name || s) === defService));
+
+            let optionsHtml = '';
+            availableServices.forEach(s => {
+                const name = s.service_name || s.name || s;
+                const sel = (!isCustom && defService === name) ? 'selected' : '';
+                optionsHtml += `<option value="${escapeAttr(name)}" ${sel}>${escapeAttr(name)}</option>`;
+            });
+            optionsHtml += `<option value="__new__" ${isCustom ? 'selected' : ''}>➕ Tự nhập tên khác...</option>`;
+
+            const vals = data?.report_values || data || {};
+
+            let fieldsHtml = '';
+            inputFields.forEach((f, idx) => {
+                const reqStar = f.required ? '<span style="color:#ef4444; margin-left:2px;">*</span>' : '';
+                const rawVal = vals[f.key];
+                if (f.data_type === 'currency' || f.type === 'currency') {
+                    const valStr = (rawVal !== undefined && rawVal !== null) ? formatThousand(rawVal) : '0';
+                    fieldsHtml += `
+                    <div class="row-item">
+                        <label class="row-label">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                        <div class="revenue-field-box">
+                            <input type="text" class="field-input-revenue svc-input svc-currency" data-key="${f.key}" value="${valStr}" inputmode="numeric" placeholder="0">
+                            <span class="unit-badge">đ</span>
+                        </div>
+                    </div>`;
+                } else if (f.data_type === 'text' || f.type === 'text') {
+                    const valStr = rawVal !== undefined ? escapeAttr(rawVal) : '';
+                    fieldsHtml += `
+                    <div class="row-item">
+                        <label class="row-label">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                        <input type="text" class="svc-input svc-text" data-key="${f.key}" value="${valStr}" placeholder="Nội dung..." style="padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 13px; text-align: right; width: 140px;">
+                    </div>`;
+                } else {
+                    const valStr = (rawVal !== undefined && rawVal !== null) ? rawVal : 0;
+                    fieldsHtml += `
+                    <div class="row-item">
+                        <label class="row-label">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                        <div class="num-input-wrap">
+                            <input type="number" class="field-input-num svc-input svc-number" data-key="${f.key}" min="0" value="${valStr}" inputmode="numeric">
+                        </div>
+                    </div>`;
+                }
+            });
+
+            const card = document.createElement('div');
+            card.className = 'multi-service-card';
+            card.id = cardId;
+            card.innerHTML = `
+                <div class="multi-service-header">
+                    <span class="multi-service-title">🏷 DỊCH VỤ <span class="card-idx"></span></span>
+                    <button type="button" class="btn-del-multi-service" onclick="removeMultiServiceCard('${cardId}')">✕ Xóa</button>
+                </div>
+                <div class="service-select-row">
+                    <div class="dimension-label-row">
+                        <span class="dimension-label">Chọn Dịch Vụ:</span>
+                        <button type="button" class="btn-dim-action" onclick="toggleCardCustomService('${cardId}')">➕ Nhập tên mới</button>
+                    </div>
+                    <select class="dimension-select svc-name-select" onchange="onCardSvcSelectChange(this, '${cardId}')">
+                        ${optionsHtml}
+                    </select>
+                    <div class="svc-custom-box dimension-input-row" style="display: ${isCustom ? 'flex' : 'none'};">
+                        <input type="text" class="dimension-custom-input svc-custom-name" placeholder="Tên dịch vụ mới..." value="${isCustom ? escapeAttr(defService) : ''}" onkeydown="if(event.key==='Enter'){event.preventDefault();}">
+                    </div>
+                </div>
+                <div class="card-group" style="margin-top: 6px;">
+                    ${fieldsHtml}
+                </div>
+            `;
+
+            // Bind listeners for inputs
+            card.querySelectorAll('.svc-input').forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.select();
+                });
+                input.addEventListener('input', function() {
+                    if (this.classList.contains('svc-currency')) {
+                        const digits = this.value.replace(/\D/g, '');
+                        this.value = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+                    }
+                    recalcMultiServices();
+                });
+                input.addEventListener('blur', function() {
+                    if (this.value === '' && !this.classList.contains('svc-text')) this.value = '0';
+                    recalcMultiServices();
+                });
+            });
+
+            list.appendChild(card);
+            updateMultiServiceCardHeaders();
+            recalcMultiServices();
+        }
+
+        function removeMultiServiceCard(cardId) {
+            const card = document.getElementById(cardId);
+            if (card) {
+                card.remove();
+                updateMultiServiceCardHeaders();
+                recalcMultiServices();
+            }
+        }
+
+        function updateMultiServiceCardHeaders() {
+            const cards = document.querySelectorAll('.multi-service-card');
+            cards.forEach((card, idx) => {
+                const idxEl = card.querySelector('.card-idx');
+                if (idxEl) idxEl.innerText = idx + 1;
+                const delBtn = card.querySelector('.btn-del-multi-service');
+                if (delBtn) {
+                    delBtn.style.display = cards.length > 1 ? 'block' : 'none';
+                }
+            });
+        }
+
+        function onCardSvcSelectChange(sel, cardId) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+            const customBox = card.querySelector('.svc-custom-box');
+            const customInp = card.querySelector('.svc-custom-name');
+            if (sel.value === '__new__') {
+                if (customBox) {
+                    customBox.style.display = 'flex';
+                    if (customInp) customInp.focus();
+                }
+            } else {
+                if (customBox) customBox.style.display = 'none';
+            }
+            recalcMultiServices();
+        }
+
+        function toggleCardCustomService(cardId) {
+            const card = document.getElementById(cardId);
+            if (!card) return;
+            const customBox = card.querySelector('.svc-custom-box');
+            const customInp = card.querySelector('.svc-custom-name');
+            const sel = card.querySelector('.svc-name-select');
+            if (!customBox) return;
+            const isShowing = customBox.style.display !== 'none';
+            if (isShowing) {
+                customBox.style.display = 'none';
+            } else {
+                customBox.style.display = 'flex';
+                if (sel) sel.value = '__new__';
+                if (customInp) customInp.focus();
+            }
+        }
+
+        function recalcMultiServices() {
+            const cards = document.querySelectorAll('.multi-service-card');
+            const combined = {};
+
+            cards.forEach(card => {
+                card.querySelectorAll('.svc-input').forEach(inp => {
+                    const key = inp.dataset.key;
+                    let val = 0;
+                    if (inp.classList.contains('svc-currency')) {
+                        val = Number(inp.value.replace(/\D/g, '') || 0);
+                    } else if (inp.classList.contains('svc-number')) {
+                        val = Number(inp.value || 0);
+                    }
+                    if (val) {
+                        combined[key] = (combined[key] || 0) + val;
+                    }
+                });
+            });
+
+            // Display sums in BOT auto calculated block
+            const sumChiTieu = combined.tong_chi_tieu || 0;
+            const sumMess = combined.tong_mess || 0;
+            const sumSo = combined.tong_so || 0;
+            const sumDs = combined.tong_ds || 0;
+
+            const elSumChiTieu = document.getElementById('sum_bot_tong_chi_tieu');
+            if (elSumChiTieu) elSumChiTieu.innerText = formatThousand(sumChiTieu);
+
+            const elSumMess = document.getElementById('sum_bot_tong_mess');
+            if (elSumMess) elSumMess.innerText = formatThousand(sumMess);
+
+            const elSumSo = document.getElementById('sum_bot_tong_so');
+            if (elSumSo) elSumSo.innerText = formatThousand(sumSo);
+
+            const elSumDs = document.getElementById('sum_bot_tong_ds');
+            if (elSumDs) elSumDs.innerText = formatThousand(sumDs);
+
+            // Cumulative from prior slots in the day
+            const hourlyCumulative = getHourlyCumulativeForCurrentCombo();
+            const prevChiTieu = Number(hourlyCumulative.tong_chi_tieu || 0);
+            const prevDs = Number(hourlyCumulative.tong_ds || 0);
+
+            const chiTieuCongDon = prevChiTieu + sumChiTieu;
+            const dsCongDon = prevDs + sumDs;
+            const tyLeAds = dsCongDon > 0 ? Number(((chiTieuCongDon / dsCongDon) * 100).toFixed(1)) : 0;
+
+            const elChiTieuCongDon = document.getElementById('dyn_calc_tong_chi_tieu_cong_don');
+            if (elChiTieuCongDon) elChiTieuCongDon.innerText = formatThousand(chiTieuCongDon);
+
+            const elDsCongDon = document.getElementById('dyn_calc_tong_ds_cong_don');
+            if (elDsCongDon) elDsCongDon.innerText = formatThousand(dsCongDon);
+
+            const elTyLe = document.getElementById('dyn_calc_ty_le_ads_cong_don');
+            if (elTyLe) elTyLe.innerText = tyLeAds.toFixed(1);
+
+            // Threshold badge
+            const badgeEl = document.getElementById('dyn_badge_ty_le_ads_cong_don');
+            if (badgeEl) {
+                if (tyLeAds >= 30) {
+                    badgeEl.style.display = 'inline-flex';
+                    badgeEl.innerText = '⚠️ (Chi phí cao >= 30%)';
+                    badgeEl.className = 'threshold-badge badge-warning';
+                } else if (tyLeAds > 0 && tyLeAds <= 15) {
+                    badgeEl.style.display = 'inline-flex';
+                    badgeEl.innerText = '🌟 (Hiệu quả <= 15%)';
+                    badgeEl.className = 'threshold-badge badge-reward';
+                } else {
+                    badgeEl.style.display = 'none';
+                }
+            }
+
+            // Top summary bar
+            const elSum1 = document.getElementById('sumLich');
+            const elSum2 = document.getElementById('sumToi');
+            const elSum3 = document.getElementById('sumDs');
+            const lbl1 = document.getElementById('lblSum1');
+            const lbl2 = document.getElementById('lblSum2');
+            const lbl3 = document.getElementById('lblSum3');
+
+            if (lbl1) lbl1.innerText = 'Chi tiêu';
+            if (lbl2) lbl2.innerText = '% Ads c.dồn';
+            if (lbl3) lbl3.innerText = 'Doanh số';
+
+            if (elSum1) elSum1.innerText = (sumChiTieu / 1e6).toFixed(sumChiTieu % 1e6 === 0 ? 0 : 1) + 'tr';
+            if (elSum2) elSum2.innerText = tyLeAds.toFixed(1) + '%';
+            if (elSum3) elSum3.innerText = (sumDs / 1e6).toFixed(sumDs % 1e6 === 0 ? 0 : 1) + 'tr';
+        }
+
+        function renderDynamicForm(fields) {
+            const activeFields = fields.filter(f => !f.is_hidden).sort((a,b) => (a.order_index || 0) - (b.order_index || 0));
+            if (!activeFields.length) return false;
+
+            dynamicFieldsConfig = activeFields;
+            dynamicInputFields = activeFields.filter(f => f.category === 'INPUT');
+            dynamicCalcFields = activeFields.filter(f => f.category === 'CALCULATED');
+
+            const hasServices = Boolean(groupFormConfig?.features?.has_services);
+
+            if (hasServices) {
+                let html = `
+                <div class="section-block">
+                    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>📋 BÁO CÁO CÁC DỊCH VỤ</span>
+                        <span style="font-size:11px; font-weight:normal; color:var(--hint);">Cùng lúc nhiều dịch vụ</span>
+                    </div>
+                    <div id="multiServicesList"></div>
+                    <button type="button" class="btn-add-multi-service" onclick="addMultiServiceCard(null)">
+                        ➕ Thêm Dịch Vụ
+                    </button>
+                </div>
+
+                <!-- Ghi chú chung -->
+                <div class="section-block">
+                    <div class="section-title">Ghi Chú / Vấn Đề Cần Xử Lý</div>
+                    <div class="card-group">
+                        <div class="row-item" style="padding: 6px 10px;">
+                            <input type="text" id="dyn_general_ghi_chu" placeholder="Nhập ghi chú hoặc vấn đề cần xử lý..." style="width: 100%; border: none; outline: none; font-size: 13px; color: var(--text); background: transparent;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Calculated fields / BOT tự tính tổng -->
+                <div class="section-block">
+                    <div class="section-title" style="color:var(--primary); font-weight:700;">🤖 BOT TỰ ĐỘNG CỘNG TỔNG CÁC DỊCH VỤ</div>
+                    <div class="card-group">
+                        <div class="row-item calc-row">
+                            <span class="row-label">Tổng chi tiêu (tất cả DV)</span>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="sum_bot_tong_chi_tieu">0</span>
+                                <span class="calc-unit">đ</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <span class="row-label">Tổng Mess (tất cả DV)</span>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="sum_bot_tong_mess">0</span>
+                                <span class="calc-unit">tin nhắn</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <span class="row-label">Tổng số (SĐT) (tất cả DV)</span>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="sum_bot_tong_so">0</span>
+                                <span class="calc-unit">SĐT</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <span class="row-label">Tổng Doanh số (tất cả DV)</span>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="sum_bot_tong_ds">0</span>
+                                <span class="calc-unit">đ</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <div class="row-label" style="display:flex; flex-direction:column;">
+                                <span>Tổng chi tiêu cộng dồn</span>
+                                <span style="font-size:10px; color:var(--hint); font-family:monospace;">{tong_chi_tieu}</span>
+                            </div>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="dyn_calc_tong_chi_tieu_cong_don">0</span>
+                                <span class="calc-unit">đ</span>
+                                <span style="font-size:10.5px; color:var(--hint);"> - BOT TỰ ĐỘNG</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <div class="row-label" style="display:flex; flex-direction:column;">
+                                <span>Tổng DS cộng dồn</span>
+                                <span style="font-size:10px; color:var(--hint); font-family:monospace;">{tong_ds}</span>
+                            </div>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="dyn_calc_tong_ds_cong_don">0</span>
+                                <span class="calc-unit">đ</span>
+                                <span style="font-size:10.5px; color:var(--hint);"> - BOT TỰ ĐỘNG</span>
+                            </div>
+                        </div>
+                        <div class="row-item calc-row">
+                            <div class="row-label" style="display:flex; flex-direction:column;">
+                                <span>% Ads cộng dồn</span>
+                                <span style="font-size:10px; color:var(--hint); font-family:monospace;">({tong_chi_tieu_cong_don} / {tong_ds_cong_don}) * 100</span>
+                            </div>
+                            <div class="calc-field-wrap">
+                                <span class="calc-val" id="dyn_calc_ty_le_ads_cong_don">0.0</span>
+                                <span class="calc-unit">%</span>
+                                <span class="threshold-badge" id="dyn_badge_ty_le_ads_cong_don" style="display: none;"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                `;
+
+                const form = document.getElementById('reportForm');
+                form.innerHTML = html;
+                return true;
+            }
+
+            let html = '';
+
+            // Section 1: Input fields
+            if (dynamicInputFields.length > 0) {
+                html += `
+                <div class="section-block">
+                    <div class="section-title">Số Liệu Nhập Hôm Nay</div>
+                    <div class="card-group">
+                `;
+                dynamicInputFields.forEach((f, idx) => {
+                    const reqStar = f.required ? '<span style="color:#ef4444; margin-left:2px;">*</span>' : '';
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="revenue-field-box">
+                                <input type="text" id="dyn_input_${f.key}" class="field-input-revenue dyn-input dyn-currency" data-key="${f.key}" value="0" inputmode="numeric" placeholder="0">
+                                <span class="unit-badge">đ</span>
+                            </div>
+                        </div>
+                        `;
+                    } else if (f.data_type === 'percentage' || f.type === 'percentage') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="num-input-wrap">
+                                <input type="number" id="dyn_input_${f.key}" class="field-input-num dyn-input" data-key="${f.key}" min="0" value="0" inputmode="numeric">
+                                <span class="unit-badge" style="margin-left: 4px;">%</span>
+                            </div>
+                        </div>
+                        `;
+                    } else if (f.data_type === 'text' || f.type === 'text') {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <input type="text" id="dyn_input_${f.key}" class="dyn-input" data-key="${f.key}" style="padding: 6px 8px; border: 1px solid var(--input-border); border-radius: 6px; font-size: 13px; text-align: right; width: 140px;">
+                        </div>
+                        `;
+                    } else {
+                        html += `
+                        <div class="row-item">
+                            <label class="row-label" for="dyn_input_${f.key}">${idx + 1}. ${escapeAttr(f.label)}${reqStar}</label>
+                            <div class="num-input-wrap">
+                                <input type="number" id="dyn_input_${f.key}" class="field-input-num dyn-input" data-key="${f.key}" min="0" value="0" inputmode="numeric">
+                            </div>
+                        </div>
+                        `;
+                    }
+                });
+                html += `</div></div>`;
+            }
+
+            // Section 2: Calculated fields
+            if (dynamicCalcFields.length > 0) {
+                html += `
+                <div class="section-block">
+                    <div class="section-title">Chỉ Số Tự Động Tính</div>
+                    <div class="card-group">
+                `;
+                dynamicCalcFields.forEach((f) => {
+                    const unit = (f.data_type === 'percentage' || f.type === 'percentage') ? '%' : ((f.data_type === 'currency' || f.type === 'currency') ? 'đ' : '');
+                    html += `
+                    <div class="row-item calc-row" id="row_calc_${f.key}">
+                        <div class="row-label" style="display:flex; flex-direction:column;">
+                            <span>${escapeAttr(f.label)}</span>
+                            ${f.formula ? `<span style="font-size: 10px; color: var(--hint); font-family: monospace;">${escapeAttr(f.formula)}</span>` : ''}
+                        </div>
+                        <div class="calc-field-wrap">
+                            <span class="calc-val" id="dyn_calc_${f.key}">0</span>
+                            ${unit ? `<span class="calc-unit">${unit}</span>` : ''}
+                            <span class="threshold-badge" id="dyn_badge_${f.key}" style="display: none;"></span>
+                        </div>
+                    </div>
+                    `;
+                });
+                html += `</div></div>`;
+            }
+
+            // Section 3: Services toggle
+            html += `
+            <div class="service-toggle-card">
+                <label class="toggle-container" for="chkByService">
+                    <input type="checkbox" id="chkByService" onchange="toggleServiceSection()">
+                    <span class="toggle-label">🔍 Chia chi tiết theo Dịch Vụ</span>
+                </label>
+            </div>
+            <div id="serviceSection" class="service-section" style="display: none;">
+                <div class="service-header">
+                    <span class="service-title">📋 Phân Bổ Dịch Vụ</span>
+                    <span class="service-hint">Tự cộng dồn lên các ô Tổng</span>
+                </div>
+                <div id="serviceList"></div>
+                <button type="button" class="btn-add-service" onclick="addServiceRow()">
+                    ➕ Thêm Dịch Vụ
+                </button>
+            </div>
+            `;
+
+            const form = document.getElementById('reportForm');
+            form.innerHTML = html;
+
+            // Bind listeners for dyn-inputs
+            form.querySelectorAll('.dyn-input').forEach(input => {
+                input.addEventListener('focus', function() {
+                    this.select();
+                });
+                input.addEventListener('input', function() {
+                    if (this.classList.contains('dyn-currency')) {
+                        const digits = this.value.replace(/\D/g, '');
+                        this.value = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+                    }
+                    recalcDynamicForm();
+                });
+                input.addEventListener('blur', function() {
+                    if (this.value === '' && !this.classList.contains('dyn-currency')) this.value = '0';
+                    recalcDynamicForm();
+                });
+            });
+
+            return true;
+        }
+
+        function recalcDynamicForm() {
+            if (!dynamicFieldsConfig) return;
+
+            const values = {};
+
+            // 1. Gather all input values
+            dynamicInputFields.forEach(f => {
+                const el = document.getElementById(`dyn_input_${f.key}`);
+                if (!el) return;
+                if (f.data_type === 'currency' || f.type === 'currency') {
+                    values[f.key] = Number(el.value.replace(/\D/g, '') || 0);
+                } else if (f.data_type === 'text' || f.type === 'text') {
+                    values[f.key] = el.value.trim();
+                } else {
+                    values[f.key] = Number(el.value || 0);
+                }
+            });
+
+            // Calculate hourly cumulative for active combo
+            const hourlyCumulatives = getHourlyCumulativeForCurrentCombo();
+
+            // 2. Evaluate all calculated fields
+            dynamicCalcFields.forEach(f => {
+                let computed = 0;
+                if (f.formula) {
+                    computed = evaluateFormulaClient(f.formula, values);
+                }
+                if (f.is_monthly_cumulative) {
+                    computed += monthlyPrevRevenue;
+                }
+                if (f.is_hourly_cumulative) {
+                    let baseVar = f.key;
+                    if (f.formula) {
+                        const match = f.formula.match(/^\{([a-zA-Z0-9_]+)\}$/);
+                        if (match) baseVar = match[1];
+                    }
+                    const prevHourly = Number(hourlyCumulatives[baseVar] ?? hourlyCumulatives[f.key] ?? 0);
+                    computed = Number((computed + prevHourly).toFixed(2));
+                }
+                values[f.key] = computed;
+
+                const valEl = document.getElementById(`dyn_calc_${f.key}`);
+                if (valEl) {
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        valEl.innerText = formatThousand(Math.round(computed));
+                    } else if (f.data_type === 'percentage' || f.type === 'percentage') {
+                        valEl.innerText = computed.toFixed(1);
+                    } else {
+                        valEl.innerText = formatThousand(Math.round(computed));
+                    }
+                }
+
+                // Check thresholds
+                const badgeEl = document.getElementById(`dyn_badge_${f.key}`);
+                if (badgeEl) {
+                    const rule = matchThresholdClient(computed, f.threshold_rules || f.thresholds);
+                    if (rule) {
+                        badgeEl.style.display = 'inline-flex';
+                        badgeEl.innerText = rule.badge || '';
+                        badgeEl.className = 'threshold-badge ' + (
+                            rule.type === 'reward' || rule.type === 'success' || rule.color === 'success' ? 'badge-reward' :
+                            rule.type === 'warning' || rule.color === 'warning' ? 'badge-warning' : 'badge-danger'
+                        );
+                    } else {
+                        badgeEl.style.display = 'none';
+                    }
+                }
+            });
+
+            // Update summary bar
+            const isAds = dynamicFieldsConfig && dynamicFieldsConfig.some(f => f.key === 'tong_chi_tieu');
+            if (isAds) {
+                const chiTieu = Number(values.tong_chi_tieu || 0);
+                const chiTieuTrieu = (chiTieu / 1e6).toFixed(chiTieu % 1e6 === 0 ? 0 : 1);
+                const tyLeAds = Number(values.ty_le_ads_cong_don || 0).toFixed(1);
+                const ds = Number(values.tong_ds || values.tong_ds_cong_don || 0);
+                const dsTrieu = (ds / 1e6).toFixed(ds % 1e6 === 0 ? 0 : 1);
+
+                const elSum1 = document.getElementById('sumLich');
+                const elSum2 = document.getElementById('sumToi');
+                const elSum3 = document.getElementById('sumDs');
+                const lbl1 = document.getElementById('lblSum1');
+                const lbl2 = document.getElementById('lblSum2');
+                const lbl3 = document.getElementById('lblSum3');
+
+                if (lbl1) lbl1.innerText = 'Chi tiêu';
+                if (lbl2) lbl2.innerText = '% Ads c.dồn';
+                if (lbl3) lbl3.innerText = 'Doanh số';
+
+                if (elSum1) elSum1.innerText = chiTieuTrieu + 'tr';
+                if (elSum2) elSum2.innerText = tyLeAds + '%';
+                if (elSum3) elSum3.innerText = dsTrieu + 'tr';
+            } else {
+                const tongLich = values.tong_lich !== undefined ? values.tong_lich : (Number(values.lich_pv_moi || 0) + Number(values.lich_pv_cu || 0));
+                const tyLeToi = values.ty_le_toi !== undefined ? values.ty_le_toi : (tongLich > 0 ? Math.round(((values.tong_toi_hnay || 0) / tongLich) * 100) : 0);
+                const ds = Number(values.tong_ds_hnay || 0);
+                const dsTrieu = (ds / 1e6).toFixed(ds % 1e6 === 0 ? 0 : 1);
+
+                const elLich = document.getElementById('sumLich');
+                const elToi = document.getElementById('sumToi');
+                const elDs = document.getElementById('sumDs');
+                if (elLich) elLich.innerText = tongLich;
+                if (elToi) elToi.innerText = tyLeToi + '%';
+                if (elDs) elDs.innerText = dsTrieu + 'tr';
+            }
+        }
+
+        function getHourlyCumulativeForCurrentCombo() {
+            const cumulative = {};
+            const slots = groupFormConfig?.schedule_settings?.slots || [];
+            if (!slots.length || !currentSlot) {
+                return cumulative;
+            }
+            const currentIdx = slots.findIndex(s => (s.id || s) === currentSlot);
+            if (currentIdx <= 0) return cumulative;
+
+            const priorSlotIds = slots.slice(0, currentIdx).map(s => s.id || s);
+
+            (todayReports || []).forEach(r => {
+                const rSlot = r.report_slot;
+                const rPrj = r.project_name || '';
+                const rSvc = r.service_name || '';
+
+                const matchPrj = !groupFormConfig?.features?.has_projects || rPrj === (currentProject || '');
+                const matchSvc = !groupFormConfig?.features?.has_services || rSvc === (currentService || '');
+
+                if (priorSlotIds.includes(rSlot) && matchPrj && (groupFormConfig?.features?.has_services || matchSvc)) {
+                    const vals = r.report_values || r;
+                    for (const [k, v] of Object.entries(vals)) {
+                        const num = Number(v);
+                        if (!isNaN(num)) {
+                            cumulative[k] = (cumulative[k] || 0) + num;
+                        }
+                    }
+                }
+            });
+
+            return cumulative;
+        }
+
+        function renderDimensionsControls(config) {
+            const container = document.getElementById('dimensionContainer');
+            if (!container) return;
+
+            const isMultiSlot = config?.features?.schedule_mode === 'MULTI_SLOT';
+            const hasProjects = Boolean(config?.features?.has_projects);
+            const hasServices = Boolean(config?.features?.has_services);
+
+            if (!isMultiSlot && !hasProjects) {
+                container.style.display = 'none';
+                return;
+            }
+
+            container.style.display = 'block';
+            let html = '';
+
+            if (isMultiSlot) {
+                const slots = config.schedule_settings?.slots || [];
+                html += `
+                <div class="dimension-card">
+                    <div class="dimension-title">
+                        <span>⏰ MỐC GIỜ BÁO CÁO</span>
+                        <span id="slotStatusHint" style="font-size:10.5px; color:var(--primary); font-weight:600;"></span>
+                    </div>
+                    <div class="slot-pills" id="slotPillsContainer">
+                        ${slots.map(s => {
+                            const sId = s.id || s;
+                            const sLabel = s.label || s.id || s;
+                            const hasData = (todayReports || []).some(r => r.report_slot === sId);
+                            return `<button type="button" class="slot-pill ${currentSlot === sId ? 'active' : ''} ${hasData ? 'has-data' : ''}" data-slot="${escapeAttr(sId)}" onclick="selectReportSlot('${escapeAttr(sId)}')">${escapeAttr(sLabel)}</button>`;
+                        }).join('')}
+                    </div>
+                </div>
+                `;
+            }
+
+            if (hasProjects) {
+                html += `
+                <div class="dimension-card">
+                    <div class="dimension-select-box">
+                        <div class="dimension-label-row">
+                            <span class="dimension-label">🏢 DỰ ÁN</span>
+                            <button type="button" class="btn-dim-action" onclick="toggleNewProjectInput()">➕ Thêm mới</button>
+                        </div>
+                        <select id="selProject" class="dimension-select" onchange="onProjectChange(this.value)">
+                            ${(config.projects || []).length === 0 ? `<option value="" disabled ${!currentProject ? 'selected' : ''}>-- Chưa có dự án (bấm thêm mới) --</option>` : ''}
+                            ${(config.projects || []).map(p => `<option value="${escapeAttr(p)}" ${currentProject === p ? 'selected' : ''}>${escapeAttr(p)}</option>`).join('')}
+                            <option value="__new__" ${currentProject === '__new__' ? 'selected' : ''}>➕ Nhập dự án mới...</option>
+                        </select>
+                        <div id="newProjectBox" class="dimension-input-row" style="display: ${currentProject === '__new__' || (config.projects || []).length === 0 ? 'flex' : 'none'};">
+                            <input type="text" id="txtNewProject" class="dimension-custom-input" placeholder="Tên dự án mới..." onkeydown="if(event.key==='Enter'){event.preventDefault(); saveNewProject();}" />
+                            <button type="button" class="btn-dim-save" onclick="saveNewProject()">Lưu</button>
+                        </div>
+                    </div>
+                </div>
+                `;
+            }
+
+            container.innerHTML = html;
+            updateSlotStatusHint();
+        }
+
+        function selectReportSlot(slotId) {
+            currentSlot = slotId;
+            document.querySelectorAll('.slot-pill').forEach(btn => {
+                btn.classList.toggle('active', btn.getAttribute('data-slot') === slotId);
+            });
+            loadReportForCurrentDimensions();
+        }
+
+        function onProjectChange(val) {
+            if (val === '__new__') {
+                showNewProjectInput();
+                return;
+            }
+            hideNewProjectInput();
+            currentProject = val;
+            loadReportForCurrentDimensions();
+        }
+
+        function onServiceChange(val) {
+            if (val === '__new__') {
+                showNewServiceInput();
+                return;
+            }
+            hideNewServiceInput();
+            currentService = val;
+            loadReportForCurrentDimensions();
+        }
+
+        function toggleNewProjectInput() {
+            const box = document.getElementById('newProjectBox');
+            if (!box) return;
+            const isShowing = box.style.display !== 'none';
+            if (isShowing) {
+                box.style.display = 'none';
+            } else {
+                box.style.display = 'flex';
+                document.getElementById('txtNewProject')?.focus();
+            }
+        }
+
+        function showNewProjectInput() {
+            const box = document.getElementById('newProjectBox');
+            if (box) {
+                box.style.display = 'flex';
+                document.getElementById('txtNewProject')?.focus();
+            }
+        }
+
+        function hideNewProjectInput() {
+            const box = document.getElementById('newProjectBox');
+            if (box) box.style.display = 'none';
+        }
+
+        async function saveNewProject() {
+            const txt = document.getElementById('txtNewProject');
+            const name = (txt?.value || '').trim();
+            if (!name) {
+                tg?.showAlert ? tg.showAlert('Vui lòng nhập tên dự án!') : alert('Vui lòng nhập tên dự án!');
+                return;
+            }
+            if (!groupFormConfig) groupFormConfig = {};
+            if (!Array.isArray(groupFormConfig.projects)) groupFormConfig.projects = [];
+            if (!groupFormConfig.projects.includes(name)) {
+                groupFormConfig.projects.push(name);
+                if (currentGroupId) {
+                    try {
+                        fetch('/api/telesale/add-project', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ telegramGroupId: currentGroupId, projectName: name })
+                        }).catch(e => console.warn('Lỗi gọi add-project:', e));
+                    } catch (e) {
+                        console.warn('Lỗi add-project:', e);
+                    }
+                }
+            }
+            currentProject = name;
+            renderDimensionControls(groupFormConfig);
+            hideNewProjectInput();
+            loadReportForCurrentDimensions();
+        }
+
+        function toggleNewServiceInput() {
+            const box = document.getElementById('newServiceBox');
+            if (!box) return;
+            const isShowing = box.style.display !== 'none';
+            if (isShowing) {
+                box.style.display = 'none';
+            } else {
+                box.style.display = 'flex';
+                document.getElementById('txtNewService')?.focus();
+            }
+        }
+
+        function showNewServiceInput() {
+            const box = document.getElementById('newServiceBox');
+            if (box) {
+                box.style.display = 'flex';
+                document.getElementById('txtNewService')?.focus();
+            }
+        }
+
+        function hideNewServiceInput() {
+            const box = document.getElementById('newServiceBox');
+            if (box) box.style.display = 'none';
+        }
+
+        async function saveNewService() {
+            const txt = document.getElementById('txtNewService');
+            const name = (txt?.value || '').trim();
+            if (!name) {
+                tg?.showAlert ? tg.showAlert('Vui lòng nhập tên dịch vụ!') : alert('Vui lòng nhập tên dịch vụ!');
+                return;
+            }
+            if (!groupFormConfig) groupFormConfig = {};
+            if (!Array.isArray(groupFormConfig.services)) groupFormConfig.services = [];
+            if (!groupFormConfig.services.includes(name)) {
+                groupFormConfig.services.push(name);
+                if (currentGroupId) {
+                    try {
+                        fetch('/api/telesale/add-service', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ telegramGroupId: currentGroupId, serviceName: name })
+                        }).catch(e => console.warn('Lỗi gọi add-service:', e));
+                    } catch (e) {
+                        console.warn('Lỗi add-service:', e);
+                    }
+                }
+            }
+            currentService = name;
+            renderDimensionControls(groupFormConfig);
+            hideNewServiceInput();
+            loadReportForCurrentDimensions();
+        }
+
+        function loadReportForCurrentDimensions() {
+            updateSlotStatusHint();
+            const slotReports = (todayReports || []).filter(r => {
+                const matchSlot = !groupFormConfig?.features?.schedule_mode || groupFormConfig.features.schedule_mode !== 'MULTI_SLOT' || r.report_slot === currentSlot;
+                const matchPrj = !groupFormConfig?.features?.has_projects || (r.project_name || '') === (currentProject || '');
+                return matchSlot && matchPrj;
+            });
+
+            const btnSubmit = document.getElementById('btnSubmit');
+
+            if (groupFormConfig?.features?.has_services) {
+                const list = document.getElementById('multiServicesList');
+                if (list) {
+                    list.innerHTML = '';
+                    if (slotReports.length > 0) {
+                        slotReports.forEach((r, idx) => {
+                            addMultiServiceCard(r);
+                        });
+                        const noteEl = document.getElementById('dyn_general_ghi_chu');
+                        const firstNote = slotReports.find(r => r.report_values?.ghi_chu || r.ghi_chu);
+                        if (noteEl) noteEl.value = (firstNote ? (firstNote.report_values?.ghi_chu || firstNote.ghi_chu) : '') || '';
+                    } else {
+                        addMultiServiceCard(null);
+                        const noteEl = document.getElementById('dyn_general_ghi_chu');
+                        if (noteEl) noteEl.value = '';
+                    }
+                    recalcMultiServices();
+                }
+
+                if (btnSubmit) {
+                    btnSubmit.innerText = slotReports.length > 0
+                        ? (currentSlot ? `⚡️ CẬP NHẬT MỐC ${currentSlot}` : '⚡️ CẬP NHẬT BÁO CÁO')
+                        : (currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO');
+                }
+                return;
+            }
+
+            const existing = slotReports[0] || null;
+
+            if (dynamicFieldsConfig) {
+                const vals = existing ? (existing.report_values || existing) : {};
+                dynamicInputFields.forEach(f => {
+                    const el = document.getElementById(`dyn_input_${f.key}`);
+                    if (!el) return;
+                    if (existing && vals[f.key] !== undefined) {
+                        if (f.data_type === 'currency' || f.type === 'currency') {
+                            el.value = formatThousand(vals[f.key]);
+                        } else {
+                            el.value = vals[f.key];
+                        }
+                    } else {
+                        if (f.data_type === 'currency' || f.type === 'currency') {
+                            el.value = '0';
+                        } else if (f.data_type === 'text' || f.type === 'text') {
+                            el.value = '';
+                        } else {
+                            el.value = '0';
+                        }
+                    }
+                });
+                recalcDynamicForm();
+            }
+
+            if (btnSubmit) {
+                if (existing) {
+                    btnSubmit.innerText = currentSlot ? `⚡️ CẬP NHẬT MỐC ${currentSlot}` : '⚡️ CẬP NHẬT BÁO CÁO';
+                } else {
+                    btnSubmit.innerText = currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO';
+                }
+            }
+        }
+
+        function updateSlotStatusHint() {
+            const hintEl = document.getElementById('slotStatusHint');
+            if (!hintEl) return;
+            const slotReports = (todayReports || []).filter(r => {
+                const matchSlot = !groupFormConfig?.features?.schedule_mode || groupFormConfig.features.schedule_mode !== 'MULTI_SLOT' || r.report_slot === currentSlot;
+                const matchPrj = !groupFormConfig?.features?.has_projects || (r.project_name || '') === (currentProject || '');
+                return matchSlot && matchPrj;
+            });
+            if (groupFormConfig?.features?.has_services) {
+                hintEl.innerText = slotReports.length > 0 ? `Đã nộp ${slotReports.length} dịch vụ` : 'Chưa nộp mốc này';
+                hintEl.style.color = slotReports.length > 0 ? '#16a34a' : 'var(--hint)';
+            } else {
+                hintEl.innerText = slotReports.length > 0 ? 'Đã nộp mốc này' : 'Chưa nộp mốc này';
+                hintEl.style.color = slotReports.length > 0 ? '#16a34a' : 'var(--hint)';
+            }
+        }
+
+        // Quản lý phân bổ dịch vụ
+        function toggleServiceSection() {
+            const isChecked = document.getElementById('chkByService')?.checked;
+            const section = document.getElementById('serviceSection');
+            if (!section) return;
+            section.style.display = isChecked ? 'block' : 'none';
+            if (isChecked) {
+                const list = document.getElementById('serviceList');
+                if (list && list.children.length === 0) {
+                    addServiceRow();
+                }
+            }
+        }
+
+        function addServiceRow(data = null) {
+            const list = document.getElementById('serviceList');
+            if (!list) return;
+            const row = document.createElement('div');
+            row.className = 'service-row-card';
+
+            let optionsHtml = '<option value="">-- Chọn Dịch Vụ --</option>';
+            let isMatched = false;
+            availableServices.forEach(s => {
+                const name = s.service_name || s.name || s;
+                const selected = data && data.service_name === name ? 'selected' : '';
+                if (selected) isMatched = true;
+                optionsHtml += `<option value="${escapeAttr(name)}" ${selected}>${escapeAttr(name)}</option>`;
+            });
+
+            const isCustom = data && data.service_name && !isMatched;
+            optionsHtml += `<option value="__custom__" ${isCustom ? 'selected' : ''}>Khác (tự nhập)...</option>`;
+
+            const customDisplay = isCustom ? 'block' : 'none';
+            const customVal = isCustom ? escapeAttr(data.service_name) : '';
+            const lichVal = data ? (data.lich || 0) : 0;
+            const toiVal = data ? (data.toi || 0) : 0;
+            const dsVal = data ? formatThousand(data.ds || 0) : '0';
+
+            row.innerHTML = `
+                <div class="service-row-top">
+                    <select class="service-select" onchange="onServiceSelectChange(this)">
+                        ${optionsHtml}
+                    </select>
+                    <input type="text" class="service-custom-input" placeholder="Nhập tên DV..." value="${customVal}" style="display: ${customDisplay};" oninput="recalcServices()">
+                    <button type="button" class="btn-del-service" onclick="removeServiceRow(this)" title="Xóa">✕</button>
+                </div>
+                <div class="service-row-bottom">
+                    <div class="mini-field">
+                        <span class="mini-label">Lịch</span>
+                        <input type="number" class="mini-input serv-lich" min="0" value="${lichVal}" inputmode="numeric" oninput="recalcServices()">
+                    </div>
+                    <div class="mini-field">
+                        <span class="mini-label">Tới</span>
+                        <input type="number" class="mini-input serv-toi" min="0" value="${toiVal}" inputmode="numeric" oninput="recalcServices()">
+                    </div>
+                    <div class="mini-field">
+                        <span class="mini-label">Doanh Số (đ)</span>
+                        <input type="text" class="mini-input serv-ds" value="${dsVal}" inputmode="numeric" placeholder="0" oninput="formatServDs(this); recalcServices();">
+                    </div>
+                </div>
+            `;
+
+            const servDsInput = row.querySelector('.serv-ds');
+            servDsInput.addEventListener('focus', function() {
+                this.select();
+            });
+            servDsInput.addEventListener('blur', function() {
+                if (this.value === '') this.value = '0';
+                recalcServices();
+            });
+
+            row.querySelectorAll('.serv-lich, .serv-toi').forEach(inp => {
+                inp.addEventListener('focus', function() {
+                    this.select();
+                });
+                inp.addEventListener('blur', function() {
+                    if (this.value === '') this.value = '0';
+                    recalcServices();
+                });
+            });
+
+            list.appendChild(row);
+            if (!data) recalcServices();
+        }
+
+        function onServiceSelectChange(select) {
+            const parent = select.closest('.service-row-top');
+            const customInput = parent.querySelector('.service-custom-input');
+            if (select.value === '__custom__') {
+                customInput.style.display = 'block';
+                customInput.focus();
+            } else {
+                customInput.style.display = 'none';
+            }
+            recalcServices();
+        }
+
+        function formatServDs(input) {
+            const digits = input.value.replace(/\D/g, '');
+            input.value = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+        }
+
+        function removeServiceRow(btn) {
+            const card = btn.closest('.service-row-card');
+            card.remove();
+            recalcServices();
+        }
+
+        function recalcServices() {
+            if (!document.getElementById('chkByService')?.checked) return;
+
+            let sumLich = 0;
+            let sumToi = 0;
+            let sumDs = 0;
+            let hasAnyService = false;
+
+            document.querySelectorAll('.service-row-card').forEach(card => {
+                const select = card.querySelector('.service-select');
+                const custom = card.querySelector('.service-custom-input');
+                const name = select.value === '__custom__' ? custom.value.trim() : select.value.trim();
+                const lich = Number(card.querySelector('.serv-lich').value || 0);
+                const toi = Number(card.querySelector('.serv-toi').value || 0);
+                const ds = Number(card.querySelector('.serv-ds').value.replace(/\D/g, '') || 0);
+
+                if (name || lich > 0 || toi > 0 || ds > 0) {
+                    hasAnyService = true;
+                    sumLich += lich;
+                    sumToi += toi;
+                    sumDs += ds;
+                }
+            });
+
+            if (hasAnyService) {
+                if (dynamicFieldsConfig) {
+                    const dsEl = document.getElementById('dyn_input_tong_ds_hnay');
+                    const toiEl = document.getElementById('dyn_input_tong_toi_hnay');
+                    const lichEl = document.getElementById('dyn_input_lich_pv_moi');
+                    if (dsEl) dsEl.value = formatThousand(sumDs);
+                    if (toiEl && sumToi > 0) toiEl.value = sumToi;
+                    if (lichEl && sumLich > 0) lichEl.value = sumLich;
+                    recalcDynamicForm();
+                } else {
+                    document.getElementById('tong_ds_hnay').value = formatThousand(sumDs);
+                    if (sumToi > 0) document.getElementById('tong_toi_hnay').value = sumToi;
+                    if (sumLich > 0) document.getElementById('lich_pv_moi').value = sumLich;
+                    updateSummary();
+                }
+            } else {
+                if (dynamicFieldsConfig) {
+                    recalcDynamicForm();
+                } else {
+                    updateSummary();
+                }
+            }
+        }
+
+        function escapeAttr(str) {
+            return String(str || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        // Đăng ký event input các trường số thường fallback (tự động select khi focus, cập nhật summary)
+        ['so_nhan', 'so_trung_knc_vang', 'lich_pv_moi', 'lich_pv_cu', 'lich_ngay_mai', 'tong_toi_hnay', 'tong_bong_hnay'].forEach(id => {
+            const input = document.getElementById(id);
+            if (input) {
+                input.addEventListener('focus', function() {
+                    this.select();
+                });
+                input.addEventListener('input', updateSummary);
+                input.addEventListener('blur', function() {
+                    if (this.value === '') this.value = '0';
+                    updateSummary();
+                });
+            }
+        });
+
+        // Đăng ký event input trường Doanh số fallback
+        const dsInput = document.getElementById('tong_ds_hnay');
+        if (dsInput) {
+            dsInput.addEventListener('input', function() {
+                const digits = this.value.replace(/\D/g, '');
+                this.value = digits ? digits.replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+                updateSummary();
+            });
+            dsInput.addEventListener('focus', function() {
+                this.select();
+            });
+            dsInput.addEventListener('blur', function() {
+                if (this.value === '') this.value = '0';
+                updateSummary();
+            });
+        }
+
+        async function initApp() {
+            let groupId = getParam('chat_id');
+            const payload = getParam('payload') || tg?.initDataUnsafe?.start_param || '';
+
+            if (payload && payload.startsWith('telesale_')) {
+                const parts = payload.split('_');
+                if (parts.length >= 2) {
+                    groupId = parts[1];
+                }
+            }
+            currentGroupId = groupId;
+
+            const telegramUserId = tg?.initDataUnsafe?.user?.id || getParam('user_id');
+
+            if (!telegramUserId) {
+                showError('Vui lòng mở ứng dụng trực tiếp từ Telegram.');
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/telesale/bootstrap?group_id=${currentGroupId || ''}&user_id=${telegramUserId}`, {
+                    headers: { 'x-telegram-init-data': tg?.initData || '' }
+                });
+                const data = await res.json();
+                if (!currentGroupId && data.groupId) {
+                    currentGroupId = data.groupId;
+                }
+
+                const tgUser = tg?.initDataUnsafe?.user;
+                const tgFullName = [tgUser?.first_name, tgUser?.last_name].filter(Boolean).join(' ') || tgUser?.username || 'Nhân sự Telesale';
+                employeeInfo = data.employee || { full_name: tgFullName };
+                monthlyPrevRevenue = data.monthlyPrevRevenue || 0;
+                availableServices = data.services || [];
+
+                const d = data.dateStr ? new Date(data.dateStr) : new Date();
+                const displayDate = `${d.getDate().toString().padStart(2, '0')}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getFullYear()}`;
+
+                document.getElementById('headerMeta').innerText = `👤 ${employeeInfo.full_name || tgFullName} • 📅 Ngày ${displayDate}`;
+
+                groupFormConfig = data.formConfig || null;
+                todayReports = data.todayReports || (data.existingReport ? [data.existingReport] : []);
+                currentSlot = data.selectedSlot || null;
+                currentProject = data.selectedProject || '';
+                currentService = data.selectedService || '';
+
+                if (data.formConfig?.fields && data.formConfig.fields.some(f => f.key === 'tong_chi_tieu')) {
+                    const titleEl = document.getElementById('appHeaderTitle');
+                    if (titleEl) titleEl.innerText = '📊 Báo Cáo Ads Theo Giờ';
+                }
+
+                if (data.formConfig?.features?.has_services) {
+                    const servToggle = document.querySelector('.service-toggle-card');
+                    if (servToggle) servToggle.style.display = 'none';
+                    const servSec = document.getElementById('serviceSection');
+                    if (servSec) servSec.style.display = 'none';
+                }
+
+                renderDimensionsControls(data.formConfig);
+
+                // Check if dynamic form config is present
+                if (data.formConfig?.fields && data.formConfig.fields.length > 0) {
+                    const rendered = renderDynamicForm(data.formConfig.fields);
+                    if (data.formConfig?.features?.has_services) {
+                        loadReportForCurrentDimensions();
+                    } else if (rendered && data.existingReport) {
+                        const r = data.existingReport;
+                        const vals = r.reportValues || r;
+                        dynamicInputFields.forEach(f => {
+                            const el = document.getElementById(`dyn_input_${f.key}`);
+                            if (el && vals[f.key] !== undefined) {
+                                if (f.data_type === 'currency' || f.type === 'currency') {
+                                    el.value = formatThousand(vals[f.key]);
+                                } else {
+                                    el.value = vals[f.key];
+                                }
+                            }
+                        });
+                        if (r.services && r.services.length > 0) {
+                            const chk = document.getElementById('chkByService');
+                            if (chk) {
+                                chk.checked = true;
+                                toggleServiceSection();
+                                document.getElementById('serviceList').innerHTML = '';
+                                r.services.forEach(s => addServiceRow(s));
+                            }
+                        }
+                        const btn = document.getElementById('btnSubmit');
+                        if (btn) btn.innerText = currentSlot ? `⚡️ CẬP NHẬT MỐC ${currentSlot}` : '⚡️ CẬP NHẬT BÁO CÁO';
+                    } else {
+                        const btn = document.getElementById('btnSubmit');
+                        if (btn) btn.innerText = currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO';
+                    }
+                    recalcDynamicForm();
+                } else {
+                    // Fallback to static form pre-fill
+                    if (data.existingReport) {
+                        const r = data.existingReport;
+                        document.getElementById('so_nhan').value = r.so_nhan || 0;
+                        document.getElementById('so_trung_knc_vang').value = r.so_trung_knc_vang || 0;
+                        document.getElementById('lich_pv_moi').value = r.lich_pv_moi || 0;
+                        document.getElementById('lich_pv_cu').value = r.lich_pv_cu || 0;
+                        document.getElementById('lich_ngay_mai').value = r.lich_ngay_mai || 0;
+                        document.getElementById('tong_toi_hnay').value = r.tong_toi_hnay || 0;
+                        document.getElementById('tong_bong_hnay').value = r.tong_bong_hnay || 0;
+                        document.getElementById('tong_ds_hnay').value = formatThousand(r.tong_ds_hnay || 0);
+
+                        if (r.services && r.services.length > 0) {
+                            document.getElementById('chkByService').checked = true;
+                            toggleServiceSection();
+                            document.getElementById('serviceList').innerHTML = '';
+                            r.services.forEach(s => addServiceRow(s));
+                        }
+                        document.getElementById('btnSubmit').innerText = '⚡️ CẬP NHẬT BÁO CÁO';
+                    }
+                    updateSummary();
+                }
+            } catch (err) {
+                console.error(err);
+                showError('Không thể kết nối máy chủ. Vui lòng thử lại sau.');
+            }
+        }
+
+        function showError(msg) {
+            const box = document.getElementById('alertBox');
+            box.innerText = msg;
+            box.style.display = 'block';
+        }
+
+        async function submitReport() {
+            if (!currentGroupId) {
+                tg?.showAlert ? tg.showAlert('Thiếu mã nhóm Telegram. Vui lòng mở lại từ nhóm chat.') : alert('Thiếu nhóm!');
+                return;
+            }
+
+            const btn = document.getElementById('btnSubmit');
+            btn.disabled = true;
+            btn.innerText = 'ĐANG GỬI BÁO CÁO...';
+
+            // Xác định project_name & service_name nếu người dùng nhập mới
+            let finalProject = currentProject;
+            const selPrj = document.getElementById('selProject');
+            const txtPrj = document.getElementById('txtNewProject');
+            if (selPrj && (selPrj.value === '__new__' || !finalProject)) {
+                const customPrj = (txtPrj?.value || '').trim();
+                if (customPrj) {
+                    finalProject = customPrj;
+                    if (groupFormConfig && Array.isArray(groupFormConfig.projects) && !groupFormConfig.projects.includes(customPrj)) {
+                        groupFormConfig.projects.push(customPrj);
+                    }
+                }
+            }
+            currentProject = finalProject;
+
+            let finalService = currentService;
+            const selSvc = document.getElementById('selService');
+            const txtSvc = document.getElementById('txtNewService');
+            if (selSvc && (selSvc.value === '__new__' || !finalService)) {
+                const customSvc = (txtSvc?.value || '').trim();
+                if (customSvc) {
+                    finalService = customSvc;
+                    if (groupFormConfig && Array.isArray(groupFormConfig.services) && !groupFormConfig.services.includes(customSvc)) {
+                        groupFormConfig.services.push(customSvc);
+                    }
+                }
+            }
+            currentService = finalService;
+
+            const services = [];
+            if (document.getElementById('chkByService')?.checked) {
+                document.querySelectorAll('.service-row-card').forEach(card => {
+                    const select = card.querySelector('.service-select');
+                    const custom = card.querySelector('.service-custom-input');
+                    const name = select.value === '__custom__' ? custom.value.trim() : select.value.trim();
+                    const lich = Number(card.querySelector('.serv-lich').value || 0);
+                    const toi = Number(card.querySelector('.serv-toi').value || 0);
+                    const ds = Number(card.querySelector('.serv-ds').value.replace(/\D/g, '') || 0);
+                    if (name) {
+                        services.push({ service_name: name, lich, toi, ds });
+                    }
+                });
+            }
+
+            const tgUser = tg?.initDataUnsafe?.user;
+            const tgFullName = [tgUser?.first_name, tgUser?.last_name].filter(Boolean).join(' ') || tgUser?.username || 'Nhân sự Telesale';
+
+            let payloadData = {};
+            if (groupFormConfig?.features?.has_services) {
+                const services = [];
+                document.querySelectorAll('.multi-service-card').forEach(card => {
+                    const sel = card.querySelector('.svc-name-select');
+                    const customInp = card.querySelector('.svc-custom-name');
+                    let svcName = '';
+                    if (sel && sel.value === '__new__') {
+                        svcName = (customInp?.value || '').trim();
+                    } else if (sel) {
+                        svcName = (sel.value || '').trim();
+                    }
+                    if (!svcName) return;
+
+                    const report_values = {};
+                    card.querySelectorAll('.svc-input').forEach(inp => {
+                        const key = inp.dataset.key;
+                        if (inp.classList.contains('svc-currency')) {
+                            report_values[key] = Number(inp.value.replace(/\D/g, '') || 0);
+                        } else if (inp.classList.contains('svc-number')) {
+                            report_values[key] = Number(inp.value || 0);
+                        } else {
+                            report_values[key] = inp.value.trim();
+                        }
+                    });
+
+                    services.push({
+                        service_name: svcName,
+                        report_values
+                    });
+                });
+
+                if (services.length === 0) {
+                    btn.disabled = false;
+                    btn.innerText = currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO';
+                    tg?.showAlert ? tg.showAlert('Vui lòng chọn hoặc nhập ít nhất 1 dịch vụ!') : alert('Vui lòng chọn hoặc nhập ít nhất 1 dịch vụ!');
+                    return;
+                }
+
+                const generalGhiChu = (document.getElementById('dyn_general_ghi_chu')?.value || '').trim();
+
+                payloadData = {
+                    employee_name: employeeInfo?.full_name || tgFullName,
+                    report_slot: currentSlot || null,
+                    project_name: currentProject || '',
+                    services,
+                    ghi_chu: generalGhiChu
+                };
+            } else if (dynamicFieldsConfig) {
+                const report_values = {};
+                dynamicInputFields.forEach(f => {
+                    const el = document.getElementById(`dyn_input_${f.key}`);
+                    if (!el) return;
+                    if (f.data_type === 'currency' || f.type === 'currency') {
+                        report_values[f.key] = Number(el.value.replace(/\D/g, '') || 0);
+                    } else if (f.data_type === 'text' || f.type === 'text') {
+                        report_values[f.key] = el.value.trim();
+                    } else {
+                        report_values[f.key] = Number(el.value || 0);
+                    }
+                });
+                // Legacy fields mapping for backward compatibility
+                payloadData = {
+                    employee_name: employeeInfo?.full_name || tgFullName,
+                    report_slot: currentSlot || null,
+                    project_name: currentProject || '',
+                    service_name: currentService || '',
+                    so_nhan: report_values.so_nhan ?? 0,
+                    so_trung_knc_vang: report_values.so_trung_knc_vang ?? 0,
+                    lich_pv_moi: report_values.lich_pv_moi ?? 0,
+                    lich_pv_cu: report_values.lich_pv_cu ?? 0,
+                    lich_ngay_mai: report_values.lich_ngay_mai ?? 0,
+                    tong_toi_hnay: report_values.tong_toi_hnay ?? 0,
+                    tong_bong_hnay: report_values.tong_bong_hnay ?? 0,
+                    tong_ds_hnay: String(report_values.tong_ds_hnay ?? 0),
+                    report_values,
+                    services
+                };
+            } else {
+                payloadData = {
+                    employee_name: employeeInfo?.full_name || tgFullName,
+                    report_slot: currentSlot || null,
+                    project_name: currentProject || '',
+                    service_name: currentService || '',
+                    so_nhan: document.getElementById('so_nhan')?.value || 0,
+                    so_trung_knc_vang: document.getElementById('so_trung_knc_vang')?.value || 0,
+                    lich_pv_moi: document.getElementById('lich_pv_moi')?.value || 0,
+                    lich_pv_cu: document.getElementById('lich_pv_cu')?.value || 0,
+                    lich_ngay_mai: document.getElementById('lich_ngay_mai')?.value || 0,
+                    tong_toi_hnay: document.getElementById('tong_toi_hnay')?.value || 0,
+                    tong_bong_hnay: document.getElementById('tong_bong_hnay')?.value || 0,
+                    tong_ds_hnay: document.getElementById('tong_ds_hnay')?.value.replace(/\D/g, '') || '0',
+                    services
+                };
+            }
+
+            try {
+                const res = await fetch('/api/telesale/submit', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-telegram-init-data': tg?.initData || ''
+                    },
+                    body: JSON.stringify({
+                        telegramGroupId: currentGroupId,
+                        telegramUserId: tg?.initDataUnsafe?.user?.id || getParam('user_id'),
+                        payload: payloadData
+                    })
+                });
+
+                const result = await res.json();
+                if (result.success) {
+                    if (groupFormConfig?.features?.has_services && payloadData.services) {
+                        todayReports = (todayReports || []).filter(r => !(r.report_slot === currentSlot && (r.project_name || '') === (currentProject || '')));
+                        payloadData.services.forEach(s => {
+                            todayReports.push({
+                                report_slot: currentSlot,
+                                project_name: currentProject,
+                                service_name: s.service_name,
+                                report_values: s.report_values
+                            });
+                        });
+                    } else {
+                        const newReport = result.report || {
+                            report_slot: currentSlot,
+                            project_name: currentProject,
+                            service_name: currentService,
+                            report_values: payloadData.report_values
+                        };
+                        const existingIdx = (todayReports || []).findIndex(r => r.report_slot === currentSlot && (r.project_name || '') === (currentProject || '') && (r.service_name || '') === (currentService || ''));
+                        if (existingIdx >= 0) {
+                            todayReports[existingIdx] = newReport;
+                        } else {
+                            todayReports.push(newReport);
+                        }
+                    }
+
+                    document.querySelectorAll('.slot-pill').forEach(btnPill => {
+                        const s = btnPill.getAttribute('data-slot');
+                        if (todayReports.some(r => r.report_slot === s)) {
+                            btnPill.classList.add('has-data');
+                        }
+                    });
+                    updateSlotStatusHint();
+
+                    if (tg?.showAlert) {
+                        tg.showAlert('✅ Nộp báo cáo thành công!');
+                        setTimeout(() => tg.close(), 1000);
+                    } else {
+                        alert('✅ Nộp báo cáo thành công!');
+                        btn.innerText = '✅ ĐÃ NỘP THÀNH CÔNG';
+                    }
+                } else {
+                    btn.disabled = false;
+                    btn.innerText = currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO';
+                    tg?.showAlert ? tg.showAlert('Lỗi: ' + result.message) : alert(result.message);
+                }
+            } catch (err) {
+                btn.disabled = false;
+                btn.innerText = currentSlot ? `⚡️ NỘP BÁO CÁO MỐC ${currentSlot}` : '⚡️ NỘP BÁO CÁO';
+                tg?.showAlert ? tg.showAlert('Lỗi kết nối máy chủ!') : alert('Lỗi kết nối!');
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
+    </script>
+</body>
+</html>
