@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createGetOrderEditDetailUseCase } from '../application/get-order-edit-detail.js';
 import { createEditCustomerOrderUseCase } from '../application/edit-customer-order.js';
 import { createEditWarehouseImportUseCase } from '../application/edit-warehouse-import.js';
+import { createListEditableOrdersUseCase } from '../application/list-editable-orders.js';
 
 test('createGetOrderEditDetailUseCase - returns edit detail and window/auth check', async () => {
     const mockOrder = {
@@ -194,3 +195,36 @@ test('createEditWarehouseImportUseCase - successfully updates quantity and check
         /không đủ để giảm/
     );
 });
+
+test('createListEditableOrdersUseCase - lists export orders and import transactions', async () => {
+    const mockRepo = {
+        listEditableExportOrders: async () => [
+            { id: 'ord-1', order_code: 'ORD-123', is_within_24h: true, hours_remaining: 10 }
+        ],
+        listEditableImportTransactions: async () => [
+            { id: 'tx-1', quantity: 5, is_within_24h: true, hours_remaining: 8 }
+        ]
+    };
+    const mockService = {
+        authorizeActor: async () => ({
+            employee: { id: 'emp-1', role: 'Staff', full_name: 'Test Staff' },
+            group: { id: 'grp-1' }
+        })
+    };
+
+    const listUsecase = createListEditableOrdersUseCase({
+        orderEditRepo: mockRepo,
+        warehouseOrderService: mockService
+    });
+
+    const exportRes = await listUsecase({ targetType: 'EXPORT', telegramId: '123' });
+    assert.equal(exportRes.targetType, 'EXPORT');
+    assert.equal(exportRes.orders.length, 1);
+    assert.equal(exportRes.orders[0].order_code, 'ORD-123');
+
+    const importRes = await listUsecase({ targetType: 'IMPORT', telegramId: '123' });
+    assert.equal(importRes.targetType, 'IMPORT');
+    assert.equal(importRes.orders.length, 1);
+    assert.equal(importRes.orders[0].id, 'tx-1');
+});
+

@@ -20,10 +20,32 @@ function sendWarehouseError(res, error) {
 export function registerWarehouseOrderEditRoutes({
     botApp,
     authenticateTelegramMiniApp,
+    listEditableOrders,
     getOrderEditDetail,
     editCustomerOrder,
     editWarehouseImport
 }) {
+    /**
+     * Lấy danh sách các đơn xuất hoặc giao dịch nhập gần đây để nhân viên chọn sửa.
+     */
+    botApp.get('/api/warehouse/order-edit/list', authenticateTelegramMiniApp, async (req, res) => {
+        try {
+            const { type, chat_id: chatId, limit } = req.query;
+            const result = await listEditableOrders({
+                targetType: String(type || 'EXPORT').toUpperCase(),
+                telegramId: req.verifiedTelegramId,
+                chatId,
+                limit: limit ? Number(limit) : 30
+            });
+            res.json({
+                success: true,
+                ...result
+            });
+        } catch (error) {
+            sendWarehouseError(res, error);
+        }
+    });
+
     /**
      * Lấy chi tiết đơn xuất hoặc giao dịch nhập để kiểm tra điều kiện sửa trong 24h.
      */

@@ -201,6 +201,37 @@ export function quantityInput({ value, onInput }) {
     return input;
 }
 
+export function card({ title, iconName, body, foot }) {
+    return h('div', { class: 'card' },
+        title ? h('div', { class: 'card__head' },
+            iconName ? icon(iconName, { size: 15, class: 'text-brand' }) : null,
+            h('span', null, title)
+        ) : null,
+        body ? h('div', { class: 'card__body' }, body) : null,
+        foot || null
+    );
+}
+
+export function textField({ label, iconName, value, placeholder, onInput, inputMode, hint, maxLength = 120 }) {
+    const input = h('input', {
+        class: 'field__input',
+        value: value || '',
+        placeholder: placeholder || '',
+        maxlength: maxLength,
+        ...(inputMode ? { inputmode: inputMode } : {}),
+        onInput: event => onInput(event.target.value)
+    });
+
+    return h('label', { class: 'field' },
+        h('span', { class: 'field__label' },
+            iconName ? icon(iconName, { size: 13 }) : null,
+            label
+        ),
+        input,
+        hint ? h('span', { class: 'field__hint' }, hint) : null
+    );
+}
+
 export function emptyState(message) {
     return h('div', { class: 'empty' }, message);
 }

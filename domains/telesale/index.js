@@ -89,7 +89,8 @@ export function registerTelesaleModule({
     registerTelesaleMiniappRoutes({
         botApp,
         getTelesaleBootstrap,
-        submitTelesaleReport
+        submitTelesaleReport,
+        telesaleRepository
     });
 
     // 3. Đăng ký Cron tự động

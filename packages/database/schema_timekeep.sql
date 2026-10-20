@@ -50,8 +50,8 @@ CREATE TABLE IF NOT EXISTS tk_check_ins (
     group_id UUID REFERENCES tk_groups(id) ON DELETE CASCADE,
     user_id UUID REFERENCES tk_users(id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    check_in_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    video_file_id VARCHAR NOT NULL,
+    check_in_time TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    video_file_id VARCHAR DEFAULT 'manual',
     status VARCHAR DEFAULT 'PENDING', -- PENDING, APPROVED, REJECTED
     admin_note TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

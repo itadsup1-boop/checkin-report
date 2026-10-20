@@ -64,3 +64,52 @@ test('TelesaleFormBuilderTab và TelesaleScheduleTab tồn tại và có đầy 
   assert.match(scheduleSource, /Đồng bộ Header Google Sheets/);
 });
 
+test('TelesaleManagement và các Tab hiển thị rõ ràng nhóm đang sửa và có bộ chọn chuyển nhóm khác', () => {
+  const formBuilderSource = fs.readFileSync(new URL('./components/TelesaleFormBuilderTab.jsx', import.meta.url), 'utf8');
+  const scheduleSource = fs.readFileSync(new URL('./components/TelesaleScheduleTab.jsx', import.meta.url), 'utf8');
+
+  // TelesaleManagement chính
+  assert.match(managementSource, /Đang quản lý cấu hình cho nhóm:/);
+  assert.match(managementSource, /telesale-group-selector/);
+  assert.match(managementSource, /Đổi sang nhóm khác:/);
+
+  // Form Builder Tab
+  assert.match(formBuilderSource, /Đang cấu hình Form riêng cho nhóm:/);
+  assert.match(formBuilderSource, /Chuyển sang nhóm khác:/);
+
+  // Schedule Tab
+  assert.match(scheduleSource, /Đang cài đặt Quét phạt cho nhóm:/);
+  assert.match(scheduleSource, /Chuyển sang nhóm khác:/);
+});
+
+test('TelesaleScheduleTab hỗ trợ 2 chế độ: 1 mốc giờ (SINGLE_SLOT) và nhiều mốc giờ (MULTI_SLOT)', () => {
+  const scheduleSource = fs.readFileSync(new URL('./components/TelesaleScheduleTab.jsx', import.meta.url), 'utf8');
+  assert.match(scheduleSource, /Chế độ Lịch Báo Cáo &amp; Quét Phạt/);
+  assert.match(scheduleSource, /1 Mốc Giờ Trong Ngày \(SINGLE_SLOT\)/);
+  assert.match(scheduleSource, /Nhiều Mốc Giờ Trong Ngày \(MULTI_SLOT\)/);
+  assert.match(scheduleSource, /Danh Sách Các Mốc Giờ Báo Cáo Trong Ngày/);
+  assert.match(scheduleSource, /Thêm mốc giờ/);
+  assert.match(scheduleSource, /Báo Cáo Tổng Hợp Cuối Ngày \(Daily Summary\)/);
+});
+
+test('TelesaleFormBuilderTab hỗ trợ phân loại Dự án, Dịch vụ và nạp mẫu Báo Cáo Ads', () => {
+  const formBuilderSource = fs.readFileSync(new URL('./components/TelesaleFormBuilderTab.jsx', import.meta.url), 'utf8');
+  assert.match(formBuilderSource, /Phân Loại Theo Dự Án &amp; Dịch Vụ \(Dynamic Dimensions\)/);
+  assert.match(formBuilderSource, /Phân loại theo Dự án/);
+  assert.match(formBuilderSource, /Phân loại theo Dịch vụ/);
+  assert.match(formBuilderSource, /Mẫu Báo Cáo Tổng Hợp của Bot Telegram/);
+  assert.match(formBuilderSource, /Cơ chế Tính Lũy Kế \(Cumulative Mode\)/);
+  assert.match(formBuilderSource, /Nạp mẫu Báo cáo Ads/);
+  assert.match(formBuilderSource, /Tính lũy kế cộng dồn qua các mốc giờ trong ngày/);
+});
+
+test('telesaleDefaults export đầy đủ DEFAULT_ADS_FIELDS, DEFAULT_FEATURES và DEFAULT_MULTI_SLOTS', async () => {
+  const defaults = await import('./constants/telesaleDefaults.js');
+  assert.ok(Array.isArray(defaults.DEFAULT_ADS_FIELDS));
+  assert.strictEqual(defaults.DEFAULT_ADS_FIELDS.length, 9);
+  assert.strictEqual(defaults.DEFAULT_FEATURES.schedule_mode, 'SINGLE_SLOT');
+  assert.strictEqual(defaults.DEFAULT_MULTI_SLOTS.length, 3);
+});
+
+
+

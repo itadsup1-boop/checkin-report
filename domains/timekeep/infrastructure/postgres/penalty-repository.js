@@ -232,6 +232,19 @@ export function createPenaltyRepository() {
         );
     }
 
+    async function findWeeklyApprovedLeaves(db, { userId, startDate, endDate, excludeRequestId }) {
+        const result = await db.query(
+            `SELECT id, request_type, date::text
+             FROM tk_leave_requests
+             WHERE user_id = $1
+               AND date >= $2 AND date <= $3
+               AND status IN ('APPROVED', 'ACCEPTED')
+               AND id != $4`,
+            [userId, startDate, endDate, excludeRequestId || '00000000-0000-0000-0000-000000000000']
+        );
+        return result.rows;
+    }
+
     return {
         findAbsenceCandidates,
         insertUnauthorizedAbsentPenalty,
@@ -245,6 +258,7 @@ export function createPenaltyRepository() {
         findNearbyConsecutivePenaltyByUser,
         findPendingAbsenceNotificationRows,
         markAbsenceNotificationsSentRows,
-        excusePenalty
+        excusePenalty,
+        findWeeklyApprovedLeaves
     };
 }

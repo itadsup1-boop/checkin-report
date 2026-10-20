@@ -162,6 +162,40 @@ export function createCheckinRepository({ pool }) {
         return result.rows[0] || null;
     }
 
+    async function getMonthlyAttendancePenaltyStats({ userId, groupId, date }) {
+        if (!userId) return { lateCount: 0, penaltyCount: 0, totalPenaltyAmount: 0 };
+        try {
+            const queryParams = [userId, date];
+            let groupFilter = '';
+            if (groupId) {
+                queryParams.push(groupId);
+                groupFilter = `AND (group_id = $${queryParams.length} OR group_id IS NULL)`;
+            }
+
+            const result = await pool.query(
+                `SELECT 
+                    COUNT(*)::int AS penalty_count,
+                    COALESCE(SUM(amount), 0)::int AS total_penalty_amount,
+                    COUNT(CASE WHEN violation_type = 'LATE' THEN 1 END)::int AS late_count
+                 FROM tk_penalties
+                 WHERE user_id = $1
+                   AND date >= date_trunc('month', $2::date)
+                   AND date <= $2::date
+                   ${groupFilter}`,
+                queryParams
+            );
+            const row = result.rows[0] || {};
+            return {
+                penaltyCount: Number(row.penalty_count || 0),
+                totalPenaltyAmount: Number(row.total_penalty_amount || 0),
+                lateCount: Number(row.late_count || 0)
+            };
+        } catch (err) {
+            console.error('[getMonthlyAttendancePenaltyStats Error]:', err?.message || err);
+            return { lateCount: 0, penaltyCount: 0, totalPenaltyAmount: 0 };
+        }
+    }
+
     return {
         insertCheckIn,
         recordCheckOut,
@@ -173,7 +207,8 @@ export function createCheckinRepository({ pool }) {
         clearCheckoutPenalty,
         insertLatePenalty,
         findUserScheduleOfDay,
-        findApprovedLateLeaveRequest
+        findApprovedLateLeaveRequest,
+        getMonthlyAttendancePenaltyStats
     };
 }
 

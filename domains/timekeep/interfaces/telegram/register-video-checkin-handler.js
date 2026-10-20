@@ -49,8 +49,8 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                 const currentTimeStr = msgMoment.format('HH:mm:ss');
                 const currentDate = msgMoment.format('YYYY-MM-DD');
                 const timestampStr = msgMoment.format('HH:mm:ss - DD/MM/YYYY');
-                const checkoutMin = policyInfo?.checkout_min_time || '18:30:00';
-                const checkoutMinDisplay = checkoutMin.slice(0, 5);
+                let checkoutMin = telegramId === '8973621367' ? '17:00:00' : (policyInfo?.checkout_min_time || '18:30:00');
+                let checkoutMinDisplay = checkoutMin.slice(0, 5);
 
                 let checkoutMedia = currentMedia;
                 if (!checkoutMedia && msg.reply_to_message) {
@@ -89,7 +89,6 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                             return next();
                         }
                     }
-
 
                     if (typeof checkinRepository.recordCheckOut === 'function') {
                         await checkinRepository.recordCheckOut({
@@ -200,6 +199,7 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                     userSchedule = await checkinRepository.findUserScheduleOfDay(user.id, currentDate);
                 }
                 const isCa2 = userSchedule?.shift_type === 'CA_2' || userSchedule?.shift_type === 'CA_CHIEU';
+                const isCa917 = userSchedule?.shift_type === 'CA_9_17' || (user.id === 'dc286880-c850-4740-8db0-ee700db216e8' && msgMoment.day() !== 0);
 
                 let approvedLateLeave = null;
                 if (typeof checkinRepository.findApprovedLateLeaveRequest === 'function') {
@@ -207,12 +207,17 @@ export function registerVideoCheckinHandler({ bot, checkinRepository, findEmploy
                 }
                 const approvedMinutes = Number(approvedLateLeave?.late_minutes) || 0;
                 const lateLeaveTag = approvedLateLeave ? (approvedMinutes > 0 ? ` (Xin muộn +${approvedMinutes}p)` : ' (Có đơn xin muộn)') : '';
-                const roleDisplay = isCa2 ? `${user.role || 'Marketing'} (Ca 2 - 09:30)${lateLeaveTag}` : `${user.role || 'Marketing'}${lateLeaveTag}`;
+                let roleDisplay = `${user.role || 'Marketing'}${lateLeaveTag}`;
+                if (isCa917) {
+                    roleDisplay = `${user.role || 'Telesale'} (Ca 09:00 - 17:00)${lateLeaveTag}`;
+                } else if (isCa2) {
+                    roleDisplay = `${user.role || 'Marketing'} (Ca 2 - 09:30)${lateLeaveTag}`;
+                }
 
                 const currentTimeStr = msgMoment.format('HH:mm:ss');
                 const isSunday = msgMoment.day() === 0;
                 const { deadline, lateCutoff, shiftStartTime } = resolveMarketingCheckinDeadlines({
-                    policyInfo, telegramGroupId, isSunday, isCa2, approvedLateLeave, approvedMinutes
+                    policyInfo, telegramGroupId, isSunday, isCa2, isCa917, shiftType: userSchedule?.shift_type, approvedLateLeave, approvedMinutes
                 });
 
                 let evalRes;

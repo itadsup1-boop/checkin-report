@@ -155,7 +155,7 @@ export function registerTelesaleAdminRoutes({
     // 7. Lưu/Cập nhật cấu hình Form động & lịch trình của nhóm
     app.put('/api/admin/telesale/config', authMiddleware, requireGeneral, async (req, res) => {
         try {
-            const { telegramGroupId, groupName, fields, scheduleSettings, sheetSettings } = req.body;
+            const { telegramGroupId, groupName, fields, scheduleSettings, sheetSettings, features, projects, services } = req.body;
             if (!telegramGroupId) {
                 return res.status(400).json({ success: false, error: 'Thiếu telegramGroupId' });
             }
@@ -164,7 +164,10 @@ export function registerTelesaleAdminRoutes({
                 groupName,
                 fields,
                 scheduleSettings,
-                sheetSettings
+                sheetSettings,
+                features,
+                projects,
+                services
             });
 
             // Tự động đồng bộ header Sheet nếu bật auto_sync_headers

@@ -23,6 +23,7 @@ import { registerStaffProfileModule } from '../../domains/staff-profile/index.js
 import { registerCompanyHolidayAdminModule } from '../../domains/company-holiday/index.js';
 import { registerTelegramGroupAutomation } from '../../domains/telegram-group-automation/index.js';
 import { registerTelesaleAdminModule } from '../../domains/telesale/index.js';
+import { registerTaskManagementWebAdminModule } from '../../domains/task-management/index.js';
 import { createAdminAuth } from './admin-auth.js';
 import { webAdminSecurityHeaders } from '../../packages/shared/web-admin-security-headers.js';
 import { registerAdminAccountRoutes } from './routes/admin-account-routes.js';
@@ -113,6 +114,7 @@ registerCompanyHolidayAdminModule({
 });
 registerTelegramGroupAutomation({ app, pool, requireSuperAdmin: adminAuth.requireSuperAdmin });
 registerTelesaleAdminModule({ app, pool, adminAuth, getDocById });
+registerTaskManagementWebAdminModule({ app, pool, requireSuperAdmin: adminAuth.requireSuperAdmin });
 
 // APIs Quản lý Tài khoản Admin (Dành cho Super Admin)
 // Thêm các endpoint khác theo tài liệu THIET_KE_HE_THONG.md ở đây

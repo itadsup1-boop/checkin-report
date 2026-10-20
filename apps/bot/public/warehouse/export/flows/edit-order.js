@@ -4,10 +4,24 @@
  * cho phép điều chỉnh số lượng/xóa món và gửi cập nhật an toàn.
  */
 
-import { h, replaceChildren, cx } from '../../../../shared-ui/core/dom.js';
-import { apiGet, apiPost } from '../../../../shared-ui/core/api.js';
-import { alertUser, notifySuccess, notifyError, tapFeedback } from '../../../../shared-ui/core/telegram.js';
+import { h, replaceChildren, cx } from '../../../shared-ui/core/dom.js';
+import { apiGet, apiPost } from '../../../shared-ui/core/api.js';
+import { alertUser, notifySuccess, notifyError, tapFeedback } from '../../../shared-ui/core/telegram.js';
 import { topBar, bottomBar, primaryButton, notice, card, textField, emptyState } from '../ui/components.js';
+
+function formatDateTime(isoString) {
+    if (!isoString) return '';
+    try {
+        const d = new Date(isoString);
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return `${hours}:${minutes} ${day}/${month}`;
+    } catch {
+        return isoString;
+    }
+}
 
 export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
     const root = h('div', { class: 'flow-root', style: { display: 'contents' } });
@@ -21,6 +35,14 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
     let submitting = false;
     let submitted = false;
 
+    // State cho danh sách đơn có thể sửa
+    let ordersList = [];
+    let loadingList = !initialOrderId;
+    let filterText = '';
+    let activeTab = 'valid'; // 'valid' | 'all'
+    let manualInputVal = '';
+    let showManualInput = false;
+
     function initEdits(items) {
         itemEdits.clear();
         for (const item of items) {
@@ -28,6 +50,21 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
                 quantity: Number(item.actual_quantity) || 0,
                 isRemoved: Boolean(item.is_removed)
             });
+        }
+    }
+
+    async function fetchOrderList() {
+        loadingList = true;
+        render();
+        try {
+            const res = await apiGet('/api/warehouse/order-edit/list', { type: 'EXPORT' });
+            ordersList = res.orders || [];
+        } catch (err) {
+            console.error('[EditOrderFlow] list fetch failed', err);
+            ordersList = [];
+        } finally {
+            loadingList = false;
+            render();
         }
     }
 
@@ -54,6 +91,8 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
 
     if (initialOrderId) {
         fetchOrderDetail(initialOrderId);
+    } else {
+        fetchOrderList();
     }
 
     function calculateChanges() {
@@ -124,29 +163,180 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
         }
     }
 
-    function renderLookupScreen() {
-        let inputVal = '';
+    function renderOrderListScreen() {
+        const validOrders = ordersList.filter(o => o.is_within_24h);
+        const validCount = validOrders.length;
+        const allCount = ordersList.length;
+
+        const filtered = ordersList.filter(o => {
+            if (activeTab === 'valid' && !o.is_within_24h) return false;
+            if (!filterText) return true;
+            const q = filterText.toLowerCase();
+            const matchCode = o.order_code && o.order_code.toLowerCase().includes(q);
+            const matchCust = o.customer_name && o.customer_name.toLowerCase().includes(q);
+            const matchPhone = o.customer_phone && String(o.customer_phone).includes(q);
+            const matchBranch = o.branch && o.branch.toLowerCase().includes(q);
+            const matchCreator = o.creator_name && o.creator_name.toLowerCase().includes(q);
+            const matchItems = o.items_preview && o.items_preview.some(item =>
+                item.product_name && item.product_name.toLowerCase().includes(q)
+            );
+            return matchCode || matchCust || matchPhone || matchBranch || matchCreator || matchItems;
+        });
+
         return h('div', { class: 'app__body', style: { padding: '16px' } },
             notice('info', 'Chỉ được sửa các đơn xuất kho được tạo trong vòng 24 giờ.'),
-            h('div', { style: { marginTop: '16px' } },
+
+            // Thanh tìm kiếm nhanh
+            h('div', { style: { marginTop: '12px' } },
                 textField({
-                    label: 'Nhập mã đơn hoặc ID đơn xuất',
-                    placeholder: 'Ví dụ: ORD-20261004-..., hoặc UUID đơn',
-                    value: inputVal,
-                    onInput: v => { inputVal = v.trim(); }
-                }),
-                h('div', { style: { marginTop: '16px' } },
-                    primaryButton({
-                        label: '🔍 Tìm đơn',
-                        onClick: () => {
-                            if (!inputVal) {
-                                alertUser('Vui lòng nhập mã đơn xuất cần sửa.');
-                                return;
-                            }
-                            fetchOrderDetail(inputVal);
-                        }
-                    })
+                    label: 'Tìm kiếm đơn xuất',
+                    placeholder: 'Tên khách, SĐT, mã đơn, sản phẩm...',
+                    value: filterText,
+                    onInput: v => {
+                        filterText = v.trim();
+                        render();
+                    }
+                })
+            ),
+
+            // Nút chuyển tab
+            h('div', { style: { display: 'flex', gap: '8px', margin: '12px 0' } },
+                h('button', {
+                    type: 'button',
+                    class: cx('btn', activeTab === 'valid' ? 'btn--primary' : 'btn--alt'),
+                    style: { flex: '1', fontSize: '13px', padding: '8px 10px' },
+                    onClick: () => { activeTab = 'valid'; render(); }
+                }, `Đơn trong 24h (${validCount})`),
+                h('button', {
+                    type: 'button',
+                    class: cx('btn', activeTab === 'all' ? 'btn--primary' : 'btn--alt'),
+                    style: { flex: '1', fontSize: '13px', padding: '8px 10px' },
+                    onClick: () => { activeTab = 'all'; render(); }
+                }, `Tất cả gần đây (${allCount})`)
+            ),
+
+            // Danh sách đơn hoặc trạng thái rỗng
+            loadingList
+                ? h('div', { class: 'screen-center', style: { padding: '32px 0' } },
+                    h('div', { class: 'spinner', style: { marginBottom: '12px' } }),
+                    h('div', { class: 'strong', style: { fontSize: '13px', color: 'var(--muted)' } }, 'Đang tải danh sách đơn xuất...')
                 )
+                : (filtered.length === 0
+                    ? h('div', { style: { padding: '16px 0' } },
+                        activeTab === 'valid' && validCount === 0
+                            ? h('div', null,
+                                emptyState('Không có đơn xuất nào được tạo trong vòng 24 giờ qua.'),
+                                allCount > 0 ? h('div', { style: { marginTop: '12px', textAlign: 'center' } },
+                                    primaryButton({
+                                        label: `Xem ${allCount} đơn gần đây`,
+                                        variant: 'alt',
+                                        onClick: () => { activeTab = 'all'; render(); }
+                                    })
+                                ) : null
+                            )
+                            : emptyState(filterText ? 'Không tìm thấy đơn nào khớp với từ khóa.' : 'Danh sách trống.')
+                    )
+                    : h('div', { class: 'stack', style: { gap: '10px' } },
+                        filtered.map(order => {
+                            const itemsSummary = (order.items_preview || [])
+                                .map(i => `${i.product_name} (x${i.actual_quantity})`)
+                                .join(', ');
+
+                            return card({
+                                body: h('div', {
+                                    style: { cursor: order.is_within_24h ? 'pointer' : 'default' },
+                                    onClick: () => {
+                                        if (order.is_within_24h) {
+                                            tapFeedback();
+                                            fetchOrderDetail(order.id);
+                                        } else {
+                                            alertUser(`Đơn này đã tạo hơn 24 giờ trước (${Math.abs(order.hours_remaining)}h trước) nên không thể sửa đổi.`);
+                                        }
+                                    }
+                                },
+                                    h('div', { class: 'row-between', style: { marginBottom: '6px', alignItems: 'center' } },
+                                        h('span', { style: { fontWeight: '700', fontSize: '14px', color: 'var(--brand)' } }, order.order_code),
+                                        order.is_within_24h
+                                            ? h('span', {
+                                                style: {
+                                                    background: 'var(--ok-soft)',
+                                                    color: 'var(--ok)',
+                                                    border: '1px solid var(--ok-line)',
+                                                    fontSize: '11px',
+                                                    fontWeight: '700',
+                                                    padding: '2px 8px',
+                                                    borderRadius: 'var(--r-full)'
+                                                }
+                                            }, `⏳ Còn ${order.hours_remaining}h`)
+                                            : h('span', {
+                                                style: {
+                                                    background: 'var(--alt-soft)',
+                                                    color: 'var(--muted)',
+                                                    fontSize: '11px',
+                                                    padding: '2px 8px',
+                                                    borderRadius: 'var(--r-full)'
+                                                }
+                                            }, '⛔ Quá 24h')
+                                    ),
+                                    h('div', { style: { fontSize: '13px', marginBottom: '4px' } },
+                                        h('span', { class: 'hint' }, 'Khách: '),
+                                        h('b', null, order.customer_name || 'Khách lẻ'),
+                                        order.customer_phone ? ` (${order.customer_phone})` : ''
+                                    ),
+                                    h('div', { style: { fontSize: '12px', color: 'var(--muted)', marginBottom: '8px' } },
+                                        `Cơ sở: ${order.branch} • Tạo bởi: ${order.creator_name || 'Nhân viên'} • ${formatDateTime(order.created_at)}`
+                                    ),
+                                    itemsSummary ? h('div', {
+                                        style: {
+                                            fontSize: '12px',
+                                            background: 'var(--surface)',
+                                            padding: '6px 10px',
+                                            borderRadius: 'var(--r-sm)',
+                                            marginBottom: '8px',
+                                            color: 'var(--ink)'
+                                        }
+                                    }, `📦 ${itemsSummary}`) : null,
+                                    order.is_within_24h
+                                        ? h('div', { style: { textAlign: 'right', marginTop: '4px' } },
+                                            h('span', { style: { fontSize: '13px', fontWeight: '700', color: 'var(--brand)' } }, '✏️ Chạm để sửa đơn →')
+                                        )
+                                        : h('div', { style: { fontSize: '11px', color: 'var(--faint)', fontStyle: 'italic' } },
+                                            'Đã quá thời hạn 24h chỉnh sửa'
+                                        )
+                                )
+                            });
+                        })
+                    )
+                ),
+
+            // Tra cứu thủ công nếu có mã riêng
+            h('div', { style: { marginTop: '16px', paddingTop: '12px', borderTop: '1px dashed var(--line)' } },
+                h('button', {
+                    type: 'button',
+                    class: 'btn btn--ghost',
+                    style: { width: '100%', fontSize: '12px', color: 'var(--muted)' },
+                    onClick: () => { showManualInput = !showManualInput; render(); }
+                }, showManualInput ? '▲ Ẩn nhập mã thủ công' : '▼ Hoặc nhập mã đơn thủ công'),
+                showManualInput ? h('div', { style: { marginTop: '12px' } },
+                    textField({
+                        label: 'Nhập mã đơn hoặc ID đơn xuất',
+                        placeholder: 'Ví dụ: ORD-20261004-..., hoặc UUID đơn',
+                        value: manualInputVal,
+                        onInput: v => { manualInputVal = v.trim(); }
+                    }),
+                    h('div', { style: { marginTop: '10px' } },
+                        primaryButton({
+                            label: '🔍 Tìm đơn',
+                            onClick: () => {
+                                if (!manualInputVal) {
+                                    alertUser('Vui lòng nhập mã đơn xuất cần sửa.');
+                                    return;
+                                }
+                                fetchOrderDetail(manualInputVal);
+                            }
+                        })
+                    )
+                ) : null
             )
         );
     }
@@ -155,7 +345,7 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
         return h('div', { class: 'app__body', style: { padding: '24px 16px', textAlign: 'center' } },
             h('div', { style: { fontSize: '48px', marginBottom: '12px' } }, '✅'),
             h('div', { style: { fontSize: '18px', fontWeight: '800', marginBottom: '8px' } }, 'Đã sửa đơn thành công!'),
-            h('div', { style: { fontSize: '13px', color: 'var(--color-text-muted)', marginBottom: '24px' } },
+            h('div', { style: { fontSize: '13px', color: 'var(--muted)', marginBottom: '24px' } },
                 'Tồn kho và sổ cái đã được cập nhật bù trừ. Báo cáo Google Sheet và tin nhắn Telegram đã được tự động làm mới.'
             ),
             primaryButton({
@@ -193,7 +383,7 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
                         h('div', null, h('span', { class: 'hint' }, 'Khách: '), h('b', null, order.customer_name || 'Khách lẻ'), ' (', order.customer_phone || '', ')'),
                         h('div', null, h('span', { class: 'hint' }, 'Cơ sở: '), h('b', null, order.branch)),
                         h('div', null, h('span', { class: 'hint' }, 'Người tạo: '), order.creator_name || 'Nhân viên'),
-                        order.edit_count > 0 ? h('div', { style: { color: 'var(--color-brand)' } }, `✏️ Đã sửa ${order.edit_count} lần`) : null
+                        order.edit_count > 0 ? h('div', { style: { color: 'var(--brand)' } }, `✏️ Đã sửa ${order.edit_count} lần`) : null
                     )
                 })
             ),
@@ -215,7 +405,7 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
                                 h('div', { class: 'row-between', style: { marginBottom: '6px' } },
                                     h('div', null,
                                         h('div', { style: { fontWeight: '700', fontSize: '14px' } }, item.product_name_snapshot),
-                                        h('div', { style: { fontSize: '12px', color: 'var(--color-text-muted)' } },
+                                        h('div', { style: { fontSize: '12px', color: 'var(--muted)' } },
                                             `Hiện tại: ${oldQty} ${item.unit_snapshot || ''} | Tồn thêm tại cơ sở: ${available}`
                                         )
                                     ),
@@ -298,8 +488,21 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
         // Header
         const header = topBar({
             title: 'Sửa đơn xuất kho',
-            subtitle: orderId ? (data?.order?.order_code || orderId) : 'Trong vòng 24 giờ',
-            onBack: onExit
+            subtitle: data?.order?.order_code || (orderId ? orderId : 'Trong vòng 24 giờ'),
+            onBack: () => {
+                if (data || error) {
+                    data = null;
+                    orderId = '';
+                    error = null;
+                    if (ordersList.length === 0) {
+                        fetchOrderList();
+                    } else {
+                        render();
+                    }
+                } else {
+                    onExit();
+                }
+            }
         });
         root.appendChild(header);
 
@@ -320,14 +523,14 @@ export function createEditOrderFlow({ catalog, initialOrderId, onExit }) {
             root.appendChild(h('div', { class: 'app__body', style: { padding: '16px' } },
                 notice('bad', error),
                 h('div', { style: { marginTop: '16px' } },
-                    primaryButton({ label: 'Nhập lại mã khác', onClick: () => { error = null; orderId = ''; render(); } })
+                    primaryButton({ label: 'Quay lại danh sách đơn', onClick: () => { error = null; orderId = ''; render(); } })
                 )
             ));
             return;
         }
 
         if (!data) {
-            root.appendChild(renderLookupScreen());
+            root.appendChild(renderOrderListScreen());
             return;
         }
 

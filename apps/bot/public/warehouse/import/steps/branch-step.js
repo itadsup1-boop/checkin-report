@@ -13,8 +13,9 @@ import { branchOption } from '../ui/components.js';
  * @param {object} params
  * @param {?string} params.branch mã cơ sở đang chọn
  * @param {(code:string) => void} params.onPick
+ * @param {?() => void} [params.onEditImport]
  */
-export function createBranchStep({ branch, onPick }) {
+export function createBranchStep({ branch, onPick, onEditImport }) {
     const root = h('div');
     let selected = branch;
 
@@ -34,7 +35,7 @@ export function createBranchStep({ branch, onPick }) {
                 h('button', {
                     type: 'button',
                     class: 'btn btn--ghost',
-                    style: { fontSize: '13px', color: 'var(--color-brand)' },
+                    style: { fontSize: '13px', color: 'var(--brand)' },
                     onClick: onEditImport
                 }, '✏️ Sửa phiếu nhập trong 24h')
             ) : null

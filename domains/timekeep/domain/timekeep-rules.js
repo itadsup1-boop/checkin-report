@@ -91,3 +91,20 @@ export function formatCheckInTime(value) {
     if (!value) return null;
     return new Date(new Date(value).getTime() + 7 * 60 * 60 * 1000).toISOString().slice(11, 16);
 }
+
+/**
+ * Định dạng khối thông tin thống kê số lần đi muộn và số lần phạt trong tháng.
+ */
+export function formatMonthlyStatsBlock(stats, monthStr = '') {
+    if (!stats) return '';
+    const lateCount = Number(stats.lateCount || 0);
+    const penaltyCount = Number(stats.penaltyCount || 0);
+    const totalPenalty = Number(stats.totalPenaltyAmount || 0);
+    const totalPenaltyFormatted = totalPenalty.toLocaleString('vi-VN');
+    const title = monthStr ? `📊 <b>Thống kê tháng ${monthStr}:</b>` : `📊 <b>Thống kê trong tháng:</b>`;
+    return (
+        `\n\n${title}\n` +
+        `• Số lần đi muộn: <b>${lateCount} lần</b>\n` +
+        `• Số lần bị phạt: <b>${penaltyCount} lần</b> <i>(Tổng phạt: ${totalPenaltyFormatted}đ)</i>`
+    );
+}

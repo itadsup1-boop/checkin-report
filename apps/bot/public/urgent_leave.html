@@ -330,6 +330,10 @@
                         <option value="120">Muộn 120 phút (2 tiếng)</option>
                     </select>
                 </div>
+
+                <div class="late-quota-box" id="lateQuotaBox" style="display:none; margin-top:10px; padding:10px 12px; border-radius:var(--r-md); font-size:12px; font-weight:700; line-height:1.45;">
+                    <div id="lateQuotaText">📊 Hạn mức xin muộn: Đang tải...</div>
+                </div>
             </div>
 
             <div class="field">
@@ -403,6 +407,7 @@
 
         let selectedType = null;
         let base64Proof = null;
+        let monthlyLateQuota = null;
 
         const typeGrid = document.getElementById('typeGrid');
         const lateMinutesWrap = document.getElementById('lateMinutesWrap');
@@ -432,14 +437,37 @@
             [...typeGrid.children].forEach(c => c.classList.remove('selected'));
             card.classList.add('selected');
 
+            const quotaBox = document.getElementById('lateQuotaBox');
             if (type.key === 'LATE') {
                 lateMinutesWrap.classList.add('show');
+                if (monthlyLateQuota && quotaBox) updateLateQuotaUI();
             } else {
                 lateMinutesWrap.classList.remove('show');
+                if (quotaBox) quotaBox.style.display = 'none';
             }
 
             hideError();
             validateForm();
+        }
+
+        function updateLateQuotaUI() {
+            const quotaBox = document.getElementById('lateQuotaBox');
+            const quotaText = document.getElementById('lateQuotaText');
+            if (!quotaBox || !quotaText || !monthlyLateQuota) return;
+
+            const { used, max, remaining, month_str, is_exceeded } = monthlyLateQuota;
+            quotaBox.style.display = 'block';
+            if (is_exceeded) {
+                quotaBox.style.background = 'var(--bad-soft)';
+                quotaBox.style.color = 'var(--bad-dark)';
+                quotaBox.style.border = '1.5px solid var(--bad-line)';
+                quotaText.innerHTML = `⚠️ <b>Hạn mức xin muộn tháng ${month_str}:</b> Đã dùng <b>${used}/${max} lần</b><br><span style="font-size:11px; font-weight:600; color:var(--bad-dark);">Bạn đã hết lượt xin đi muộn trong tháng. Đơn nộp sẽ tự động bị từ chối!</span>`;
+            } else {
+                quotaBox.style.background = 'var(--ok-soft)';
+                quotaBox.style.color = 'var(--ok-dark, #065f46)';
+                quotaBox.style.border = '1.5px solid var(--ok-line, #a7f3d0)';
+                quotaText.innerHTML = `📊 <b>Hạn mức xin muộn tháng ${month_str}:</b> Đã dùng <b>${used}/${max} lần</b> (Còn lại <b>${remaining} lần</b>)`;
+            }
         }
 
         leaveReason.addEventListener('input', () => {
@@ -507,6 +535,10 @@
                         document.getElementById('userName').textContent = res.user.full_name;
                         document.getElementById('userRole').textContent = `Vị trí: ${res.user.role}`;
                         document.getElementById('avatarInit').textContent = (res.user.full_name || '?').charAt(0).toUpperCase();
+                        if (res.monthly_late_quota) {
+                            monthlyLateQuota = res.monthly_late_quota;
+                            if (selectedType === 'LATE') updateLateQuotaUI();
+                        }
                     } else {
                         showError('Vui lòng đăng ký tài khoản chấm công trước!');
                     }
@@ -658,6 +690,8 @@
             base64Proof = null;
             [...typeGrid.children].forEach(c => c.classList.remove('selected'));
             lateMinutesWrap.classList.remove('show');
+            const quotaBox = document.getElementById('lateQuotaBox');
+            if (quotaBox) quotaBox.style.display = 'none';
             leaveReason.value = '';
             charCount.textContent = '0/300 ký tự';
             fileProof.value = '';

@@ -7,6 +7,7 @@ import {
     formatMarketingCheckinReply,
     formatMarketingCheckoutReply,
     formatMissedCheckoutNotification,
+    formatMonthlyStatsBlock,
     MARKETING_PENALTIES,
     isMarketingPolicy
 } from '../domain/marketing-attendance-rules.js';
@@ -150,3 +151,33 @@ test('evaluateMarketingCheckin: check-in Chủ Nhật sau 10:00:00 là muộn > 
     assert.strictEqual(res.workCredit, 0.5);
     assert.strictEqual(res.status, 'MUON_TREN_60P');
 });
+
+test('formatMonthlyStatsBlock: định dạng đúng thống kê số lần đi muộn và tiền phạt trong tháng', () => {
+    const statsBlock = formatMonthlyStatsBlock({
+        lateCount: 2,
+        penaltyCount: 3,
+        totalPenaltyAmount: 70000
+    }, '10/2026');
+
+    assert.match(statsBlock, /Thống kê tháng 10\/2026:/);
+    assert.match(statsBlock, /Số lần đi muộn: <b>2 lần<\/b>/);
+    assert.match(statsBlock, /Số lần bị phạt: <b>3 lần<\/b>/);
+    assert.match(statsBlock, /70\.000đ/);
+});
+
+test('formatMarketingCheckinReply: bao gồm khối thống kê tháng khi được cung cấp', () => {
+    const msg = formatMarketingCheckinReply({
+        fullName: 'Nguyễn Văn A',
+        role: 'Marketing',
+        timeStr: '08:30 - 07/10/2026',
+        evaluation: { isLate: false, penalty: 0, workCredit: 1.0 },
+        monthlyStats: { lateCount: 1, penaltyCount: 1, totalPenaltyAmount: 20000 },
+        monthStr: '10/2026'
+    });
+
+    assert.match(msg, /CHECK-IN HỢP LỆ – MARKETING/);
+    assert.match(msg, /Thống kê tháng 10\/2026:/);
+    assert.match(msg, /Số lần đi muộn: <b>1 lần<\/b>/);
+    assert.match(msg, /20\.000đ/);
+});
+

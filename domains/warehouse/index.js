@@ -10,6 +10,7 @@ import { createSetProductPriceUseCase } from './application/set-product-price.js
 import { createPricingRepository } from './infrastructure/postgres/pricing-repository.js';
 import { createTransactionRunner } from './application/_shared/with-transaction.js';
 import { createOrderEditRepository } from './infrastructure/postgres/order-edit-repository.js';
+import { createListEditableOrdersUseCase } from './application/list-editable-orders.js';
 import { createGetOrderEditDetailUseCase } from './application/get-order-edit-detail.js';
 import { createEditCustomerOrderUseCase } from './application/edit-customer-order.js';
 import { createEditWarehouseImportUseCase } from './application/edit-warehouse-import.js';
@@ -58,6 +59,7 @@ export { validateStockReceiptInput } from './domain/stock-receipt-rules.js';
 export { createWarehouseOrderService } from './application/warehouse-order-service.js';
 export { createWarehouseQueryRepository } from './infrastructure/postgres/warehouse-query-repository.js';
 export { createOrderEditRepository } from './infrastructure/postgres/order-edit-repository.js';
+export { createListEditableOrdersUseCase } from './application/list-editable-orders.js';
 export { createGetOrderEditDetailUseCase } from './application/get-order-edit-detail.js';
 export { createEditCustomerOrderUseCase } from './application/edit-customer-order.js';
 export { createEditWarehouseImportUseCase } from './application/edit-warehouse-import.js';
@@ -101,6 +103,10 @@ export function registerWarehouseModule(dependencies) {
         sheetSync: pricingSheetSync
     }).setProductPrice;
     const orderEditRepo = createOrderEditRepository(pool);
+    const listEditableOrders = createListEditableOrdersUseCase({
+        orderEditRepo,
+        warehouseOrderService
+    });
     const getOrderEditDetail = createGetOrderEditDetailUseCase({
         orderEditRepo,
         warehouseOrderService
@@ -127,6 +133,7 @@ export function registerWarehouseModule(dependencies) {
         pricingRepo,
         setProductPrice,
         orderEditRepo,
+        listEditableOrders,
         getOrderEditDetail,
         editCustomerOrder,
         editWarehouseImport,

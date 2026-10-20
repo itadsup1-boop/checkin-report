@@ -2,6 +2,7 @@
  * Quy tắc chấm công riêng cho Team Marketing (áp dụng từ 24/09/2026).
  * Thuần - không express, pg, telegraf.
  */
+import { isCa917Shift } from './employee-special-policies.js';
 
 export const MARKETING_CHECKIN_DEADLINE = '08:30:00';
 export const MARKETING_CHECKIN_GRACE_MINUTES = 5;
@@ -99,9 +100,28 @@ export function isCheckoutTrigger(text) {
 }
 
 /**
+ * Định dạng khối thông tin thống kê số lần đi muộn và số lần phạt trong tháng.
+ */
+export function formatMonthlyStatsBlock(stats, monthStr = '') {
+    if (!stats) return '';
+    const lateCount = Number(stats.lateCount || 0);
+    const penaltyCount = Number(stats.penaltyCount || 0);
+    const totalPenalty = Number(stats.totalPenaltyAmount || 0);
+    const totalPenaltyFormatted = totalPenalty.toLocaleString('vi-VN');
+    const title = monthStr ? `📊 <b>Thống kê tháng ${monthStr}:</b>` : `📊 <b>Thống kê trong tháng:</b>`;
+    return (
+        `\n\n${title}\n` +
+        `• Số lần đi muộn: <b>${lateCount} lần</b>\n` +
+        `• Số lần bị phạt: <b>${penaltyCount} lần</b> <i>(Tổng phạt: ${totalPenaltyFormatted}đ)</i>`
+    );
+}
+
+/**
  * Soạn tin nhắn Telegram phản hồi check-in cho Marketing.
  */
-export function formatMarketingCheckinReply({ fullName, role, timeStr, evaluation }) {
+export function formatMarketingCheckinReply({ fullName, role, timeStr, evaluation, monthlyStats = null, monthStr = '' }) {
+    const statsBlock = monthlyStats ? formatMonthlyStatsBlock(monthlyStats, monthStr) : '';
+
     if (!evaluation.isLate) {
         const statusText = evaluation.reason && (evaluation.reason.includes('đơn xin') || evaluation.reason.includes('xin đi muộn'))
             ? 'Đúng giờ (Có đơn xin đi muộn hợp lệ, Công 1.0)'
@@ -111,7 +131,7 @@ export function formatMarketingCheckinReply({ fullName, role, timeStr, evaluatio
             `👤 <b>Nhân viên:</b> ${fullName}\n` +
             `💼 <b>Vị trí:</b> ${role || 'Marketing'}\n` +
             `⏰ <b>Thời gian:</b> ${timeStr}\n` +
-            `✅ <b>Trạng thái:</b> ${statusText}\n\n` +
+            `✅ <b>Trạng thái:</b> ${statusText}${statsBlock}\n\n` +
             `<i>Chúc bạn một ngày làm việc hiệu quả và bùng nổ KPI!</i>`
         );
     }
@@ -126,7 +146,7 @@ export function formatMarketingCheckinReply({ fullName, role, timeStr, evaluatio
         `⏰ <b>Thời gian:</b> ${timeStr}\n` +
         `🔴 <b>Chi tiết:</b> ${evaluation.reason}\n` +
         `💸 <b>Mức phạt:</b> <b>${penaltyFormatted}đ</b>\n` +
-        `📝 <b>Chế tài ngày công:</b> ${creditText}\n\n` +
+        `📝 <b>Chế tài ngày công:</b> ${creditText}${statsBlock}\n\n` +
         `<i>Lưu ý: Mọi trường hợp đặc biệt cần báo trước cho Quản lý để được xem xét.</i>`
     );
 }
@@ -184,13 +204,19 @@ export function resolveMarketingCheckinDeadlines({
     telegramGroupId,
     isSunday = false,
     isCa2 = false,
+    isCa917 = false,
+    shiftType = null,
     approvedLateLeave = null,
     approvedMinutes = 0
 }) {
     const hasSundaySpecial = isSunday && (Boolean(policyInfo?.marketing_sunday_checkin_deadline) || String(telegramGroupId) === '-5470063387');
     let baseDeadline;
     let lateCutoff;
-    if (isCa2) {
+    const isSpecialCa917 = isCa917 || isCa917Shift(shiftType);
+    if (isSpecialCa917) {
+        baseDeadline = '09:00:00';
+        lateCutoff = '10:00:00';
+    } else if (isCa2) {
         baseDeadline = '09:30:00';
         lateCutoff = '10:30:00';
     } else {
@@ -223,4 +249,6 @@ export function resolveMarketingCheckinDeadlines({
 
     return { deadline, lateCutoff, shiftStartTime, baseDeadline };
 }
+
+export { isCa917Shift } from './employee-special-policies.js';
 

@@ -15,6 +15,7 @@ export const IMMEDIATE_LEAVE_TYPES = Object.freeze([
 
 export const SCHEDULE_LEAVE_TYPES = new Set(['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM']);
 export const AUTO_APPROVER = 'Hệ thống tự động chấp nhận';
+export const MAX_MONTHLY_LATE_REQUESTS = 3;
 
 const DATE_FORMATTER = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Bangkok', year: 'numeric', month: '2-digit', day: '2-digit'
@@ -25,6 +26,28 @@ export function toDateKey(value) {
         return value.slice(0, 10);
     }
     return DATE_FORMATTER.format(new Date(value));
+}
+
+export function getMonthDateRange(dateValue) {
+    const key = toDateKey(dateValue);
+    const [year, month] = key.split('-').map(Number);
+    const startOfMonth = `${year}-${String(month).padStart(2, '0')}-01`;
+    const nextMonthFirst = new Date(Date.UTC(year, month, 1));
+    const lastDayDate = new Date(nextMonthFirst.getTime() - 86400000);
+    const endOfMonth = lastDayDate.toISOString().slice(0, 10);
+    const monthStr = `${String(month).padStart(2, '0')}/${year}`;
+    return { startOfMonth, endOfMonth, monthStr };
+}
+
+export function checkLateRequestMonthlyQuota({ approvedCount, maxQuota = MAX_MONTHLY_LATE_REQUESTS }) {
+    const used = Number(approvedCount) || 0;
+    const isExceeded = used >= maxQuota;
+    return {
+        isExceeded,
+        used,
+        max: maxQuota,
+        remaining: Math.max(0, maxQuota - used)
+    };
 }
 
 /** Nghỉ cả ngày -> ca OFF; nghỉ nửa ngày sáng/chiều -> đổi sang ca còn lại của ngày đó. */

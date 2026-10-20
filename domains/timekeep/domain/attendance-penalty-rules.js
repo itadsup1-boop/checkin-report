@@ -11,7 +11,8 @@ export const WORKING_SHIFTS = [
     'CA_SANG',
     'CA_CHIEU',
     'FULL_DAY',
-    'HALF_DAY_PM_WORK'
+    'HALF_DAY_PM_WORK',
+    'CA_9_17'
 ];
 
 export const LEAVE_REQUEST_TYPES = ['FULL_DAY', 'HALF_DAY_AM', 'HALF_DAY_PM'];

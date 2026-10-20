@@ -5,7 +5,8 @@
 export function registerTelesaleMiniappRoutes({
     botApp,
     getTelesaleBootstrap,
-    submitTelesaleReport
+    submitTelesaleReport,
+    telesaleRepository
 }) {
     if (!botApp) return;
 
@@ -14,6 +15,9 @@ export function registerTelesaleMiniappRoutes({
         try {
             const telegramUserId = req.query.user_id || req.headers['x-telegram-user-id'];
             const telegramGroupId = req.query.group_id;
+            const reportSlot = req.query.report_slot || null;
+            const projectName = req.query.project_name || '';
+            const serviceName = req.query.service_name || '';
 
             if (!telegramUserId) {
                 return res.status(400).json({ isRegistered: false, message: 'Thiếu user_id' });
@@ -21,7 +25,10 @@ export function registerTelesaleMiniappRoutes({
 
             const data = await getTelesaleBootstrap({
                 telegramGroupId,
-                telegramUserId
+                telegramUserId,
+                reportSlot,
+                projectName,
+                serviceName
             });
 
             res.json(data);
@@ -52,4 +59,69 @@ export function registerTelesaleMiniappRoutes({
             res.status(500).json({ success: false, message: err.message || 'Lỗi khi lưu báo cáo' });
         }
     });
+
+    // 3. Tự động thêm / bổ sung Dự án mới vào danh sách của nhóm
+    botApp.post('/api/telesale/add-project', async (req, res) => {
+        try {
+            const { telegramGroupId, projectName } = req.body;
+            const cleanName = (projectName || '').trim();
+
+            if (!telegramGroupId || !cleanName) {
+                return res.status(400).json({ success: false, message: 'Thiếu telegramGroupId hoặc projectName' });
+            }
+
+            if (!telesaleRepository) {
+                return res.status(500).json({ success: false, message: 'Repository không sẵn sàng' });
+            }
+
+            const formConfig = await telesaleRepository.getFormConfig(telegramGroupId);
+            const currentProjects = Array.isArray(formConfig?.projects) ? formConfig.projects : [];
+            let updatedProjects = currentProjects;
+            if (!currentProjects.includes(cleanName)) {
+                updatedProjects = [...currentProjects, cleanName];
+                await telesaleRepository.saveFormConfig({
+                    telegramGroupId,
+                    projects: updatedProjects
+                });
+            }
+
+            res.json({ success: true, projects: updatedProjects, added: cleanName });
+        } catch (err) {
+            console.error('[Telesale API Error] Add Project:', err.message || err);
+            res.status(500).json({ success: false, message: err.message || 'Lỗi khi thêm dự án' });
+        }
+    });
+
+    // 4. Tự động thêm / bổ sung Dịch vụ mới vào danh sách của nhóm
+    botApp.post('/api/telesale/add-service', async (req, res) => {
+        try {
+            const { telegramGroupId, serviceName } = req.body;
+            const cleanName = (serviceName || '').trim();
+
+            if (!telegramGroupId || !cleanName) {
+                return res.status(400).json({ success: false, message: 'Thiếu telegramGroupId hoặc serviceName' });
+            }
+
+            if (!telesaleRepository) {
+                return res.status(500).json({ success: false, message: 'Repository không sẵn sàng' });
+            }
+
+            const formConfig = await telesaleRepository.getFormConfig(telegramGroupId);
+            const currentServices = Array.isArray(formConfig?.services) ? formConfig.services : [];
+            let updatedServices = currentServices;
+            if (!currentServices.includes(cleanName)) {
+                updatedServices = [...currentServices, cleanName];
+                await telesaleRepository.saveFormConfig({
+                    telegramGroupId,
+                    services: updatedServices
+                });
+            }
+
+            res.json({ success: true, services: updatedServices, added: cleanName });
+        } catch (err) {
+            console.error('[Telesale API Error] Add Service:', err.message || err);
+            res.status(500).json({ success: false, message: err.message || 'Lỗi khi thêm dịch vụ' });
+        }
+    });
+
 }

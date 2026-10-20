@@ -16,8 +16,34 @@ export function createSundayReminderRepository({ pool }) {
         return result.rows;
     }
 
+    async function autoSeedSpecialEmployeesWeeklySchedules(fromDate, toDate) {
+        const dinhNgocId = 'dc286880-c850-4740-8db0-ee700db216e8';
+        const groupId = '7cdb911f-5e2b-441f-adc9-75a5c8793176';
+        try {
+            await pool.query(`
+                INSERT INTO tk_schedules (group_id, user_id, date, shift_type, is_locked, updated_by)
+                SELECT 
+                    $1, 
+                    $2, 
+                    d.date::date, 
+                    CASE WHEN EXTRACT(DOW FROM d.date) = 0 THEN 'OFF' ELSE 'CA_9_17' END, 
+                    true, 
+                    'Hệ thống tự động'
+                FROM generate_series($3::date, $4::date, '1 day'::interval) d(date)
+                ON CONFLICT (user_id, date) DO UPDATE SET
+                    shift_type = CASE WHEN EXTRACT(DOW FROM EXCLUDED.date) = 0 THEN 'OFF' ELSE 'CA_9_17' END,
+                    is_locked = true,
+                    updated_by = 'Hệ thống tự động'
+                WHERE tk_schedules.updated_by = 'Hệ thống tự động' OR tk_schedules.shift_type IN ('CA_SANG', 'CA_9_17', 'OFF')
+            `, [groupId, dinhNgocId, fromDate, toDate]);
+        } catch (err) {
+            console.error('[Auto Seed Special Schedules Err]:', err.message);
+        }
+    }
+
     /** Nhân sự trong nhóm chưa đăng ký đủ lịch cho cả 7 ngày tuần tới. */
     async function findUnregisteredStaff(telegramGroupId, fromDate, toDate) {
+        await autoSeedSpecialEmployeesWeeklySchedules(fromDate, toDate);
         const result = await pool.query(`
             SELECT e.id, e.full_name, e.telegram_id, e.telegram_username
             FROM employees e
@@ -65,7 +91,8 @@ export function createSundayReminderRepository({ pool }) {
         findUnregisteredStaff,
         insertAutoAssignedShift,
         closeScheduleRegistration,
-        openScheduleRegistrationForAll
+        openScheduleRegistrationForAll,
+        autoSeedSpecialEmployeesWeeklySchedules
     };
 }
 

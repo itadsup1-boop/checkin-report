@@ -16,7 +16,8 @@ import {
   X,
   ShieldCheck,
   Store,
-  PhoneCall
+  PhoneCall,
+  KeyRound
 } from 'lucide-react';
 import LoginScreen from '../features/auth/LoginScreen.jsx';
 import StaffManagement from '../features/staff/StaffManagement.jsx';
@@ -31,6 +32,7 @@ import SettingsManagement from '../features/settings/SettingsManagement.jsx';
 import CompanyHolidayManagement from '../features/holidays/CompanyHolidayManagement.jsx';
 import RetailManagement from '../features/retail/RetailManagement.jsx';
 import TelesaleManagement from '../features/telesale/TelesaleManagement.jsx';
+import AccessCodeManagement from '../features/task-management/AccessCodeManagement.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api';
 
@@ -52,6 +54,7 @@ const TABS = [
   { id: 'holidays', path: '/ngay-nghi-cong-ty', label: 'Ngày nghỉ công ty', icon: CalendarDays },
   { id: 'warehouse', path: '/kho', label: 'Quản lý kho', icon: Package },
   { id: 'settings', path: '/cau-hinh', label: 'Cấu hình nhóm', icon: Settings },
+  { id: 'access-codes', path: '/ma-kich-hoat', label: 'Mã kích hoạt giao việc', icon: KeyRound, needsSuperAdmin: true },
   { id: 'admins', path: '/tai-khoan', label: 'Tài khoản quản trị', icon: Shield, needsSuperAdmin: true }
 ];
 
@@ -297,7 +300,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
             />
           )}
         />
-        <Route path="/telesale" element={guard(canAccessGeneralAdmin) ?? <TelesaleManagement selectedGroupId={selectedGroupId} />} />
+        <Route path="/telesale" element={guard(canAccessGeneralAdmin) ?? <TelesaleManagement selectedGroupId={selectedGroupId} onSelectGroup={setSelectedGroupId} />} />
         <Route path="/lich-lam-viec" element={guard(canAccessGeneralAdmin) ?? <ScheduleManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/nghi-phep" element={guard(canAccessGeneralAdmin) ?? <LeaveManagement selectedGroupId={selectedGroupId} />} />
         <Route path="/ngay-nghi-cong-ty" element={guard(canAccessGeneralAdmin) ?? <CompanyHolidayManagement isSuperAdmin={isSuperAdmin} />} />
@@ -311,6 +314,7 @@ function AdminShell({ user, onLogout, onSessionExpired }) {
         />
         <Route path="/cau-hinh" element={guard(canAccessGeneralAdmin) ?? <SettingsManagement groups={displayGroups} selectedGroupId={selectedGroupId} onUpdate={updateGroupSettings} onDelete={deleteGroup} />} />
         <Route path="/tai-khoan" element={guard(isSuperAdmin) ?? <AdminManagement groups={groups} />} />
+        <Route path="/ma-kich-hoat" element={guard(isSuperAdmin) ?? <AccessCodeManagement />} />
         {/* Đường dẫn lạ hoặc link cũ đều về Tổng quan thay vì trang trắng. */}
         <Route path="*" element={<Navigate to={homePath} replace />} />
       </Route>

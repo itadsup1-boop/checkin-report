@@ -3,6 +3,8 @@
  * viên, lịch cả nhóm để đối chiếu, và danh sách nhân sự (chỉ khi Admin xem hộ).
  */
 
+import { getMonthDateRange, checkLateRequestMonthlyQuota } from '../domain/leave-request-rules.js';
+
 export function createGetScheduleView({ repository, findEmployeeContext, isSystemAdmin, moment }) {
     async function getScheduleView({ telegramId, chatId, targetUserId }) {
         if (!telegramId) {
@@ -63,6 +65,15 @@ export function createGetScheduleView({ repository, findEmployeeContext, isSyste
         const groupSchedules = await repository.findGroupSchedulesInRange(groupId, currentWeekDays[0], nextWeekDays[6]);
         const groupUsers = isAdmin ? await repository.findGroupEmployees(groupId) : [];
 
+        const todayStr = moment().utcOffset(7).format('YYYY-MM-DD');
+        const { startOfMonth, endOfMonth, monthStr } = getMonthDateRange(todayStr);
+        let monthlyLateApprovedCount = 0;
+        if (typeof repository.countApprovedLateRequestsInMonth === 'function') {
+            monthlyLateApprovedCount = await repository.countApprovedLateRequestsInMonth(targetUser.id, startOfMonth, endOfMonth);
+        }
+        const monthlyLateQuota = checkLateRequestMonthlyQuota({ approvedCount: monthlyLateApprovedCount });
+        monthlyLateQuota.month_str = monthStr;
+
         return {
             ok: true,
             data: {
@@ -70,7 +81,8 @@ export function createGetScheduleView({ repository, findEmployeeContext, isSyste
                 schedule_registration_open: scheduleRegistrationOpen,
                 currentWeekDays, nextWeekDays,
                 is_current_week_locked: isCurrentWeekLocked, is_next_week_locked: isNextWeekLocked,
-                mySchedules, groupSchedules, groupUsers
+                mySchedules, groupSchedules, groupUsers,
+                monthly_late_quota: monthlyLateQuota
             }
         };
     }

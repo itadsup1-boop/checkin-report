@@ -64,6 +64,8 @@ export function createSummarizeDailyTelesale({
 
                 const summaryFields = customSummaryFields || config?.schedule_settings?.summary_fields || null;
 
+                const summaryTemplate = config?.features?.summary_template || 'BY_EMPLOYEE';
+
                 const summaryMsg = buildTelesaleDailyTeamSummary({
                     dateStr: displayDate,
                     teamTotals: totals,
@@ -71,7 +73,10 @@ export function createSummarizeDailyTelesale({
                     sheetUrl,
                     dynamicFields: config?.fields || null,
                     summaryFields,
-                    dynamicTotals
+                    dynamicTotals,
+                    summaryTemplate,
+                    byService: summaryRes?.byService || {},
+                    byProject: summaryRes?.byProject || {}
                 });
 
                 const summaryDedupKey = `summary:${groupId}:${dateStr}`;
@@ -93,72 +98,74 @@ export function createSummarizeDailyTelesale({
                     });
                 }
 
-                // Thống kê hiệu suất: Khen thưởng Tới (> 19%), Cảnh báo Lịch (< 25%), Cảnh báo Tới (< 15%)
-                const toiRewards = [];
-                const lichWarnings = [];
-                const toiWarnings = [];
+                // Thống kê hiệu suất: Khen thưởng Tới (> 19%), Cảnh báo Lịch (< 25%), Cảnh báo Tới (< 15%) - Chỉ áp dụng cho nhóm Telesale truyền thống
+                if (summaryTemplate !== 'BY_SERVICE') {
+                    const toiRewards = [];
+                    const lichWarnings = [];
+                    const toiWarnings = [];
 
-                for (const r of reports) {
-                    const name = r.full_name || r.employee_name || 'Nhân sự';
-                    const soNhan = Number(r.so_nhan || 0);
-                    const tongLich = Number(r.tong_lich || 0);
-                    const tongToi = Number(r.tong_toi_hnay || 0);
-                    const tyLeLich = soNhan > 0 ? Number(((tongLich / soNhan) * 100).toFixed(1)) : 0;
-                    const tyLeToi = soNhan > 0 ? Number(((tongToi / soNhan) * 100).toFixed(1)) : 0;
+                    for (const r of reports) {
+                        const name = r.full_name || r.employee_name || 'Nhân sự';
+                        const soNhan = Number(r.so_nhan || 0);
+                        const tongLich = Number(r.tong_lich || 0);
+                        const tongToi = Number(r.tong_toi_hnay || 0);
+                        const tyLeLich = soNhan > 0 ? Number(((tongLich / soNhan) * 100).toFixed(1)) : 0;
+                        const tyLeToi = soNhan > 0 ? Number(((tongToi / soNhan) * 100).toFixed(1)) : 0;
 
-                    if (soNhan > 0 && tyLeToi > TELESALE_THRESHOLDS.TOI_REWARD_PERCENT) {
-                        toiRewards.push({
-                            name,
-                            so_nhan: soNhan,
-                            tong_toi: tongToi,
-                            ty_le_toi: tyLeToi
-                        });
-                    }
+                        if (soNhan > 0 && tyLeToi > TELESALE_THRESHOLDS.TOI_REWARD_PERCENT) {
+                            toiRewards.push({
+                                name,
+                                so_nhan: soNhan,
+                                tong_toi: tongToi,
+                                ty_le_toi: tyLeToi
+                            });
+                        }
 
-                    if (soNhan > 0 && tyLeLich < TELESALE_THRESHOLDS.LICH_WARNING_PERCENT) {
-                        lichWarnings.push({
-                            name,
-                            so_nhan: soNhan,
-                            tong_lich: tongLich,
-                            ty_le_lich: tyLeLich
-                        });
-                    }
+                        if (soNhan > 0 && tyLeLich < TELESALE_THRESHOLDS.LICH_WARNING_PERCENT) {
+                            lichWarnings.push({
+                                name,
+                                so_nhan: soNhan,
+                                tong_lich: tongLich,
+                                ty_le_lich: tyLeLich
+                            });
+                        }
 
-                    if (soNhan > 0 && tyLeToi < TELESALE_THRESHOLDS.TOI_WARNING_PERCENT) {
-                        toiWarnings.push({
-                            name,
-                            so_nhan: soNhan,
-                            tong_toi: tongToi,
-                            ty_le_toi: tyLeToi
-                        });
-                    }
-                }
-
-                const warningMsg = buildTelesaleWarningSummaryMessage({
-                    dateStr: displayDate,
-                    lichWarnings,
-                    toiWarnings,
-                    toiRewards
-                });
-
-                if (warningMsg) {
-                    const warningDedupKey = `warning:${groupId}:${dateStr}`;
-                    let canSendWarning = true;
-                    if (typeof telesaleRepository.acquireNotificationLock === 'function') {
-                        const acquired = await telesaleRepository.acquireNotificationLock(warningDedupKey);
-                        if (!acquired) {
-                            canSendWarning = false;
-                            console.log(`[Telesale] Cảnh báo hiệu suất nhóm ${groupId} ngày ${dateStr} đã được gửi bởi tiến trình khác, bỏ qua.`);
+                        if (soNhan > 0 && tyLeToi < TELESALE_THRESHOLDS.TOI_WARNING_PERCENT) {
+                            toiWarnings.push({
+                                name,
+                                so_nhan: soNhan,
+                                tong_toi: tongToi,
+                                ty_le_toi: tyLeToi
+                            });
                         }
                     }
 
-                    if (canSendWarning) {
-                        await bot.telegram.sendMessage(groupId, warningMsg, {
-                            parse_mode: 'HTML',
-                            disable_web_page_preview: true
-                        }).catch(err => {
-                            console.error(`[Telesale] Lỗi gửi cảnh báo hiệu suất nhóm ${groupId}:`, err.message);
-                        });
+                    const warningMsg = buildTelesaleWarningSummaryMessage({
+                        dateStr: displayDate,
+                        lichWarnings,
+                        toiWarnings,
+                        toiRewards
+                    });
+
+                    if (warningMsg) {
+                        const warningDedupKey = `warning:${groupId}:${dateStr}`;
+                        let canSendWarning = true;
+                        if (typeof telesaleRepository.acquireNotificationLock === 'function') {
+                            const acquired = await telesaleRepository.acquireNotificationLock(warningDedupKey);
+                            if (!acquired) {
+                                canSendWarning = false;
+                                console.log(`[Telesale] Cảnh báo hiệu suất nhóm ${groupId} ngày ${dateStr} đã được gửi bởi tiến trình khác, bỏ qua.`);
+                            }
+                        }
+
+                        if (canSendWarning) {
+                            await bot.telegram.sendMessage(groupId, warningMsg, {
+                                parse_mode: 'HTML',
+                                disable_web_page_preview: true
+                            }).catch(err => {
+                                console.error(`[Telesale] Lỗi gửi cảnh báo hiệu suất nhóm ${groupId}:`, err.message);
+                            });
+                        }
                     }
                 }
             }

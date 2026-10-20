@@ -9,7 +9,7 @@ export function createExportOrderEditRepository(pool) {
                     creator.telegram_id AS creator_telegram_id
              FROM tk_warehouse_orders o
              LEFT JOIN employees creator ON creator.id = o.created_by
-             WHERE o.id = $1`,
+             WHERE (o.id::text = $1 OR o.order_code = $1)`,
             [orderId]
         );
         const order = orderRes.rows[0];
@@ -183,8 +183,72 @@ export function createExportOrderEditRepository(pool) {
         );
     }
 
+    async function listEditableExportOrders({
+        employeeId,
+        telegramId,
+        isAdminOrManager = false,
+        groupId = null,
+        limit = 30
+    }) {
+        const params = [];
+        const whereClauses = [
+            `o.status NOT IN ('REJECTED', 'REVERSED')`
+        ];
+
+        if (!isAdminOrManager) {
+            params.push(employeeId || null);
+            params.push(String(telegramId || ''));
+            whereClauses.push(
+                `(o.created_by = $${params.length - 1} OR creator.telegram_id = $${params.length})`
+            );
+        }
+
+        if (groupId) {
+            params.push(groupId);
+            whereClauses.push(`o.group_id = $${params.length}`);
+        }
+
+        params.push(limit);
+        const limitParamIndex = params.length;
+
+        const sql = `
+            SELECT o.id, o.order_code, o.branch, o.customer_name, o.customer_phone,
+                   o.status, o.created_at, o.edit_count,
+                   creator.full_name AS creator_name,
+                   ROUND(EXTRACT(EPOCH FROM (o.created_at + INTERVAL '24 hours' - NOW())) / 3600.0, 1) AS hours_remaining,
+                   (o.created_at >= NOW() - INTERVAL '24 hours') AS is_within_24h,
+                   COALESCE(
+                       JSON_AGG(
+                           JSON_BUILD_OBJECT(
+                               'product_name', oi.product_name_snapshot,
+                               'actual_quantity', oi.actual_quantity,
+                               'unit', oi.unit_snapshot
+                           )
+                       ) FILTER (WHERE oi.id IS NOT NULL AND NOT oi.is_removed),
+                       '[]'::json
+                   ) AS items_preview
+            FROM tk_warehouse_orders o
+            LEFT JOIN employees creator ON creator.id = o.created_by
+            LEFT JOIN tk_warehouse_order_services os ON os.order_id = o.id
+            LEFT JOIN tk_warehouse_order_items oi ON oi.order_service_id = os.id
+            WHERE ${whereClauses.join(' AND ')}
+            GROUP BY o.id, creator.full_name
+            ORDER BY o.created_at DESC
+            LIMIT $${limitParamIndex}
+        `;
+
+        const res = await pool.query(sql, params);
+        return res.rows.map(row => ({
+            ...row,
+            hours_remaining: Number(row.hours_remaining) || 0,
+            is_within_24h: Boolean(row.is_within_24h)
+        }));
+    }
+
     return {
         findExportOrderForEdit,
-        applyExportOrderEdit
+        applyExportOrderEdit,
+        listEditableExportOrders
     };
 }
+

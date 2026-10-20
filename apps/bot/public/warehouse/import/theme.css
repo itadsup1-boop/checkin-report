@@ -403,3 +403,31 @@ input { outline: none; }
 @media (max-width: 360px) {
   .action-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Thẻ và khối hiển thị ---------- */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.card__head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13px;
+  font-weight: 700;
+}
+.card__body { padding: 14px 16px; }
+
+/* ---------- Tiện ích bố cục ---------- */
+.stack > * + * { margin-top: 12px; }
+.stack-sm > * + * { margin-top: 8px; }
+.stack-lg > * + * { margin-top: 18px; }
+.row-between { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.screen-center { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 28px 24px; text-align: center; }
+.btn--brand { background: var(--brand); color: #fff; box-shadow: var(--shadow-brand); }
+.btn--compact { height: 32px; font-size: 13px; padding: 0 12px; }
+

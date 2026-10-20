@@ -4,6 +4,10 @@
  */
 
 import { IMMEDIATE_LEAVE_TYPES, createAutoAcceptedLeaveRequest } from './leave-request-service.js';
+import { createLeaveRequestRepository } from '../infrastructure/postgres/leave-request-repository.js';
+import { getMonthDateRange, checkLateRequestMonthlyQuota, MAX_MONTHLY_LATE_REQUESTS } from '../domain/leave-request-rules.js';
+
+const leaveRepo = createLeaveRequestRepository();
 
 function decodeProofImage(proofImageDataUrl, telegramId, fs, path, uploadDir) {
     if (!proofImageDataUrl) return null;
@@ -69,6 +73,48 @@ export function createSaveLeaveRequest({
 
         const approvalSettings = group?.approval_settings || {};
         const isLate = requestType === 'LATE';
+
+        if (isLate) {
+            const { startOfMonth, endOfMonth, monthStr } = getMonthDateRange(date);
+            const approvedCount = await leaveRepo.countApprovedLateRequestsInMonth(pool, {
+                userId: user.id, startDate: startOfMonth, endDate: endOfMonth
+            });
+            const quota = checkLateRequestMonthlyQuota({ approvedCount, maxQuota: MAX_MONTHLY_LATE_REQUESTS });
+            if (quota.isExceeded) {
+                const rejectReason = `Hệ thống (Quá hạn mức 3 lần/tháng ${monthStr})`;
+                await leaveRepo.insertAutoRejectedLateRequest(pool, {
+                    groupId, userId: user.id, lateMinutes: Number(lateMinutes) || 0,
+                    date, reason, proofUrl, rejectedReason: rejectReason
+                });
+
+                if (telegramGroupId) {
+                    const displayDate = moment(date).format('DD/MM/YYYY');
+                    let msg = `❌ <b>ĐÃ TỰ ĐỘNG TỪ CHỐI YÊU CẦU ĐI MUỘN</b>\n\n` +
+                        `👤 <b>Nhân viên:</b> ${user.full_name}\n` +
+                        `💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n` +
+                        `📅 <b>Ngày xin phép:</b> ${displayDate}\n` +
+                        `📝 <b>Loại yêu cầu:</b> ${requestTypeName(requestType, lateMinutes)}\n` +
+                        `💬 <b>Lý do:</b> ${reason}\n` +
+                        `⚠️ <b>Trạng thái:</b> 🔴 Từ chối bởi Hệ thống\n` +
+                        `📌 <i>Lý do: Đã sử dụng hết hạn mức 3 lần xin đi muộn trong tháng ${monthStr} (${approvedCount}/3 lần).</i>\n`;
+
+                    msg += proofUrl
+                        ? `📸 <b>Minh chứng:</b> <a href="${publicBaseUrl}${proofUrl}">Xem ảnh đính kèm</a>\n`
+                        : `📸 <b>Minh chứng:</b> Không có\n`;
+
+                    await sendMessageToRoleGroup(bot, telegramGroupId, 'timekeep', msg, {
+                        parse_mode: 'HTML'
+                    }, 'leave_request_notice');
+                }
+
+                return {
+                    ok: false,
+                    status: 400,
+                    message: `Bạn đã sử dụng hết hạn mức xin đi muộn trong tháng ${monthStr} (${approvedCount}/3 lần). Đơn đã bị từ chối tự động!`
+                };
+            }
+        }
+
         const approvalMode = isLate
             ? (approvalSettings.leave_late || 'AUTO')
             : (approvalSettings.leave_absence || 'AUTO');

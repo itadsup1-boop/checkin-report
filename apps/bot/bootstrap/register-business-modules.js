@@ -4,6 +4,7 @@ import { registerWarehouseModule } from '../../../domains/warehouse/index.js';
 import { registerCustomerModule } from '../../../domains/customer/index.js';
 import { registerRetailCheckinModule } from '../../../domains/retail-checkin/index.js';
 import { registerTelesaleModule } from '../../../domains/telesale/index.js';
+import { registerTaskManagementModule } from '../../../domains/task-management/index.js';
 import { getGroupRole } from '../role_guard.js';
 
 export function registerBusinessModules({
@@ -86,4 +87,8 @@ export function registerBusinessModules({
         getDocById,
         getGroupRole
     });
+
+    // Module quản lý & giao việc — mặc định TẮT, bật bằng TASK_MANAGEMENT_ENABLED=true.
+    // Tắt module này thì bot check-in/báo cáo phải chạy y như trước khi có nó.
+    registerTaskManagementModule({ botApp, authenticateTelegramMiniApp, bot, pool, cron });
 }

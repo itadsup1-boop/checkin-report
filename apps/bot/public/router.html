@@ -96,6 +96,8 @@
                 targetPage = 'warehouse_pricing.html';
             } else if (startParam.startsWith('telesale')) {
                 targetPage = 'telesale.html';
+            } else if (startParam.startsWith('taskextend')) {
+                targetPage = 'task_extend.html';
             } else {
                 document.getElementById('statusText').innerText = "Lỗi: Payload không hợp lệ hoặc không xác định.";
                 return;

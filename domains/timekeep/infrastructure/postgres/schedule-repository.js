@@ -250,6 +250,16 @@ export function createScheduleRepository({ pool }) {
         return result.rows[0];
     }
 
+    async function countApprovedLateRequestsInMonth(userId, startDate, endDate) {
+        const result = await pool.query(
+            `SELECT COUNT(*)::int AS count FROM tk_leave_requests
+             WHERE user_id = $1 AND request_type = 'LATE' AND status = 'APPROVED'
+               AND date >= $2 AND date <= $3`,
+            [userId, startDate, endDate]
+        );
+        return Number(result.rows[0]?.count) || 0;
+    }
+
     return {
         findCallerWithFlag, setRegistrationOpen,
         updateShift, findGroupIdOfEmployee, findTelegramGroupIdOfSchedule,
@@ -258,6 +268,6 @@ export function createScheduleRepository({ pool }) {
         findSchedulesInRange, findGroupSchedulesInRange, findGroupEmployees, isManager,
         findOffOverlap, findExistingShiftsForDates, upsertScheduleDay,
         findTelegramGroupId, cancelPendingScheduleChangeRequests, insertScheduleChangeRequest,
-        insertPendingLeaveRequest
+        insertPendingLeaveRequest, countApprovedLateRequestsInMonth
     };
 }

@@ -22,7 +22,12 @@ function createHarness({ existingCheckin = null, policy = null, userSchedule = n
         },
         insertLatePenalty: async () => {},
         findUserScheduleOfDay: async () => userSchedule,
-        findApprovedLateLeaveRequest: async () => leaveRequest
+        findApprovedLateLeaveRequest: async () => leaveRequest,
+        getMonthlyAttendancePenaltyStats: async () => ({
+            lateCount: 1,
+            penaltyCount: 2,
+            totalPenaltyAmount: 40000
+        })
     };
 
     const scheduleRepository = {
@@ -101,6 +106,9 @@ test('saveCheckin - Lần 1 nộp video trong ngày: Ghi nhận Check-in thành 
     assert.equal(h.sentVideos.length, 1);
     assert.equal(h.sentVideos[0].tag, 'checkin_video');
     assert.match(h.sentVideos[0].options.caption, /BÁO CÁO ĐIỂM DANH/);
+    assert.match(h.sentVideos[0].options.caption, /Thống kê tháng/);
+    assert.match(h.sentVideos[0].options.caption, /Số lần đi muộn: <b>1 lần<\/b>/);
+    assert.match(h.sentVideos[0].options.caption, /40\.000đ/);
 });
 
 test('saveCheckin - Lần 2 nộp video trong ngày: Tự động ghi nhận Check-out thành công', async () => {
@@ -227,7 +235,7 @@ test('saveCheckin - Marketing policy: Check-in thông báo và caption đúng gi
     assert.match(h.sentPhotos[0].options.caption, /MARKETING/);
 });
 
-test('saveCheckin - Marketing policy: Check-out gửi caption hoàn thành theo Marketing', async () => {
+test('saveCheckin - Marketing policy: Check-out gửi caption hoàn thành theo Marketing khi sau checkout_min_time', async () => {
     const existingCheckin = {
         id: 105,
         user_id: 1,
@@ -236,6 +244,7 @@ test('saveCheckin - Marketing policy: Check-out gửi caption hoàn thành theo 
     };
     const policy = {
         attendance_policy: 'MARKETING',
+        checkout_min_time: '00:00:00',
         effective_start_date: '2026-01-01'
     };
     const h = createHarness({ existingCheckin, policy });
@@ -252,6 +261,33 @@ test('saveCheckin - Marketing policy: Check-out gửi caption hoàn thành theo 
     await result.runBackgroundTask();
     assert.equal(h.sentVideos.length, 1);
     assert.match(h.sentVideos[0].options.caption, /CHECK-OUT THÀNH CÔNG – MARKETING/);
+});
+
+test('saveCheckin - Marketing policy: Từ chối Check-out khi chưa đến checkout_min_time đã cấu hình', async () => {
+    const existingCheckin = {
+        id: 106,
+        user_id: 1,
+        date: moment().utcOffset(7).format('YYYY-MM-DD'),
+        check_in_time: '2026-09-28 08:30:00'
+    };
+    const policy = {
+        attendance_policy: 'MARKETING',
+        checkout_min_time: '23:59:59',
+        effective_start_date: '2026-01-01'
+    };
+    const h = createHarness({ existingCheckin, policy });
+
+    const req = {
+        body: { chat_id: '-1001', telegram_id: 'user1' },
+        file: { path: '/tmp/checkout.mp4', filename: 'checkout.mp4' }
+    };
+
+    const result = await h.saveCheckin(req);
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 400);
+    assert.match(result.message, /Chưa đến giờ kết thúc ca làm việc/);
+    assert.match(result.message, /23:59/);
+    assert.equal(h.recordedCheckouts.length, 0);
 });
 
 test('saveCheckin - Nhân sự đăng ký Ca 2 (09:30): Mốc chốt chuyển thành 09:30', async () => {

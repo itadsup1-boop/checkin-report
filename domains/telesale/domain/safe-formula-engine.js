@@ -20,16 +20,70 @@ export const DEFAULT_TELESALE_FIELDS = [
     ]}
 ];
 
+export const DEFAULT_ADS_FIELDS = [
+    { key: 'noi_dung', label: 'Nội dung', type: 'text', category: 'INPUT', default: '', required: false, is_monthly_cumulative: false, is_hidden: false, order_index: 1 },
+    { key: 'tong_chi_tieu', label: 'Tổng chi tiêu', type: 'currency', category: 'INPUT', default: 0, required: true, is_monthly_cumulative: false, is_hidden: false, order_index: 2 },
+    { key: 'tong_mess', label: 'Tổng Mess', type: 'number', category: 'INPUT', default: 0, required: false, is_monthly_cumulative: false, is_hidden: false, order_index: 3 },
+    { key: 'tong_so', label: 'Tổng số (SĐT)', type: 'number', category: 'INPUT', default: 0, required: false, is_monthly_cumulative: false, is_hidden: false, order_index: 4 },
+    { key: 'tong_ds', label: 'Tổng Doanh số', type: 'currency', category: 'INPUT', default: 0, required: false, is_monthly_cumulative: false, is_hidden: false, order_index: 5 },
+    { key: 'tong_ds_cong_don', label: 'Tổng DS cộng dồn', type: 'currency', category: 'CALCULATED', formula: '{tong_ds}', is_hourly_cumulative: true, is_hidden: false, order_index: 6 },
+    { key: 'tong_chi_tieu_cong_don', label: 'Tổng chi tiêu cộng dồn', type: 'currency', category: 'CALCULATED', formula: '{tong_chi_tieu}', is_hourly_cumulative: true, is_hidden: false, order_index: 7 },
+    { key: 'ty_le_ads_cong_don', label: '% Ads cộng dồn', type: 'percentage', category: 'CALCULATED', formula: '({tong_chi_tieu_cong_don} / {tong_ds_cong_don}) * 100', is_hidden: false, order_index: 8, thresholds: [
+        { operator: '>=', value: 30, badge: '⚠️ (Chi phí cao >= 30%)', type: 'warning' },
+        { operator: '<=', value: 15, badge: '🌟 (Hiệu quả <= 15%)', type: 'reward' }
+    ]},
+    { key: 'ghi_chu', label: 'Ghi chú / Vấn đề cần xử lý', type: 'text', category: 'INPUT', default: '', required: false, is_monthly_cumulative: false, is_hidden: false, order_index: 9 }
+];
+
+export const DEFAULT_FEATURES = {
+    has_projects: false,
+    has_services: false,
+    schedule_mode: 'SINGLE_SLOT', // 'SINGLE_SLOT' | 'MULTI_SLOT'
+    summary_template: 'BY_EMPLOYEE', // 'BY_EMPLOYEE' | 'BY_SERVICE'
+    cumulative_mode: 'MONTHLY' // 'MONTHLY' | 'HOURLY' | 'BOTH'
+};
+
+export const DEFAULT_MULTI_SLOTS = [
+    { id: '09h', label: '09h', remind_time: '08:45', deadline_time: '09:00', late_remind_time: '10:00', summary_time: '09:01', penalty_amount: 50000 },
+    { id: '12h', label: '12h', remind_time: '11:45', deadline_time: '12:00', late_remind_time: '13:00', summary_time: '12:01', penalty_amount: 50000 },
+    { id: '18h', label: '18h', remind_time: '17:45', deadline_time: '18:00', late_remind_time: '19:00', summary_time: '18:01', penalty_amount: 50000 }
+];
+
 export const DEFAULT_SCHEDULE_SETTINGS = {
+    schedule_mode: 'SINGLE_SLOT',
+    slots: DEFAULT_MULTI_SLOTS,
     remind_enabled: true,
     remind_time: '18:00',
     deadline_time: '19:00',
+    overdue_remind_enabled: true,
+    late_remind_time: '20:00',
     penalty_enabled: true,
     penalty_amount: 50000,
     summary_enabled: true,
     summary_time: '19:01',
+    daily_final_summary_enabled: true,
+    daily_final_summary_time: '19:00',
+    rules_effective_date: null,
     summary_fields: ['so_nhan', 'so_trung_knc_vang', 'tong_lich', 'tong_toi', 'lich_ngay_mai', 'tong_ds_hnay', 'tong_ds_thang', 'ty_le_lich', 'ty_le_toi']
 };
+
+/**
+ * Tính giờ nhắc nhở sau N giờ từ một mốc giờ (mặc định +1 giờ).
+ * @param {string} timeStr Chuỗi giờ dạng 'HH:mm' hoặc '09h'
+ * @param {number} hoursToAdd Số giờ cộng thêm (mặc định 1)
+ * @returns {string} Chuỗi giờ mới dạng 'HH:mm'
+ */
+export function calculateLateRemindTime(timeStr, hoursToAdd = 1) {
+    if (!timeStr) return '10:00';
+    const clean = String(timeStr).trim();
+    let [h, m] = clean.includes(':')
+        ? clean.split(':').map(Number)
+        : [parseInt(clean.replace(/\D/g, ''), 10), 0];
+    if (isNaN(h)) return '10:00';
+    if (isNaN(m)) m = 0;
+    const newH = (h + hoursToAdd) % 24;
+    return `${String(newH).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
 
 /**
  * Phân tích và tính giá trị biểu thức toán học an toàn bằng Shunting-yard RPN.
@@ -243,9 +297,10 @@ export function formatFieldValue(val, type = 'number') {
  * @param {Array<Object>} fields Danh sách cấu hình trường
  * @param {Record<string, any>} rawInput Giá trị nhập từ người dùng
  * @param {Record<string, number>} monthlyPrevious Lũy kế các ngày trước trong tháng
+ * @param {Record<string, number>} hourlyPrevious Lũy kế các mốc giờ trước trong ngày
  * @returns {Record<string, any>} Kết quả các trường đã tính toán kèm format và badge
  */
-export function calculateDynamicForm(fields = [], rawInput = {}, monthlyPrevious = {}) {
+export function calculateDynamicForm(fields = [], rawInput = {}, monthlyPrevious = {}, hourlyPrevious = {}) {
     const results = {};
     const badges = {};
     const formatted = {};
@@ -282,6 +337,17 @@ export function calculateDynamicForm(fields = [], rawInput = {}, monthlyPrevious
         if (f.is_monthly_cumulative && f.category === 'CALCULATED') {
             const prev = Number(monthlyPrevious[f.key]) || 0;
             val = Number((val + prev).toFixed(2));
+        }
+
+        // Lũy kế mốc giờ nếu có (chỉ áp dụng cho trường tính toán lũy kế giờ)
+        if (f.is_hourly_cumulative) {
+            let baseVar = f.key;
+            if (f.formula) {
+                const match = f.formula.match(/^\{([a-zA-Z0-9_]+)\}$/);
+                if (match) baseVar = match[1];
+            }
+            const prevHourly = Number(hourlyPrevious[baseVar] ?? hourlyPrevious[f.key] ?? 0);
+            val = Number((val + prevHourly).toFixed(2));
         }
 
         results[f.key] = val;

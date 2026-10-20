@@ -1,8 +1,8 @@
-import { DEFAULT_TELESALE_FIELDS, DEFAULT_SCHEDULE_SETTINGS } from '../../domain/safe-formula-engine.js';
+import { DEFAULT_TELESALE_FIELDS, DEFAULT_SCHEDULE_SETTINGS, DEFAULT_FEATURES } from '../../domain/safe-formula-engine.js';
 
 export function createTelesaleRepository({ pool }) {
     /**
-     * Lưu hoặc cập nhật báo cáo trong ngày của một nhân sự.
+     * Lưu hoặc cập nhật báo cáo trong ngày của một nhân sự (hỗ trợ mốc giờ, dự án, dịch vụ).
      */
     async function upsertDailyReport({
         telegramGroupId,
@@ -10,6 +10,9 @@ export function createTelesaleRepository({ pool }) {
         telegramUserId,
         employeeName,
         reportDate,
+        reportSlot = 'DAILY',
+        projectName = '',
+        serviceName = '',
         soNhan,
         soTrungKncVang,
         lichPvMoi,
@@ -29,14 +32,15 @@ export function createTelesaleRepository({ pool }) {
         const query = `
             INSERT INTO telesale_daily_reports (
                 telegram_group_id, employee_id, telegram_user_id, employee_name,
-                report_date, so_nhan, so_trung_knc_vang, lich_pv_moi, lich_pv_cu,
+                report_date, report_slot, project_name, service_name,
+                so_nhan, so_trung_knc_vang, lich_pv_moi, lich_pv_cu,
                 lich_ngay_mai, tong_toi_hnay, tong_bong_hnay, tong_ds_hnay,
                 tong_lich, tong_ds_thang, ty_le_khach_toi_ds, ty_le_lich, ty_le_toi,
                 raw_payload, report_values, submitted_at, updated_at
             ) VALUES (
-                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, NOW(), NOW()
+                $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, NOW(), NOW()
             )
-            ON CONFLICT (telegram_group_id, employee_id, report_date) DO UPDATE SET
+            ON CONFLICT (telegram_group_id, employee_id, report_date, report_slot, project_name, service_name) DO UPDATE SET
                 telegram_user_id = EXCLUDED.telegram_user_id,
                 employee_name = EXCLUDED.employee_name,
                 so_nhan = EXCLUDED.so_nhan,
@@ -64,6 +68,9 @@ export function createTelesaleRepository({ pool }) {
             telegramUserId || null,
             employeeName || null,
             reportDate,
+            reportSlot || 'DAILY',
+            projectName || '',
+            serviceName || '',
             soNhan || 0,
             soTrungKncVang || 0,
             lichPvMoi || 0,
@@ -86,15 +93,84 @@ export function createTelesaleRepository({ pool }) {
     }
 
     /**
-     * Lấy báo cáo trong ngày của một nhân sự (nếu có).
+     * Lấy báo cáo trong ngày của một nhân sự theo mốc giờ, dự án, dịch vụ (nếu có).
      */
-    async function getDailyReport(telegramGroupId, employeeId, reportDate) {
+    async function getDailyReport(telegramGroupId, employeeId, reportDate, reportSlot = 'DAILY', projectName = '', serviceName = '') {
         const result = await pool.query(
             `SELECT * FROM telesale_daily_reports
-             WHERE telegram_group_id = $1 AND employee_id = $2 AND report_date = $3 LIMIT 1`,
-            [String(telegramGroupId), employeeId, reportDate]
+             WHERE telegram_group_id = $1 
+               AND employee_id = $2 
+               AND report_date = $3 
+               AND report_slot = $4 
+               AND project_name = $5 
+               AND service_name = $6 
+             LIMIT 1`,
+            [String(telegramGroupId), employeeId, reportDate, reportSlot || 'DAILY', projectName || '', serviceName || '']
         );
         return result.rows[0] || null;
+    }
+
+    /**
+     * Lấy tất cả báo cáo trong ngày của một nhân sự (nhiều mốc giờ, nhiều dự án/dịch vụ).
+     */
+    async function getDailyReportsByEmployee(telegramGroupId, employeeId, reportDate) {
+        const result = await pool.query(
+            `SELECT * FROM telesale_daily_reports
+             WHERE telegram_group_id = $1 AND employee_id = $2 AND report_date = $3
+             ORDER BY submitted_at ASC`,
+            [String(telegramGroupId), employeeId, reportDate]
+        );
+        return result.rows;
+    }
+
+    /**
+     * Tính tổng lũy kế các mốc giờ trong ngày của 1 nhân sự theo mốc giờ trước đó.
+     */
+    async function getHourlyCumulativeValues({ telegramGroupId, employeeId, reportDate, projectName = '', serviceName = '', priorSlots = [] }) {
+        if (!priorSlots || priorSlots.length === 0) {
+            return {};
+        }
+        let queryStr = `SELECT report_values FROM telesale_daily_reports
+             WHERE telegram_group_id = $1
+               AND employee_id = $2
+               AND report_date = $3
+               AND report_slot = ANY($4)
+               AND project_name = $5`;
+        const params = [String(telegramGroupId), employeeId, reportDate, priorSlots, projectName];
+        if (serviceName !== null && serviceName !== undefined && serviceName !== '') {
+            queryStr += ` AND service_name = $6`;
+            params.push(serviceName);
+        }
+        const result = await pool.query(queryStr, params);
+        const cumulative = {};
+        for (const row of result.rows) {
+            const vals = row.report_values || {};
+            for (const [k, v] of Object.entries(vals)) {
+                const num = Number(v);
+                if (!isNaN(num)) {
+                    cumulative[k] = (cumulative[k] || 0) + num;
+                }
+            }
+        }
+        return cumulative;
+    }
+
+    /**
+     * Xóa các báo cáo thuộc slot và project này mà không nằm trong danh sách keepServices.
+     */
+    async function deleteDailyReportsNotInServices({ telegramGroupId, employeeId, reportDate, reportSlot, projectName = '', keepServices = [] }) {
+        if (!keepServices || keepServices.length === 0) return 0;
+        const res = await pool.query(
+            `DELETE FROM telesale_daily_reports
+             WHERE telegram_group_id = $1
+               AND employee_id = $2
+               AND report_date = $3
+               AND report_slot = $4
+               AND project_name = $5
+               AND NOT (service_name = ANY($6))`,
+            [String(telegramGroupId), employeeId, reportDate, reportSlot, projectName, keepServices]
+        );
+        return res.rowCount;
     }
 
     /**
@@ -448,14 +524,17 @@ export function createTelesaleRepository({ pool }) {
     }
 
     /**
-     * Lấy danh sách ID nhân viên đã nộp báo cáo trong ngày.
+     * Lấy danh sách ID nhân viên đã nộp báo cáo trong ngày (hỗ trợ lọc theo mốc giờ).
      */
-    async function findReportedEmployeeIds(telegramGroupId, reportDate) {
-        const result = await pool.query(
-            `SELECT employee_id FROM telesale_daily_reports
-             WHERE telegram_group_id = $1 AND report_date = $2`,
-            [String(telegramGroupId), reportDate]
-        );
+    async function findReportedEmployeeIds(telegramGroupId, reportDate, reportSlot = null) {
+        let query = `SELECT DISTINCT employee_id FROM telesale_daily_reports
+                     WHERE telegram_group_id = $1 AND report_date = $2`;
+        const params = [String(telegramGroupId), reportDate];
+        if (reportSlot && reportSlot !== 'ALL') {
+            params.push(reportSlot);
+            query += ` AND report_slot = $${params.length}`;
+        }
+        const result = await pool.query(query, params);
         return result.rows.map(r => r.employee_id);
     }
 
@@ -842,20 +921,29 @@ export function createTelesaleRepository({ pool }) {
     }
 
     /**
-     * Lấy tổng kết các báo cáo trong ngày của cả nhóm.
+     * Lấy tổng kết các báo cáo trong ngày của cả nhóm (hỗ trợ lọc theo mốc giờ và gom nhóm dịch vụ/dự án).
      */
-    async function getDailyGroupSummary(telegramGroupId, reportDate) {
-        const result = await pool.query(
-            `SELECT r.*, e.full_name
-             FROM telesale_daily_reports r
-             JOIN employees e ON e.id = r.employee_id
-             WHERE r.telegram_group_id = $1 AND r.report_date = $2
-             ORDER BY r.tong_ds_hnay DESC, r.submitted_at ASC`,
-            [String(telegramGroupId), reportDate]
-        );
+    async function getDailyGroupSummary(telegramGroupId, reportDate, reportSlot = null) {
+        let query = `
+            SELECT r.*, e.full_name
+            FROM telesale_daily_reports r
+            JOIN employees e ON e.id = r.employee_id
+            WHERE r.telegram_group_id = $1 AND r.report_date = $2
+        `;
+        const params = [String(telegramGroupId), reportDate];
+        if (reportSlot && reportSlot !== 'ALL') {
+            params.push(reportSlot);
+            query += ` AND r.report_slot = $${params.length}`;
+        }
+        query += ` ORDER BY r.tong_ds_hnay DESC, r.submitted_at ASC`;
+
+        const result = await pool.query(query, params);
 
         const rows = result.rows;
         const dynamicTotals = {};
+        const byService = {};
+        const byProject = {};
+
         const totals = rows.reduce((acc, row) => {
             acc.so_nhan += Number(row.so_nhan || 0);
             acc.tong_vang += Number(row.so_trung_knc_vang || 0);
@@ -874,6 +962,36 @@ export function createTelesaleRepository({ pool }) {
                 }
             }
 
+            // Gom nhóm theo Dịch vụ (phục vụ mẫu tổng hợp theo dịch vụ)
+            const svcName = (row.service_name || '').trim();
+            if (svcName) {
+                if (!byService[svcName]) {
+                    byService[svcName] = { service_name: svcName, reports: [], totals: {} };
+                }
+                byService[svcName].reports.push(row);
+                for (const [k, v] of Object.entries(vals)) {
+                    const num = Number(v);
+                    if (!isNaN(num)) {
+                        byService[svcName].totals[k] = (byService[svcName].totals[k] || 0) + num;
+                    }
+                }
+            }
+
+            // Gom nhóm theo Dự án (nếu có)
+            const prjName = (row.project_name || '').trim();
+            if (prjName) {
+                if (!byProject[prjName]) {
+                    byProject[prjName] = { project_name: prjName, reports: [], totals: {} };
+                }
+                byProject[prjName].reports.push(row);
+                for (const [k, v] of Object.entries(vals)) {
+                    const num = Number(v);
+                    if (!isNaN(num)) {
+                        byProject[prjName].totals[k] = (byProject[prjName].totals[k] || 0) + num;
+                    }
+                }
+            }
+
             return acc;
         }, { so_nhan: 0, tong_vang: 0, so_trung_knc_vang: 0, tong_lich: 0, tong_toi: 0, tong_bong: 0, lich_ngay_mai: 0, tong_ds: 0 });
 
@@ -884,7 +1002,9 @@ export function createTelesaleRepository({ pool }) {
         return {
             reports: rows,
             totals,
-            dynamicTotals
+            dynamicTotals,
+            byService,
+            byProject
         };
     }
 
@@ -912,6 +1032,15 @@ export function createTelesaleRepository({ pool }) {
                 config.schedule_settings = DEFAULT_SCHEDULE_SETTINGS;
                 needsUpdate = true;
             }
+            if (!config.features || (typeof config.features === 'object' && Object.keys(config.features).length === 0)) {
+                config.features = DEFAULT_FEATURES;
+            }
+            if (!config.projects || !Array.isArray(config.projects)) {
+                config.projects = [];
+            }
+            if (!config.services || !Array.isArray(config.services)) {
+                config.services = [];
+            }
 
             if (needsUpdate) {
                 await pool.query(
@@ -931,8 +1060,8 @@ export function createTelesaleRepository({ pool }) {
         const groupName = groupRes.rows[0]?.group_name || 'Nhóm Telesale';
 
         const insertRes = await pool.query(
-            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings)
-             VALUES ($1, $2, $3, $4)
+            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings, features, projects, services)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (telegram_group_id) DO UPDATE
              SET group_name = EXCLUDED.group_name
              RETURNING *`,
@@ -940,32 +1069,42 @@ export function createTelesaleRepository({ pool }) {
                 String(telegramGroupId),
                 groupName,
                 JSON.stringify(DEFAULT_TELESALE_FIELDS),
-                JSON.stringify(DEFAULT_SCHEDULE_SETTINGS)
+                JSON.stringify(DEFAULT_SCHEDULE_SETTINGS),
+                JSON.stringify(DEFAULT_FEATURES),
+                JSON.stringify([]),
+                JSON.stringify([])
             ]
         );
         return insertRes.rows[0];
     }
 
     /**
-     * Lưu/Cập nhật cấu hình form động, lịch trình hoặc cài đặt Sheet của nhóm Telesale.
+     * Lưu/Cập nhật cấu hình form động, lịch trình, cài đặt Sheet hoặc tính năng phân loại (dự án/dịch vụ).
      */
-    async function saveFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings }) {
+    async function saveFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings, features, projects, services }) {
         const res = await pool.query(
-            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings, sheet_settings, updated_at)
-             VALUES ($1, $2, $3, $4, $5, NOW())
+            `INSERT INTO telesale_form_configs (telegram_group_id, group_name, fields, schedule_settings, sheet_settings, features, projects, services, updated_at)
+             VALUES ($1, $2, COALESCE($3, '[]'::jsonb), COALESCE($4, '{}'::jsonb), COALESCE($5, '{"auto_sync_headers": true}'::jsonb), COALESCE($6, $9::jsonb), COALESCE($7, '[]'::jsonb), COALESCE($8, '[]'::jsonb), NOW())
              ON CONFLICT (telegram_group_id) DO UPDATE SET
                 group_name = COALESCE(EXCLUDED.group_name, telesale_form_configs.group_name),
-                fields = COALESCE(EXCLUDED.fields, telesale_form_configs.fields),
-                schedule_settings = COALESCE(EXCLUDED.schedule_settings, telesale_form_configs.schedule_settings),
-                sheet_settings = COALESCE(EXCLUDED.sheet_settings, telesale_form_configs.sheet_settings),
+                fields = CASE WHEN $3 IS NOT NULL THEN EXCLUDED.fields ELSE telesale_form_configs.fields END,
+                schedule_settings = CASE WHEN $4 IS NOT NULL THEN EXCLUDED.schedule_settings ELSE telesale_form_configs.schedule_settings END,
+                sheet_settings = CASE WHEN $5 IS NOT NULL THEN EXCLUDED.sheet_settings ELSE telesale_form_configs.sheet_settings END,
+                features = CASE WHEN $6 IS NOT NULL THEN EXCLUDED.features ELSE telesale_form_configs.features END,
+                projects = CASE WHEN $7 IS NOT NULL THEN EXCLUDED.projects ELSE telesale_form_configs.projects END,
+                services = CASE WHEN $8 IS NOT NULL THEN EXCLUDED.services ELSE telesale_form_configs.services END,
                 updated_at = NOW()
              RETURNING *`,
             [
                 String(telegramGroupId),
                 groupName || null,
-                fields ? JSON.stringify(fields) : null,
-                scheduleSettings ? JSON.stringify(scheduleSettings) : null,
-                sheetSettings ? JSON.stringify(sheetSettings) : null
+                fields !== undefined ? JSON.stringify(fields) : null,
+                scheduleSettings !== undefined ? JSON.stringify(scheduleSettings) : null,
+                sheetSettings !== undefined ? JSON.stringify(sheetSettings) : null,
+                features !== undefined ? JSON.stringify(features) : null,
+                projects !== undefined ? JSON.stringify(projects) : null,
+                services !== undefined ? JSON.stringify(services) : null,
+                JSON.stringify(DEFAULT_FEATURES)
             ]
         );
         return res.rows[0];
@@ -974,6 +1113,8 @@ export function createTelesaleRepository({ pool }) {
     return {
         upsertDailyReport,
         getDailyReport,
+        getDailyReportsByEmployee,
+        getHourlyCumulativeValues,
         getMonthlyPreviousRevenue,
         findEmployeeByTelegramId,
         findEmployeeByName,
@@ -995,6 +1136,7 @@ export function createTelesaleRepository({ pool }) {
         autoMatchTelesaleMappings,
         getFormConfig,
         saveFormConfig,
-        acquireNotificationLock
+        acquireNotificationLock,
+        deleteDailyReportsNotInServices
     };
 }

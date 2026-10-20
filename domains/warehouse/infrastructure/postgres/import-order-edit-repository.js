@@ -11,7 +11,7 @@ export function createImportOrderEditRepository(pool) {
              JOIN tk_products p ON p.id = t.product_id
              JOIN employees u ON u.id = t.user_id
              JOIN telegram_groups g ON g.id = t.group_id
-             WHERE t.id = $1 AND t.transaction_type = 'IMPORT'`,
+             WHERE (t.id::text = $1 OR t.id::text ILIKE $1 || '%') AND t.transaction_type = 'IMPORT'`,
             [transactionId]
         );
         const trans = transRes.rows[0];
@@ -132,8 +132,61 @@ export function createImportOrderEditRepository(pool) {
         );
     }
 
+    async function listEditableImportTransactions({
+        employeeId,
+        telegramId,
+        isAdminOrManager = false,
+        groupId = null,
+        limit = 30
+    }) {
+        const params = [];
+        const whereClauses = [
+            `t.transaction_type = 'IMPORT'`
+        ];
+
+        if (!isAdminOrManager) {
+            params.push(employeeId || null);
+            params.push(String(telegramId || ''));
+            whereClauses.push(
+                `(t.user_id = $${params.length - 1} OR u.telegram_id = $${params.length})`
+            );
+        }
+
+        if (groupId) {
+            params.push(groupId);
+            whereClauses.push(`t.group_id = $${params.length}`);
+        }
+
+        params.push(limit);
+        const limitParamIndex = params.length;
+
+        const sql = `
+            SELECT t.id, t.branch, t.quantity, t.created_at, t.edit_count,
+                   p.product_name, p.barcode, p.base_unit, p.import_unit,
+                   u.full_name AS creator_name,
+                   ROUND(EXTRACT(EPOCH FROM (t.created_at + INTERVAL '24 hours' - NOW())) / 3600.0, 1) AS hours_remaining,
+                   (t.created_at >= NOW() - INTERVAL '24 hours') AS is_within_24h
+            FROM tk_warehouse_transactions t
+            JOIN tk_products p ON p.id = t.product_id
+            JOIN employees u ON u.id = t.user_id
+            WHERE ${whereClauses.join(' AND ')}
+            ORDER BY t.created_at DESC
+            LIMIT $${limitParamIndex}
+        `;
+
+        const res = await pool.query(sql, params);
+        return res.rows.map(row => ({
+            ...row,
+            quantity: Number(row.quantity) || 0,
+            hours_remaining: Number(row.hours_remaining) || 0,
+            is_within_24h: Boolean(row.is_within_24h)
+        }));
+    }
+
     return {
         findImportTransactionForEdit,
-        applyImportTransactionEdit
+        applyImportTransactionEdit,
+        listEditableImportTransactions
     };
 }
+

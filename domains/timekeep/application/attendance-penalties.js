@@ -10,6 +10,7 @@
 
 import { createPenaltyRepository } from '../infrastructure/postgres/penalty-repository.js';
 import { WORKING_SHIFTS, LEAVE_REQUEST_TYPES, TIMEKEEP_PENALTIES } from '../domain/attendance-penalty-rules.js';
+import { checkWeeklyMeetingQuota, DINH_NGOC_USER_ID } from '../domain/employee-special-policies.js';
 
 const repository = createPenaltyRepository();
 
@@ -86,6 +87,37 @@ export async function finalizeUnauthorizedAbsences({
 export async function applyApprovedLeavePenalties({ pool: db, request }) {
     if (!LEAVE_REQUEST_TYPES.includes(request.request_type)) {
         return { suddenPenaltyId: null, consecutivePenaltyId: null };
+    }
+
+    // Miễn trừ phạt nghỉ đột xuất / liên tiếp khi gặp khách trong định mức 1.5 ngày/tuần
+    if (request.user_id === DINH_NGOC_USER_ID) {
+        const reqDateStr = String(request.date).slice(0, 10);
+        const reqDate = new Date(reqDateStr);
+        const day = reqDate.getUTCDay();
+        const diffToMon = (day === 0 ? -6 : 1) - day;
+        const monday = new Date(reqDate);
+        monday.setUTCDate(reqDate.getUTCDate() + diffToMon);
+        const sunday = new Date(monday);
+        sunday.setUTCDate(monday.getUTCDate() + 6);
+        const startOfWeek = monday.toISOString().slice(0, 10);
+        const endOfWeek = sunday.toISOString().slice(0, 10);
+
+        const weeklyLeavesRows = await repository.findWeeklyApprovedLeaves(db, {
+            userId: request.user_id,
+            startDate: startOfWeek,
+            endDate: endOfWeek,
+            excludeRequestId: request.id
+        });
+
+        const quotaCheck = checkWeeklyMeetingQuota(weeklyLeavesRows, request.request_type, 1.5);
+        if (quotaCheck.withinQuota) {
+            return {
+                suddenPenaltyId: null,
+                consecutivePenaltyId: null,
+                isClientMeetingExempt: true,
+                weeklyDaysUsed: quotaCheck.totalDays
+            };
+        }
     }
 
     const leaveCount = await repository.countApprovedLeaveThisMonth(db, {

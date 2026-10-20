@@ -53,10 +53,23 @@ export function startBotRuntime({ bot, botApp, pool, isCompanyHoliday }) {
         console.error('[Telegraf Error] Lỗi đăng ký commands:', err);
     });
     
-    bot.launch().then(() => {
-        console.log('[Telegraf] Bot Chấm công đã sẵn sàng...');
-        syncGroupsOnStartup({ bot, pool });
-    }).catch((err) => {
-        console.error('[Telegraf Error] Lỗi khởi động Bot:', err);
-    });
+    // 409 Conflict xảy ra khi restart: getUpdates của instance cũ còn giữ
+    // phiên trên Telegram vài giây. Telegraf KHÔNG tự retry polling sau 409,
+    // nếu không thử lại thì bot chết im cho đến khi ai đó restart tay.
+    let launchAttempts = 0;
+    const launchBot = () => {
+        launchAttempts += 1;
+        bot.launch().then(() => {
+            console.log('[Telegraf] Bot Chấm công đã sẵn sàng...');
+            syncGroupsOnStartup({ bot, pool });
+        }).catch((err) => {
+            console.error(`[Telegraf Error] Lỗi khởi động Bot (lần ${launchAttempts}):`, err.message);
+            if (launchAttempts < 5) {
+                const delayMs = launchAttempts * 10 * 1000;
+                console.log(`[Telegraf] Thử launch lại sau ${delayMs / 1000}s...`);
+                setTimeout(launchBot, delayMs);
+            }
+        });
+    };
+    launchBot();
 }

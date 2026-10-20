@@ -53,6 +53,12 @@ foreach ($loc in $nodeLocations) {
 # ---- Fix loi IPv6 Telegram ----
 $env:NODE_OPTIONS = '--dns-result-order=ipv4first --no-network-family-autoselection'
 
+# ---- Dam bao su dung dung pm2.cmd (tranh xung dot file khong duoi tren Windows) ----
+$pm2Cmd = Get-Command pm2.cmd -ErrorAction SilentlyContinue
+if ($pm2Cmd) {
+    Set-Alias -Name pm2 -Value $pm2Cmd.Source -Scope Script
+}
+
 # ==============================================================
 Write-Host ''
 Write-Host '==========================================================' -ForegroundColor Cyan
@@ -246,11 +252,18 @@ $pm2Output | ForEach-Object {
 Start-Sleep -Seconds 3
 
 # Kiem tra trang thai PM2
-$pm2Status = & pm2 jlist 2>&1 | ConvertFrom-Json -ErrorAction SilentlyContinue
+$pm2Status = $null
+try {
+    $nodeCmd = "try { const { execSync } = require('child_process'); const list = JSON.parse(execSync('pm2.cmd jlist', { encoding: 'utf8', stdio: ['pipe', 'pipe', 'ignore'] })); console.log(JSON.stringify(list.map(p => ({ name: p.name, status: p.pm2_env ? p.pm2_env.status : '' })))); } catch { console.log('[]'); }"
+    $pm2Status = & node -e $nodeCmd | ConvertFrom-Json -ErrorAction Stop
+} catch {
+    $pm2Status = $null
+}
+
 if ($pm2Status) {
     foreach ($proc in $pm2Status) {
         $name   = $proc.name
-        $status = $proc.pm2_env.status
+        $status = $proc.status
         $port   = if ($name -eq 'kpi-api') { '3001' } else { '3002' }
         if ($status -eq 'online') {
             Write-Ok "$name dang chay (port $port)."

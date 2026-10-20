@@ -412,6 +412,51 @@ test('mọi module Mini App kho có cú pháp hợp lệ', () => {
     }
 });
 
+test('mọi import trong module Mini App kho đều khớp export thật', () => {
+    const modules = allWarehouseModules();
+    const fileExports = new Map();
+
+    for (const { dir, rel } of modules) {
+        const full = path.normalize(path.join(dir, rel));
+        const content = fs.readFileSync(full, 'utf8');
+        const exports = new Set();
+        const fnMatches = content.matchAll(/export\s+(?:async\s+)?function\s+([a-zA-Z0-9_$]+)/g);
+        for (const m of fnMatches) exports.add(m[1]);
+        const varMatches = content.matchAll(/export\s+(?:const|let|var)\s+([a-zA-Z0-9_$]+)/g);
+        for (const m of varMatches) exports.add(m[1]);
+        const braceMatches = content.matchAll(/export\s*\{([^}]+)\}/g);
+        for (const m of braceMatches) {
+            m[1].split(',').forEach(s => {
+                const parts = s.trim().split(/\s+as\s+/);
+                const name = parts[parts.length - 1].trim();
+                if (name) exports.add(name);
+            });
+        }
+        fileExports.set(full, exports);
+    }
+
+    for (const { dir, label, rel } of modules) {
+        const full = path.normalize(path.join(dir, rel));
+        const content = fs.readFileSync(full, 'utf8');
+        const importMatches = content.matchAll(/import\s*\{([^}]+)\}\s*from\s*['"]([^'"]+)['"]/g);
+        for (const m of importMatches) {
+            const importedNames = m[1].split(',').map(s => {
+                const parts = s.trim().split(/\s+as\s+/);
+                return parts[0].trim();
+            }).filter(Boolean);
+            const importPath = m[2];
+            if (importPath.startsWith('.')) {
+                const resolved = path.normalize(path.resolve(path.dirname(full), importPath));
+                assert.ok(fileExports.has(resolved), `${label} import file không tồn tại: ${importPath}`);
+                const available = fileExports.get(resolved);
+                for (const name of importedNames) {
+                    assert.ok(available.has(name), `${label} import '${name}' nhưng ${importPath} không export tên này`);
+                }
+            }
+        }
+    }
+});
+
 test('ba Mini App kho dùng chung hạ tầng shared-ui, không nhân đôi core', () => {
     // Trước đây core/ và icons.js nằm trong Mini App xuất kho; thêm app mới mà copy
     // sang là hàng trăm dòng trùng lặp, sửa một bên quên bên kia.

@@ -82,15 +82,18 @@ export const telesaleApi = {
   },
 
   /**
-   * Cập nhật cấu hình Form động & lịch trình
+   * Cập nhật cấu hình Form động, lịch trình, cài đặt Sheet và tính năng phân cấp (dự án, dịch vụ)
    */
-  async updateFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings }) {
+  async updateFormConfig({ telegramGroupId, groupName, fields, scheduleSettings, sheetSettings, features, projects, services }) {
     const response = await axios.put(`${API_URL}/admin/telesale/config`, {
       telegramGroupId,
       groupName,
       fields,
       scheduleSettings,
-      sheetSettings
+      sheetSettings,
+      features,
+      projects,
+      services
     }, {
       headers: authHeader()
     });

@@ -8,6 +8,8 @@
  * `tk_leave_requests` (đã ở dạng snake_case), tránh phải đổi tên qua lại.
  */
 
+import { toDateKey } from '../../domain/leave-request-rules.js';
+
 export function createLeaveRequestRepository() {
     async function restoreSchedule(client, { group_id, user_id, appliedShift }, snapshot, dateKey) {
         if (!snapshot?.existed) {
@@ -108,19 +110,11 @@ export function createLeaveRequestRepository() {
     }
 
     async function deleteOnLeaveStatus(client, { group_id, user_id, date }) {
-        await client.query(
-            `DELETE FROM tk_attendance_daily_status
-             WHERE group_id = $1 AND user_id = $2 AND date = $3 AND result = 'ON_LEAVE'`,
-            [group_id, user_id, date]
-        );
+        await client.query(`DELETE FROM tk_attendance_daily_status WHERE group_id = $1 AND user_id = $2 AND date = $3 AND result = 'ON_LEAVE'`, [group_id, user_id, date]);
     }
 
     async function deleteUnauthorizedAbsentPenalty(client, { group_id, user_id, date }) {
-        await client.query(
-            `DELETE FROM tk_penalties
-             WHERE group_id = $1 AND user_id = $2 AND date = $3 AND violation_type = 'UNAUTHORIZED_ABSENT'`,
-            [group_id, user_id, date]
-        );
+        await client.query(`DELETE FROM tk_penalties WHERE group_id = $1 AND user_id = $2 AND date = $3 AND violation_type = 'UNAUTHORIZED_ABSENT'`, [group_id, user_id, date]);
     }
 
     async function upsertAttendanceStatusOnLeave(client, { group_id, user_id, date }) {
@@ -136,12 +130,7 @@ export function createLeaveRequestRepository() {
 
     /** Bỏ cảnh báo ca sáng để nhân sự vẫn được chấm công cho ca chiều — dùng khi duyệt nghỉ nửa ngày sáng. */
     async function clearMorningLateWarning(client, { group_id, user_id, date }) {
-        await client.query(
-            `DELETE FROM tk_attendance_daily_status
-             WHERE group_id = $1 AND user_id = $2 AND date = $3
-               AND result = 'LATE_NOTIFIED' AND finalized_at IS NULL`,
-            [group_id, user_id, date]
-        );
+        await client.query(`DELETE FROM tk_attendance_daily_status WHERE group_id = $1 AND user_id = $2 AND date = $3 AND result = 'LATE_NOTIFIED' AND finalized_at IS NULL`, [group_id, user_id, date]);
     }
 
     async function lockPreviousRequest(client, { group_id, user_id, date }) {
@@ -157,13 +146,7 @@ export function createLeaveRequestRepository() {
     }
 
     async function cancelPreviousRequests(client, { group_id, user_id, date }) {
-        await client.query(
-            `UPDATE tk_leave_requests
-             SET status = 'CANCELLED'
-             WHERE group_id = $1 AND user_id = $2 AND date = $3
-               AND status IN ('PENDING', 'APPROVED', 'REJECTED')`,
-            [group_id, user_id, date]
-        );
+        await client.query(`UPDATE tk_leave_requests SET status = 'CANCELLED' WHERE group_id = $1 AND user_id = $2 AND date = $3 AND status IN ('PENDING', 'APPROVED', 'REJECTED')`, [group_id, user_id, date]);
     }
 
     async function lockCurrentSchedule(client, { user_id, date }) {
@@ -244,6 +227,56 @@ export function createLeaveRequestRepository() {
         );
     }
 
+    async function creditClientMeetingCheckin(client, { group_id, user_id, date, credit, admin_note }) {
+        const dateKey = toDateKey(date);
+        const checkInTime = `${dateKey} 08:30:00+07`;
+
+        await client.query(
+            `INSERT INTO tk_check_ins (group_id, user_id, date, check_in_time, video_file_id, status, work_credit, checkin_penalty_amount, admin_note)
+             VALUES ($1, $2, $3, $4, 'CLIENT_MEETING', 'APPROVED', $5, 0, $6)
+             ON CONFLICT (user_id, date) DO UPDATE SET
+                check_in_time = COALESCE(tk_check_ins.check_in_time, EXCLUDED.check_in_time),
+                video_file_id = COALESCE(tk_check_ins.video_file_id, EXCLUDED.video_file_id),
+                status = 'APPROVED',
+                work_credit = EXCLUDED.work_credit,
+                checkin_penalty_amount = 0,
+                admin_note = EXCLUDED.admin_note`,
+            [group_id, user_id, dateKey, checkInTime, credit, admin_note]
+        );
+
+        await client.query(
+            `INSERT INTO tk_attendance_daily_status (group_id, user_id, date, result, finalized_at, updated_at)
+             VALUES ($1, $2, $3, 'ON_TIME', NOW(), NOW())
+             ON CONFLICT (group_id, user_id, date) DO UPDATE SET
+                result = 'ON_TIME',
+                finalized_at = COALESCE(tk_attendance_daily_status.finalized_at, NOW()),
+                updated_at = NOW()`,
+            [group_id, user_id, dateKey]
+        );
+    }
+
+    async function countApprovedLateRequestsInMonth(client, { userId, startDate, endDate }) {
+        const result = await client.query(
+            `SELECT COUNT(*)::int AS count FROM tk_leave_requests
+             WHERE user_id = $1 AND request_type = 'LATE' AND status = 'APPROVED'
+               AND date >= $2 AND date <= $3`,
+            [userId, startDate, endDate]
+        );
+        return Number(result.rows[0]?.count) || 0;
+    }
+
+    async function insertAutoRejectedLateRequest(client, { groupId, userId, lateMinutes, date, reason, proofUrl, rejectedReason }) {
+        const result = await client.query(
+            `INSERT INTO tk_leave_requests
+                (group_id, user_id, request_type, late_minutes, date, reason, proof_url,
+                 status, approved_by, auto_accepted, effective_applied_at, rejected_at)
+             VALUES ($1, $2, 'LATE', $3, $4, $5, $6, 'REJECTED', $7, FALSE, NOW(), NOW())
+             RETURNING *`,
+            [groupId, userId, lateMinutes, date, reason, proofUrl, rejectedReason]
+        );
+        return result.rows[0];
+    }
+
     return {
         restoreSchedule,
         applyScheduleEffect,
@@ -264,6 +297,9 @@ export function createLeaveRequestRepository() {
         findForApproval,
         findEmployeeFullNameByTelegramId,
         updateLegacyRequestStatus,
-        upsertApprovedShift
+        upsertApprovedShift,
+        creditClientMeetingCheckin,
+        countApprovedLateRequestsInMonth,
+        insertAutoRejectedLateRequest
     };
 }

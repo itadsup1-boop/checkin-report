@@ -1,19 +1,10 @@
 import {
     evaluateMarketingCheckin, isMarketingPolicy,
     formatMarketingCheckinReply, formatMarketingCheckoutReply,
-    resolveMarketingCheckinDeadlines
+    resolveMarketingCheckinDeadlines, formatMonthlyStatsBlock,
+    isMarketingCheckoutEligible
 } from '../domain/marketing-attendance-rules.js';
 
-/**
- * Điểm danh bằng ảnh hoặc video (Check-in / Check-out): lưu ngay vào `tk_check_ins`
- * rồi trả kết quả cho Mini App ngay lập tức, việc gửi ảnh hoặc convert MP4 (nếu cần)
- * và gửi media vào nhóm chạy nền phía sau.
- *
- * Quy tắc:
- * - Hỗ trợ cả Hình Ảnh và Video.
- * - Lần gửi thứ 1 trong ngày: ghi nhận Check-in.
- * - Lần gửi thứ 2 trong ngày: ghi nhận Check-out.
- */
 export function createSaveCheckin({
     checkinRepository, scheduleRepository, findEmployeeContext, isSystemAdmin,
     moment, fs, path, exec, bot, sendVideoToRoleGroup, sendPhotoToRoleGroup, uploadDir, syncSheets
@@ -33,27 +24,14 @@ export function createSaveCheckin({
                 isImage
             };
         }
+        const { video_base64: mediaBase64, mime_type: mimeType = '', telegram_id: telegramId } = req.body;
+        if (!mediaBase64?.includes(';base64,')) return null;
 
-        const { video_base64: mediaBase64, mime_type: mimeType, telegram_id: telegramId } = req.body;
-        if (!mediaBase64 || !mediaBase64.includes(';base64,')) return null;
-
-        const base64Data = mediaBase64.split(';base64,')[1];
-        const buffer = Buffer.from(base64Data, 'base64');
-        let ext = 'jpg';
-        let isMp4 = false;
-        let isImage = true;
-        if (mimeType) {
-            const mimeLower = mimeType.toLowerCase();
-            if (mimeLower.includes('image/')) {
-                ext = mimeLower.includes('png') ? 'png' : (mimeLower.includes('webp') ? 'webp' : 'jpg');
-                isImage = true;
-            } else if (mimeLower.includes('mp4') || mimeLower.includes('quicktime') || mimeLower.includes('mov') || mimeLower.includes('m4v')) {
-                ext = 'mp4'; isMp4 = true; isImage = false;
-            } else if (['3gp', 'avi', 'webm'].some(m => mimeLower.includes(m))) {
-                ext = mimeLower.includes('webm') ? 'webm' : (mimeLower.includes('avi') ? 'avi' : '3gp');
-                isImage = false;
-            }
-        }
+        const buffer = Buffer.from(mediaBase64.split(';base64,')[1], 'base64');
+        const mimeLower = mimeType.toLowerCase();
+        const isImage = mimeLower.startsWith('image/') || !mimeLower.includes('video');
+        const isMp4 = !isImage && (mimeLower.includes('mp4') || mimeLower.includes('quicktime') || mimeLower.includes('mov'));
+        const ext = isImage ? (mimeLower.includes('png') ? 'png' : 'jpg') : (isMp4 ? 'mp4' : 'webm');
 
         const filename = `checkin_${telegramId}_${Date.now()}.${ext}`;
         const originalUploadPath = path.join(uploadDir, filename);
@@ -71,18 +49,19 @@ export function createSaveCheckin({
 
     async function convertAndSendMedia({
         originalUploadPath, finalMp4Path, isMp4, isImage,
-        telegramGroupId, user, isCheckout = false, isMarketing = false, evaluation = null
+        telegramGroupId, user, isCheckout = false, isMarketing = false, evaluation = null,
+        monthlyStats = null, monthStr = ''
     }) {
         if (!telegramGroupId || !originalUploadPath) return;
 
         const timestampStr = moment().utcOffset(7).format('HH:mm - DD/MM/YYYY');
         const mediaLabel = isImage ? 'ảnh' : 'video';
+        const statsBlock = monthlyStats ? formatMonthlyStatsBlock(monthlyStats, monthStr) : '';
         const caption = isCheckout
             ? (isMarketing ? formatMarketingCheckoutReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr })
                 : `📸 <b>BÁO CÁO CHECK-OUT</b>\n\n👤 <b>Nhân viên:</b> ${user.full_name}\n💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n⏰ <b>Thời gian check-out:</b> ${timestampStr}\n\n<i>Hệ thống đã ghi nhận ${mediaLabel} check-out của bạn thành công!</i>`)
-            : (isMarketing && evaluation ? formatMarketingCheckinReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr, evaluation })
-                : `📸 <b>BÁO CÁO ĐIỂM DANH</b>\n\n👤 <b>Nhân viên:</b> ${user.full_name}\n💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n⏰ <b>Thời gian:</b> ${timestampStr}\n✅ <b>Trạng thái:</b> Ghi nhận điểm danh thành công!`);
-
+            : (isMarketing && evaluation ? formatMarketingCheckinReply({ fullName: user.full_name, role: user.role, timeStr: timestampStr, evaluation, monthlyStats, monthStr })
+                : `📸 <b>BÁO CÁO ĐIỂM DANH</b>\n\n👤 <b>Nhân viên:</b> ${user.full_name}\n💼 <b>Vị trí:</b> ${user.role || 'Nhân viên'}\n⏰ <b>Thời gian:</b> ${timestampStr}\n✅ <b>Trạng thái:</b> Ghi nhận điểm danh thành công!${statsBlock}`);
 
         try {
             if (isImage) {
@@ -162,29 +141,35 @@ export function createSaveCheckin({
         const isMarketing = policyInfo && isMarketingPolicy(policyInfo.attendance_policy);
         const effectiveDate = policyInfo?.effective_start_date || '2026-09-25';
 
-        // Lấy thông tin ca trực trong ngày (nếu có)
-        let userSchedule = null;
-        if (typeof checkinRepository.findUserScheduleOfDay === 'function') {
-            userSchedule = await checkinRepository.findUserScheduleOfDay(user.id, currentDate);
-        } else if (typeof scheduleRepository?.findSchedulesInRange === 'function') {
-            const schedules = await scheduleRepository.findSchedulesInRange(user.id, currentDate, currentDate);
-            if (schedules && schedules.length > 0) {
-                userSchedule = schedules[0];
-            }
-        }
+        const userSchedule = typeof checkinRepository.findUserScheduleOfDay === 'function'
+            ? await checkinRepository.findUserScheduleOfDay(user.id, currentDate)
+            : (await scheduleRepository?.findSchedulesInRange?.(user.id, currentDate, currentDate))?.[0] || null;
         const isCa2 = userSchedule?.shift_type === 'CA_2' || userSchedule?.shift_type === 'CA_CHIEU';
+        const isCa917 = userSchedule?.shift_type === 'CA_9_17' || (user?.id === 'dc286880-c850-4740-8db0-ee700db216e8' && moment().utcOffset(7).day() !== 0);
 
-        // Lấy thông tin đơn xin đi muộn đã được duyệt (nếu có)
         let approvedLateLeave = null;
         if (typeof checkinRepository.findApprovedLateLeaveRequest === 'function') {
             approvedLateLeave = await checkinRepository.findApprovedLateLeaveRequest(user.id, currentDate);
         }
         const approvedMinutes = Number(approvedLateLeave?.late_minutes) || 0;
         const lateLeaveTag = approvedLateLeave ? (approvedMinutes > 0 ? ` (Xin muộn +${approvedMinutes}p)` : ' (Có đơn xin muộn)') : '';
-        const roleDisplay = isCa2 ? `${user.role || 'Nhân viên'} (Ca 2 - 09:30)${lateLeaveTag}` : `${user.role || 'Nhân viên'}${lateLeaveTag}`;
+        let roleDisplay = `${user.role || 'Nhân viên'}${lateLeaveTag}`;
+        if (isCa917) roleDisplay = `${user.role || 'Telesale'} (Ca 09:00 - 17:00)${lateLeaveTag}`;
+        else if (isCa2) roleDisplay = `${user.role || 'Nhân viên'} (Ca 2 - 09:30)${lateLeaveTag}`;
 
         // Nếu đã có check-in trong ngày => Ghi nhận lần gửi thứ 2 là CHECK-OUT
         if (existingCheckin && existingCheckin.check_in_time) {
+            const checkoutMin = isCa917 ? '17:00:00' : (policyInfo?.checkout_min_time || '18:30:00');
+            const checkoutMinDisplay = checkoutMin.slice(0, 5);
+
+            if (isMarketing && !isMarketingCheckoutEligible(currentTimeStr, checkoutMin)) {
+                return {
+                    ok: false,
+                    status: 400,
+                    message: `Bạn đã điểm danh vào ca lúc ${moment(existingCheckin.check_in_time).utcOffset(7).format('HH:mm')}. Chưa đến giờ kết thúc ca làm việc (sau ${checkoutMinDisplay})! Vui lòng thực hiện check-out sau ${checkoutMinDisplay}.`
+                };
+            }
+
             if (typeof checkinRepository.recordCheckOut === 'function') {
                 await checkinRepository.recordCheckOut({
                     userId: user.id,
@@ -224,7 +209,7 @@ export function createSaveCheckin({
         if (isMarketing) {
             const isSunday = moment().utcOffset(7).day() === 0;
             const { deadline, lateCutoff, shiftStartTime } = resolveMarketingCheckinDeadlines({
-                policyInfo, telegramGroupId, isSunday, isCa2, approvedLateLeave, approvedMinutes
+                policyInfo, telegramGroupId, isSunday, isCa2, isCa917, shiftType: userSchedule?.shift_type, approvedLateLeave, approvedMinutes
             });
 
             if (currentDate < effectiveDate) {
@@ -269,14 +254,21 @@ export function createSaveCheckin({
             syncSheets().catch(e => console.error('Sheet sync error in checkin:', e));
         }
 
-        let responseMessage = 'Điểm danh (Check-in) thành công!';
-        if (isMarketing && evalRes) {
-            if (evalRes.isLate) {
-                responseMessage = `Ghi nhận Check-in: Đi muộn (${evalRes.reason})`;
-            } else {
-                responseMessage = 'Điểm danh (Check-in) đúng giờ thành công!';
+        let monthlyStats = null;
+        if (typeof checkinRepository.getMonthlyAttendancePenaltyStats === 'function') {
+            try {
+                monthlyStats = await checkinRepository.getMonthlyAttendancePenaltyStats({ userId: user.id, groupId, date: currentDate });
+            } catch (err) {
+                console.error('[Monthly Stats Error]:', err?.message || err);
             }
         }
+
+        let responseMessage = 'Điểm danh (Check-in) thành công!';
+        if (isMarketing && evalRes) {
+            responseMessage = evalRes.isLate ? `Ghi nhận Check-in: Đi muộn (${evalRes.reason})` : 'Điểm danh (Check-in) đúng giờ thành công!';
+        }
+
+        const monthStr = moment(currentDate).format('MM/YYYY');
 
         return {
             ok: true,
@@ -288,7 +280,9 @@ export function createSaveCheckin({
                 user: { ...user, role: roleDisplay },
                 isCheckout: false,
                 isMarketing,
-                evaluation: evalRes
+                evaluation: evalRes,
+                monthlyStats,
+                monthStr
             })
         };
     }

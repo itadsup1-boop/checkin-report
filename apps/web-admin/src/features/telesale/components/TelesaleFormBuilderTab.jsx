@@ -13,19 +13,30 @@ import {
   FileText,
   Sparkles,
   Save,
-  Check,
   Award,
   Trash2,
   RotateCcw,
-  X
+  X,
+  ChevronDown,
+  FolderTree,
+  Tag,
+  Layers
 } from 'lucide-react';
-import { ORIGINAL_DEFAULT_FIELDS } from '../constants/telesaleDefaults.js';
+import {
+  ORIGINAL_DEFAULT_FIELDS,
+  DEFAULT_ADS_FIELDS,
+  DEFAULT_FEATURES
+} from '../constants/telesaleDefaults.js';
 
 export default function TelesaleFormBuilderTab({
   config,
   onSaveConfig,
   loading = false,
-  showToast
+  showToast,
+  groupName,
+  groupId,
+  groups,
+  onSelectGroup
 }) {
   const [fields, setFields] = useState(() => {
     if (config?.fields && Array.isArray(config.fields) && config.fields.length > 0) {
@@ -33,9 +44,94 @@ export default function TelesaleFormBuilderTab({
     }
     return ORIGINAL_DEFAULT_FIELDS;
   });
+
+  const [features, setFeatures] = useState(() => ({
+    ...DEFAULT_FEATURES,
+    ...(config?.features || {})
+  }));
+
+  const [projects, setProjects] = useState(() => {
+    return Array.isArray(config?.projects) ? config.projects : [];
+  });
+
+  const [services, setServices] = useState(() => {
+    return Array.isArray(config?.services) ? config.services : [];
+  });
+
+  const [newProjectInput, setNewProjectInput] = useState('');
+  const [newServiceInput, setNewServiceInput] = useState('');
+
   const [editingField, setEditingField] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
+
+  // Thao tác tính năng phân cấp (Dự án, Dịch vụ, Template, Lũy kế)
+  const handleFeatureToggle = (key) => {
+    setFeatures(prev => ({ ...prev, [key]: !prev[key] }));
+    setHasChanges(true);
+  };
+
+  const handleFeatureChange = (key, val) => {
+    setFeatures(prev => ({ ...prev, [key]: val }));
+    setHasChanges(true);
+  };
+
+  const handleAddProject = () => {
+    const val = newProjectInput.trim();
+    if (!val) return;
+    if (projects.includes(val)) {
+      showToast?.('⚠️ Tên dự án này đã tồn tại');
+      return;
+    }
+    setProjects(prev => [...prev, val]);
+    setNewProjectInput('');
+    setHasChanges(true);
+  };
+
+  const handleRemoveProject = (index) => {
+    setProjects(prev => prev.filter((_, i) => i !== index));
+    setHasChanges(true);
+  };
+
+  const handleAddService = () => {
+    const val = newServiceInput.trim();
+    if (!val) return;
+    if (services.includes(val)) {
+      showToast?.('⚠️ Tên dịch vụ này đã tồn tại');
+      return;
+    }
+    setServices(prev => [...prev, val]);
+    setNewServiceInput('');
+    setHasChanges(true);
+  };
+
+  const handleRemoveService = (index) => {
+    setServices(prev => prev.filter((_, i) => i !== index));
+    setHasChanges(true);
+  };
+
+  // Nạp mẫu Báo cáo Ads theo giờ
+  const handleLoadAdsTemplate = () => {
+    if (window.confirm('Hệ thống sẽ nạp mẫu "Báo Cáo Ads Theo Giờ" (9 trường chỉ số, bật phân loại Dự án & Dịch vụ, tổng hợp theo Dịch vụ, cộng dồn mốc giờ). Tiếp tục?')) {
+      setFields(JSON.parse(JSON.stringify(DEFAULT_ADS_FIELDS)));
+      setFeatures({
+        has_projects: true,
+        has_services: true,
+        schedule_mode: 'MULTI_SLOT',
+        summary_template: 'BY_SERVICE',
+        cumulative_mode: 'HOURLY'
+      });
+      // Không gán cứng dự án mẫu, để trống để người dùng / admin tự do nhập hoặc tự động bổ sung
+      if (!projects || projects.length === 0) {
+        setProjects([]);
+      }
+      if (services.length === 0) {
+        setServices(['Nâng ngực', 'Hút mỡ', 'Nâng mũi']);
+      }
+      setHasChanges(true);
+      showToast?.('⚡ Đã nạp mẫu Báo Cáo Ads Theo Giờ! (Nhấn "Lưu cấu hình Form" để áp dụng)');
+    }
+  };
 
   // Mở modal tạo mới
   const handleAddNew = () => {
@@ -48,6 +144,7 @@ export default function TelesaleFormBuilderTab({
       default: 0,
       required: false,
       is_monthly_cumulative: false,
+      is_hourly_cumulative: false,
       is_hidden: false,
       order_index: fields.length + 1,
       thresholds: []
@@ -64,7 +161,7 @@ export default function TelesaleFormBuilderTab({
   // Lưu trường từ Modal
   const handleSaveModalField = (savedField) => {
     if (!savedField.label.trim()) {
-      showToast('❌ Vui lòng nhập tên trường');
+      showToast?.('❌ Vui lòng nhập tên trường');
       return;
     }
 
@@ -96,7 +193,7 @@ export default function TelesaleFormBuilderTab({
     setHasChanges(true);
     setIsModalOpen(false);
     setEditingField(null);
-    showToast(`✅ Đã cập nhật trường "${savedField.label}"`);
+    showToast?.(`✅ Đã cập nhật trường "${savedField.label}"`);
   };
 
   // Ẩn / Hiện trường
@@ -131,13 +228,18 @@ export default function TelesaleFormBuilderTab({
     if (window.confirm('Bạn có chắc muốn nạp toàn bộ danh sách 14 trường và công thức của form mẫu cũ chuẩn vào nhóm này?')) {
       setFields(JSON.parse(JSON.stringify(ORIGINAL_DEFAULT_FIELDS)));
       setHasChanges(true);
-      showToast('✅ Đã nạp mẫu form cũ chuẩn (nhấn "Lưu cấu hình Form" để áp dụng)');
+      showToast?.('✅ Đã nạp mẫu form cũ chuẩn (nhấn "Lưu cấu hình Form" để áp dụng)');
     }
   };
 
   // Lưu toàn bộ cấu hình lên máy chủ
   const handleSaveAll = async () => {
-    await onSaveConfig({ fields });
+    await onSaveConfig({
+      fields,
+      features,
+      projects,
+      services
+    });
     setHasChanges(false);
   };
 
@@ -161,27 +263,82 @@ export default function TelesaleFormBuilderTab({
 
   return (
     <div className="space-y-6">
+      {/* Group Context Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/90 via-sky-50/50 to-white p-4 shadow-xs">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white shadow-2xs font-bold text-sm">
+            <Calculator className="h-5 w-5" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-blue-700">Đang cấu hình Form riêng cho nhóm:</span>
+              <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                Áp dụng riêng
+              </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-0.5">
+              <span className="text-base font-bold text-slate-900">{groupName || 'Chưa chọn nhóm'}</span>
+              {groupId && (
+                <span className="rounded-md border border-slate-200 bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600">
+                  ID: {groupId}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {groups && groups.length > 1 && onSelectGroup && (
+          <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl border border-blue-100 shadow-2xs">
+            <span className="text-slate-600 text-xs font-semibold whitespace-nowrap">Chuyển sang nhóm khác:</span>
+            <div className="relative">
+              <select
+                value={groupId || ''}
+                onChange={(e) => onSelectGroup(e.target.value)}
+                className="appearance-none rounded-lg border border-slate-300 bg-slate-50 py-1.5 pl-2.5 pr-7 text-xs font-bold text-blue-950 outline-none hover:border-blue-500 cursor-pointer"
+              >
+                {groups.map((g) => (
+                  <option key={g.telegram_group_id} value={g.telegram_group_id}>
+                    {g.group_name} ({g.telegram_group_id})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
+        )}
+      </div>
+
       {/* Top Header Controls */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
         <div>
           <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
             <Calculator className="h-5 w-5 text-blue-600" />
-            Cấu hình Danh sách Trường Báo Cáo
+            Cấu hình Danh sách Trường Báo Cáo {groupName ? `— ${groupName}` : ''}
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Tùy biến các ô nhân viên điền, các ô bot tự tính, mốc khen thưởng % và tích chọn lũy kế tháng.
+            Tùy biến các ô nhân viên điền, các ô bot tự tính, mốc khen thưởng % và tích chọn lũy kế tháng cho nhóm <b>{groupName || groupId || 'hiện tại'}</b>.
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           <button
             type="button"
             onClick={handleResetToDefault}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition"
+            className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-2xs hover:bg-slate-50 active:scale-95 transition"
             title="Nạp lại toàn bộ 14 trường và công thức chuẩn của form cũ"
           >
             <RotateCcw className="h-4 w-4 text-slate-500" />
             <span>Nạp form cũ chuẩn</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleLoadAdsTemplate}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-200 bg-indigo-50/80 px-3.5 py-2 text-xs font-semibold text-indigo-700 shadow-2xs hover:bg-indigo-100 active:scale-95 transition"
+            title="Nạp mẫu Báo cáo Ads theo giờ (gồm 9 chỉ số, phân loại theo Dự án & Dịch vụ, tổng hợp theo dịch vụ)"
+          >
+            <Sparkles className="h-4 w-4 text-indigo-600" />
+            <span>Nạp mẫu Báo cáo Ads</span>
           </button>
 
           <button
@@ -218,6 +375,200 @@ export default function TelesaleFormBuilderTab({
         </div>
       )}
 
+      {/* KHỐI CÀI ĐẶT DỰ ÁN & DỊCH VỤ (PHÂN LOẠI NÂNG CAO) */}
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-50 text-indigo-600">
+              <FolderTree className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">
+                Phân Loại Theo Dự Án &amp; Dịch Vụ (Dynamic Dimensions)
+              </h3>
+              <p className="text-[11px] text-slate-500">
+                Cho phép nhân sự nộp báo cáo chi tiết theo từng Dự án / Dịch vụ và bot tự động tổng hợp số liệu theo mẫu.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* 2 Cột bật/tắt Dự án & Dịch vụ */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Cột 1: Phân loại theo Dự án */}
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5 text-blue-600" />
+                  Phân loại theo Dự án
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Bật nếu nhóm này cần theo dõi số liệu riêng theo từng dự án.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(features.has_projects)}
+                onChange={() => handleFeatureToggle('has_projects')}
+                className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+              />
+            </div>
+
+            {features.has_projects && (
+              <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newProjectInput}
+                    onChange={(e) => setNewProjectInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddProject())}
+                    placeholder="Nhập tên dự án mới..."
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddProject}
+                    className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 active:scale-95 transition"
+                  >
+                    Thêm
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 min-h-7">
+                  {projects.length > 0 ? (
+                    projects.map((p, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-blue-50/70 px-2.5 py-1 text-xs font-medium text-blue-800"
+                      >
+                        <span>{p}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveProject(idx)}
+                          className="text-blue-400 hover:text-rose-600 ml-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[11px] text-slate-400 italic">Chưa có danh sách dự án. Người dùng có thể tự thêm khi nộp báo cáo hoặc bạn có thể nhập tên và nhấn "Thêm" tại đây.</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Cột 2: Phân loại theo Dịch vụ */}
+          <div className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Tag className="h-3.5 w-3.5 text-purple-600" />
+                  Phân loại theo Dịch vụ
+                </span>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Bật nếu nhóm cần bóc tách các dịch vụ (VD: Nâng ngực, Hút mỡ,...).
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(features.has_services)}
+                onChange={() => handleFeatureToggle('has_services')}
+                className="h-4 w-4 rounded border-slate-300 text-purple-600 focus:ring-purple-500 cursor-pointer"
+              />
+            </div>
+
+            {features.has_services && (
+              <div className="pt-2 border-t border-slate-200/60 space-y-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newServiceInput}
+                    onChange={(e) => setNewServiceInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddService())}
+                    placeholder="Nhập tên dịch vụ (VD: Nâng ngực)..."
+                    className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs focus:border-purple-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddService}
+                    className="rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-700 active:scale-95 transition"
+                  >
+                    Thêm
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap gap-1.5 min-h-7">
+                  {services.length > 0 ? (
+                    services.map((s, idx) => (
+                      <span
+                        key={idx}
+                        className="inline-flex items-center gap-1 rounded-lg border border-purple-200 bg-purple-50/70 px-2.5 py-1 text-xs font-medium text-purple-800"
+                      >
+                        <span>{s}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveService(idx)}
+                          className="text-purple-400 hover:text-rose-600 ml-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-[11px] text-slate-400 italic">Chưa có danh sách dịch vụ. Hãy nhập tên và nhấn "Thêm".</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* 2 Lựa chọn nâng cao: Mẫu Bot tổng hợp & Cơ chế lũy kế */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Layers className="h-3.5 w-3.5 text-indigo-600" />
+              Mẫu Báo Cáo Tổng Hợp của Bot Telegram:
+            </label>
+            <select
+              value={features.summary_template || 'BY_EMPLOYEE'}
+              onChange={(e) => handleFeatureChange('summary_template', e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-indigo-500"
+            >
+              <option value="BY_EMPLOYEE">Tổng hợp theo từng Nhân Sự (Mặc định cho Telesale)</option>
+              <option value="BY_SERVICE">Tổng hợp cộng dồn tất cả dự án THEO DỊCH VỤ (Báo Cáo Ads)</option>
+            </select>
+            <p className="text-[10px] text-slate-500">
+              {features.summary_template === 'BY_SERVICE'
+                ? 'Bot sẽ tự động gom nhóm tổng kết cộng dồn các chỉ số chi tiêu, mess, số, doanh số theo từng dịch vụ.'
+                : 'Bot sẽ liệt kê báo cáo và thành tích theo danh sách từng nhân viên trong nhóm.'}
+            </p>
+          </div>
+
+          <div className="rounded-xl border border-slate-200 bg-white p-3 space-y-1.5">
+            <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <Calculator className="h-3.5 w-3.5 text-emerald-600" />
+              Cơ chế Tính Lũy Kế (Cumulative Mode):
+            </label>
+            <select
+              value={features.cumulative_mode || 'MONTHLY'}
+              onChange={(e) => handleFeatureChange('cumulative_mode', e.target.value)}
+              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs font-semibold text-slate-800 focus:border-emerald-500"
+            >
+              <option value="MONTHLY">Lũy kế theo Tháng (Mặc định Telesale: DS tháng, Khách tới tháng)</option>
+              <option value="HOURLY">Lũy kế theo Mốc Giờ trong ngày (09h -&gt; 12h -&gt; 18h cho Báo Cáo Ads)</option>
+              <option value="BOTH">Hỗ trợ cả hai (Cả theo Tháng và theo Mốc Giờ)</option>
+            </select>
+            <p className="text-[10px] text-slate-500">
+              Xác định cách các trường tính toán lũy kế cộng dồn số liệu từ các báo cáo trước đó.
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Fields List Table */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xs">
         <div className="overflow-x-auto">
@@ -228,7 +579,7 @@ export default function TelesaleFormBuilderTab({
                 <th className="py-3.5 px-3">Tên hiển thị &amp; Mã</th>
                 <th className="py-3.5 px-3">Kiểu &amp; Phân loại</th>
                 <th className="py-3.5 px-3">Công thức / Giá trị</th>
-                <th className="py-3.5 px-3 text-center">Lũy kế tháng</th>
+                <th className="py-3.5 px-3 text-center">Lũy kế</th>
                 <th className="py-3.5 px-3 text-center">Trạng thái</th>
                 <th className="py-3.5 pr-4 pl-3 text-right">Thao tác</th>
               </tr>
@@ -313,15 +664,23 @@ export default function TelesaleFormBuilderTab({
                       )}
                     </td>
 
-                    {/* Lũy kế tháng */}
+                    {/* Lũy kế */}
                     <td className="py-3 px-3 text-center">
-                      {field.is_monthly_cumulative ? (
-                        <span className="inline-flex items-center gap-0.5 text-emerald-600 font-semibold text-xs">
-                          <Check className="h-3.5 w-3.5" /> Có
-                        </span>
-                      ) : (
-                        <span className="text-slate-300">—</span>
-                      )}
+                      <div className="flex flex-col items-center gap-1">
+                        {field.is_monthly_cumulative && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-emerald-50 text-emerald-700 px-1.5 py-0.5 text-[10px] font-semibold border border-emerald-200">
+                            Tháng
+                          </span>
+                        )}
+                        {field.is_hourly_cumulative && (
+                          <span className="inline-flex items-center gap-0.5 rounded bg-indigo-50 text-indigo-700 px-1.5 py-0.5 text-[10px] font-semibold border border-indigo-200">
+                            Mốc giờ
+                          </span>
+                        )}
+                        {!field.is_monthly_cumulative && !field.is_hourly_cumulative && (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Trạng thái */}
@@ -659,6 +1018,18 @@ function FieldEditorModal({ field, availableFields, onClose, onSave }) {
               />
               <span className="font-medium text-slate-700">
                 Tính lũy kế cộng dồn cả tháng (tự động cộng dồn từ ngày 1 đầu tháng)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(formData.is_hourly_cumulative)}
+                onChange={(e) => setFormData({ ...formData, is_hourly_cumulative: e.target.checked })}
+                className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <span className="font-medium text-slate-700">
+                Tính lũy kế cộng dồn qua các mốc giờ trong ngày (09h -&gt; 12h -&gt; 18h)
               </span>
             </label>
 

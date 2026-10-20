@@ -79,7 +79,15 @@
     "migrate:timekeep-v45": "node packages/database/run_migrations_v45.js",
     "migrate:sheets-v48": "node packages/database/run_migrations_v48.js",
     "test:sheet-write-gate": "node --experimental-test-isolation=none --test packages/shared/sheet-write-gate.test.js apps/bot/sheet-sync-state.test.js",
-    "test:timekeep-marketing": "node --test domains/timekeep/tests/marketing-attendance-rules.test.js domains/timekeep/tests/scan-marketing-checkout.test.js domains/timekeep/tests/video-checkin-handler.test.js"
+    "test:timekeep-marketing": "node --test domains/timekeep/tests/marketing-attendance-rules.test.js domains/timekeep/tests/scan-marketing-checkout.test.js domains/timekeep/tests/video-checkin-handler.test.js",
+    "migrate:task-v58": "node packages/database/run_migrations_v58.js",
+    "migrate:task-v59": "node packages/database/run_migrations_v59.js",
+    "migrate:task-v60": "node packages/database/run_migrations_v60.js",
+    "migrate:task-v61": "node packages/database/run_migrations_v61.js",
+    "migrate:task-v62": "node packages/database/run_migrations_v62.js",
+    "migrate:task-v63": "node packages/database/run_migrations_v63.js",
+    "migrate:task-v64": "node packages/database/run_migrations_v64.js",
+    "test:task-management": "node --experimental-test-isolation=none --test domains/task-management/tests/access-service.test.js domains/task-management/tests/access-admin-routes.test.js domains/task-management/tests/module-registration.test.js domains/task-management/tests/task-service.test.js domains/task-management/tests/task-handlers.test.js domains/task-management/tests/outbox-worker.test.js domains/task-management/tests/form-service.test.js domains/task-management/tests/form-handlers.test.js domains/task-management/tests/excel-service.test.js domains/task-management/tests/excel-handlers.test.js domains/task-management/tests/messaging-service.test.js domains/task-management/tests/messaging-handlers.test.js domains/task-management/tests/rule-config-service.test.js domains/task-management/tests/rule-config-handlers.test.js domains/task-management/tests/nlp-parser.test.js domains/task-management/tests/attendance-report-service.test.js"
   },
   "keywords": [],
   "author": "",

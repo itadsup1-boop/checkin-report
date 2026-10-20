@@ -7,7 +7,11 @@ import {
   Info,
   Users,
   Clock,
-  FileText
+  FileText,
+  Building2,
+  ChevronDown,
+  CheckCircle2,
+  Layers
 } from 'lucide-react';
 import { telesaleApi } from './services/telesaleApi.js';
 import TelesaleStatsCards from './components/TelesaleStatsCards.jsx';
@@ -17,11 +21,13 @@ import TelesaleScheduleTab from './components/TelesaleScheduleTab.jsx';
 import { ORIGINAL_DEFAULT_FIELDS } from './constants/telesaleDefaults.js';
 
 export default function TelesaleManagement({
-  selectedGroupId
+  selectedGroupId,
+  onSelectGroup
 }) {
   const [activeTab, setActiveTab] = useState('mapping'); // 'mapping' | 'form-builder' | 'schedule'
   const [loading, setLoading] = useState(true);
   const [configLoading, setConfigLoading] = useState(false);
+  const [activeGroupId, setActiveGroupId] = useState(null);
   const [data, setData] = useState({
     groupId: null,
     groupName: '',
@@ -40,28 +46,8 @@ export default function TelesaleManagement({
     window.setTimeout(() => setToast(null), 3500);
   };
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await telesaleApi.getMappings({
-        groupId: selectedGroupId
-      });
-      if (res.success) {
-        setData(res);
-      } else {
-        setError(res.error || 'Không thể tải dữ liệu Telesale');
-      }
-    } catch (err) {
-      console.error('Lỗi khi tải dữ liệu đấu nối Telesale:', err);
-      setError(err.response?.data?.error || err.message || 'Lỗi kết nối máy chủ');
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedGroupId]);
-
   const fetchFormConfig = useCallback(async (gId) => {
-    if (!gId) return;
+    if (!gId || gId === 'ALL') return;
     setConfigLoading(true);
     try {
       const res = await telesaleApi.getFormConfig({ groupId: gId });
@@ -75,18 +61,56 @@ export default function TelesaleManagement({
     }
   }, []);
 
+  const fetchData = useCallback(async (targetGId) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const gToFetch = targetGId || (selectedGroupId && selectedGroupId !== 'ALL' ? selectedGroupId : activeGroupId);
+      const res = await telesaleApi.getMappings({
+        groupId: gToFetch
+      });
+      if (res.success) {
+        setData(res);
+        const resolvedId = res.groupId;
+        if (resolvedId) {
+          setActiveGroupId(resolvedId);
+          await fetchFormConfig(resolvedId);
+        }
+      } else {
+        setError(res.error || 'Không thể tải dữ liệu Telesale');
+      }
+    } catch (err) {
+      console.error('Lỗi khi tải dữ liệu đấu nối Telesale:', err);
+      setError(err.response?.data?.error || err.message || 'Lỗi kết nối máy chủ');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedGroupId, activeGroupId, fetchFormConfig]);
+
   useEffect(() => {
     const timer = window.setTimeout(fetchData, 0);
     return () => window.clearTimeout(timer);
   }, [fetchData]);
 
   useEffect(() => {
-    const targetGroupId = selectedGroupId || data.groupId;
-    if (targetGroupId && targetGroupId !== 'ALL') {
-      const timer = window.setTimeout(() => fetchFormConfig(targetGroupId), 0);
+    if (selectedGroupId && selectedGroupId !== 'ALL' && selectedGroupId !== activeGroupId) {
+      const timer = window.setTimeout(() => {
+        setActiveGroupId(selectedGroupId);
+        fetchData(selectedGroupId);
+      }, 0);
       return () => window.clearTimeout(timer);
     }
-  }, [selectedGroupId, data.groupId, fetchFormConfig]);
+  }, [selectedGroupId, activeGroupId, fetchData]);
+
+  // Đổi nhóm Telesale trực tiếp từ bộ chọn
+  const handleGroupChange = async (newGroupId) => {
+    if (!newGroupId || newGroupId === data.groupId) return;
+    setActiveGroupId(newGroupId);
+    await fetchData(newGroupId);
+    onSelectGroup?.(newGroupId);
+    const selectedGroupObj = data.groups?.find(g => String(g.telegram_group_id) === String(newGroupId));
+    showToast(`✅ Đã chuyển sang nhóm: ${selectedGroupObj?.group_name || newGroupId}`);
+  };
 
   // Cập nhật đấu nối tài khoản thủ công
   const handleUpdateMapping = async ({ employeeId, linkedEmployeeId, notes }) => {
@@ -155,7 +179,7 @@ export default function TelesaleManagement({
       });
       if (res.success) {
         showToast('📣 Đã gửi tin nhắc nộp báo cáo tới nhóm Telesale thành công!');
-        fetchData();
+        fetchData(data.groupId);
       } else {
         showToast(`❌ ${res.error || 'Không thể gửi nhắc nhở'}`);
       }
@@ -176,12 +200,15 @@ export default function TelesaleManagement({
         groupName: data.groupName,
         fields: updateData.fields !== undefined ? updateData.fields : formConfig?.fields,
         scheduleSettings: updateData.scheduleSettings !== undefined ? updateData.scheduleSettings : formConfig?.schedule_settings,
-        sheetSettings: updateData.sheetSettings !== undefined ? updateData.sheetSettings : formConfig?.sheet_settings
+        sheetSettings: updateData.sheetSettings !== undefined ? updateData.sheetSettings : formConfig?.sheet_settings,
+        features: updateData.features !== undefined ? updateData.features : formConfig?.features,
+        projects: updateData.projects !== undefined ? updateData.projects : formConfig?.projects,
+        services: updateData.services !== undefined ? updateData.services : formConfig?.services
       };
       const res = await telesaleApi.updateFormConfig(payload);
       if (res.success) {
         setFormConfig(res.config);
-        showToast(`✅ ${res.message || 'Lưu cấu hình thành công!'}`);
+        showToast(`✅ Đã lưu cấu hình thành công cho nhóm "${data.groupName || data.groupId}"!`);
       } else {
         showToast(`❌ ${res.error || 'Lỗi khi lưu cấu hình'}`);
       }
@@ -259,7 +286,7 @@ export default function TelesaleManagement({
           <button
             type="button"
             onClick={() => {
-              fetchData();
+              fetchData(data.groupId);
               if (data.groupId) fetchFormConfig(data.groupId);
             }}
             disabled={loading}
@@ -268,6 +295,73 @@ export default function TelesaleManagement({
             <RefreshCw className={`h-4 w-4 ${loading || configLoading ? 'animate-spin text-blue-600' : ''}`} />
             <span>Làm mới</span>
           </button>
+        </div>
+      </div>
+
+      {/* KHỐI BỘ CHỌN & CHỈ BÁO NHÓM TELESALE NỔI BẬT */}
+      <div className="relative overflow-hidden rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50/90 via-indigo-50/60 to-white p-4 sm:p-5 shadow-xs">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          {/* Thông tin nhóm đang quản lý */}
+          <div className="flex items-start sm:items-center gap-3.5">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-sm ring-4 ring-blue-100">
+              <Building2 className="h-6 w-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold tracking-wide uppercase text-blue-700">
+                  Đang quản lý cấu hình cho nhóm:
+                </span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                  <CheckCircle2 className="h-3 w-3" /> Đang chọn
+                </span>
+                {data.groups && data.groups.length > 0 && (
+                  <span className="rounded-full bg-blue-100/80 px-2 py-0.5 text-[11px] font-medium text-blue-800">
+                    {data.groups.length} nhóm Telesale
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-baseline gap-2.5">
+                <h2 className="text-lg sm:text-xl font-black text-slate-900">
+                  {data.groupName || 'Đang tải thông tin nhóm...'}
+                </h2>
+                {data.groupId && (
+                  <span className="font-mono text-xs text-slate-600 bg-white px-2.5 py-0.5 rounded-lg border border-slate-200 font-semibold shadow-2xs">
+                    ID: {data.groupId}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Bộ chọn chuyển nhóm Telesale trực tiếp */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 bg-white p-2.5 rounded-xl border border-blue-100 shadow-2xs">
+            <label htmlFor="telesale-group-selector" className="text-xs font-bold text-slate-700 flex items-center gap-1.5 shrink-0 pl-1">
+              <Layers className="h-4 w-4 text-blue-600" />
+              <span>Đổi sang nhóm khác:</span>
+            </label>
+            <div className="relative min-w-[240px] sm:min-w-[280px]">
+              <select
+                id="telesale-group-selector"
+                value={data.groupId || ''}
+                onChange={(e) => handleGroupChange(e.target.value)}
+                disabled={loading || configLoading}
+                className="w-full appearance-none rounded-lg border border-slate-300 bg-slate-50 py-2 pl-3 pr-8 text-xs font-bold text-slate-900 outline-none transition focus:border-blue-600 focus:bg-white focus:ring-2 focus:ring-blue-100 disabled:opacity-50 cursor-pointer"
+              >
+                {data.groups && data.groups.length > 0 ? (
+                  data.groups.map((group) => (
+                    <option key={group.telegram_group_id} value={group.telegram_group_id}>
+                      {group.group_name} ({group.telegram_group_id})
+                    </option>
+                  ))
+                ) : (
+                  <option value={data.groupId || ''}>
+                    {data.groupName ? `${data.groupName} (${data.groupId})` : 'Không có nhóm'}
+                  </option>
+                )}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            </div>
+          </div>
         </div>
       </div>
 
@@ -312,16 +406,6 @@ export default function TelesaleManagement({
           <span>Thời gian &amp; Quét phạt</span>
         </button>
       </div>
-
-      {/* Group Info Indicator */}
-      {data.groupName && (
-        <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 px-4 py-2 rounded-xl border border-slate-100">
-          <div>
-            Đang quản lý nhóm: <b className="text-slate-800">{data.groupName}</b> ({data.groupId})
-          </div>
-          <span>Hôm nay: {new Date().toLocaleDateString('vi-VN')}</span>
-        </div>
-      )}
 
       {/* Error state */}
       {error && (
@@ -375,6 +459,10 @@ export default function TelesaleManagement({
         <TelesaleFormBuilderTab
           key={`${formConfig?.telegram_group_id || data.groupId || selectedGroupId || 'builder'}-${formConfig?.updated_at || formConfig?.id || 'initial'}`}
           config={formConfig || { telegram_group_id: data.groupId || selectedGroupId, fields: ORIGINAL_DEFAULT_FIELDS }}
+          groupName={data.groupName}
+          groupId={data.groupId}
+          groups={data.groups}
+          onSelectGroup={handleGroupChange}
           onSaveConfig={handleSaveConfig}
           loading={actionLoading}
           showToast={showToast}
@@ -386,6 +474,10 @@ export default function TelesaleManagement({
         <TelesaleScheduleTab
           key={`${formConfig?.telegram_group_id || data.groupId || selectedGroupId || 'schedule'}-${formConfig?.updated_at || formConfig?.id || 'initial'}`}
           config={formConfig || { telegram_group_id: data.groupId || selectedGroupId, fields: ORIGINAL_DEFAULT_FIELDS }}
+          groupName={data.groupName}
+          groupId={data.groupId}
+          groups={data.groups}
+          onSelectGroup={handleGroupChange}
           onSaveConfig={handleSaveConfig}
           onSyncSheetHeaders={handleSyncSheetHeaders}
           loading={actionLoading}

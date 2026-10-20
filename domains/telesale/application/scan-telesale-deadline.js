@@ -51,6 +51,12 @@ export function createScanTelesaleDeadline({
                         if (sched.deadline_time) {
                             deadlineTime = sched.deadline_time;
                         }
+
+                        const effectiveDate = sched.rules_effective_date || sched.effective_from || null;
+                        if (effectiveDate && dateStr < effectiveDate) {
+                            console.log(`[Telesale Penalty] Nhóm ${g.group_name || groupId} áp dụng luật từ ngày ${effectiveDate}, hôm nay là ${dateStr} nên bỏ qua phạt.`);
+                            penaltyEnabled = false;
+                        }
                     } catch (e) {
                         // ignore config error
                     }
